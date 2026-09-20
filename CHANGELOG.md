@@ -9,6 +9,12 @@ Detailed engineering handover reports are maintained per release phase in the pr
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-20
+
+### Added
+- **Headless Scientific Worker Bridge**: A UI-agnostic bridge within the headless medical engine that supervises the full lifecycle of the local Python scientific worker over the versioned stdio JSON-RPC protocol — from deterministic startup handshake through clean shutdown — with concurrent request correlation, per-request timeouts, and automatic recovery through bounded restart backoff. The handshake verifies protocol-version compatibility and the worker's advertised scientific operations before any request is served; requests fail closed while the worker is not ready, and an incompatible or failed handshake aborts deterministically rather than falling back.
+- **Verbatim Scientific Result Mapping**: The worker's scientifically computed results — study and series classification, physical patient-space geometry, PET body-weight quantitation, and pairwise geometry-compatibility evidence — are translated into NuClear clinical contracts with scientific provenance preserved and every computed value copied verbatim. The bridge performs no scientific computation of its own: no formula, DICOM interpretation, or quantitative result is ever re-derived in the application layer.
+
 ## [0.1.0] - 2026-09-20
 
 ### Added

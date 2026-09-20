@@ -37,8 +37,10 @@
   applicable gates PASS.
 - **P2.6 — COMPLETE** (2026-09-20). Phase-level independent review and QA
   audit closed Phase 2: all applicable gates PASS, docs generation executed,
-  and this consolidated phase handover recorded. Changelog promotion and
-  tagging remain a separate, explicit release action.
+  and this consolidated phase handover recorded.
+- **RELEASE v0.1.2 — COMPLETE** (2026-09-20). Monorepo synchronized to 0.1.2,
+  `CHANGELOG.md` promoted with the Phase 2 bridge capability, and the annotated
+  `v0.1.2` tag created locally. Push left to the user.
 - This file is append-only per slice. Each future slice appends its own
   eight-point handover below; do not rewrite completed entries.
 
@@ -1804,3 +1806,94 @@ for Phase 3.
   promotion is a separate release action.
 - Deliberately not staged: the pre-existing unrelated harness changes
   `opencode.json` and `opencode-rag.json`.
+
+---
+
+# Handover Report — Release: Monorepo v0.1.2
+
+## 1. What Was Implemented
+
+- **Harness housekeeping committed** (`5416b6e`): enabled the `opencode-snip`
+  plugin and pinned the OpenCodeRAG `vectorDimension` to 1024 as a separate
+  tooling commit, so the working tree was clean before the release.
+- **Ran the governed release flow**: `npm run bump 0.1.2` synchronized every
+  workspace `package.json`, all internal `@nuclear/*` ranges, the Python
+  package (`pyproject.toml`, `dicom/__init__.py`, `worker/__init__.py`) and the
+  ratified `tests/fixtures/protocol/response.handshake.json` workerVersion; the
+  root `package-lock.json` was reconciled with `npm install --package-lock-only`
+  (the bump script does not update the lockfile).
+- **Promoted `CHANGELOG.md`** from the agentlog via the sandboxed
+  `nuclear-changelog-writer`: a `[0.1.2] - 2026-09-20` section with two
+  distilled capability bullets (the headless scientific worker bridge and its
+  verbatim provenance-preserving result mapping). Internal release engineering
+  and harness tooling were excluded from the release notes per the style
+  contract.
+- **Created the annotated tag `v0.1.2`** on the release commit. Nothing was
+  pushed; the branch is left for the user to push.
+
+## 2. Files Changed / Created
+
+- Version metadata: root `package.json`, `package-lock.json`,
+  `packages/*/package.json` (7 workspaces), `python/pyproject.toml`,
+  `python/dicom/__init__.py`, `python/worker/__init__.py`,
+  `tests/fixtures/protocol/response.handshake.json`
+- `CHANGELOG.md` (new `[0.1.2]` section)
+- `docs/agentlog/phase-2.md` (this release handover and status header)
+- `opencode.json`, `opencode-rag.json` (harness tooling, committed separately as
+  `5416b6e`)
+
+Not modified: any Phase 2 source, test, contract or fixture semantics (only the
+handshake version literal changed); no scientific behaviour changed.
+
+## 3. Architectural Assumptions Made
+
+- A release is the explicit user action that authorizes `/promote-changelog`
+  and tagging; P2.6 phase closure deliberately left `CHANGELOG.md` untouched and
+  this release is a separate step (ADR-001).
+- The single monorepo SemVer is the authority; the Python worker version and the
+  ratified handshake fixture track it so worker provenance and protocol fixtures
+  stay consistent.
+- The bump script intentionally does not rewrite `package-lock.json`; the lock
+  was synchronized manually this release (recorded as debt in the tooling
+  handover).
+
+## 4. Tests Added & Executed
+
+No tests were added. The full configured suite was run on the bumped tree:
+
+- `npm run typecheck` -> clean; `npm run build` -> clean.
+- `npm test` -> **53 passed** (14 suites, 0 failed/skipped).
+- `npm run test:python` -> **166 passed**; `npm run typecheck:python` -> strict
+  mypy clean over 43 source files.
+- Version consistency verified: all workspace `package.json` files,
+  `package-lock.json`, `worker.__version__`, `dicom.__version__`,
+  `importlib.metadata.version('nuclear-scientific')` and the handshake fixture
+  all report `0.1.2`.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- `CHANGELOG.md` `[0.1.2]` was compiled by the dedicated changelog writer and
+  audited for forbidden content (no paths, hashes, task codes or code
+  identifiers); `[Unreleased]` remains present and empty.
+- This release handover completes the release-side evidence; ADR-001 and
+  ADR-002 are unchanged.
+
+## 6. Project Model Impact
+
+- None. Only version metadata and documentation changed; no contract, fixture
+  semantics or `.ncp` schema was touched.
+
+## 7. Known Limitations & Technical Debt
+
+- `bump-version.mjs` still does not rewrite the root `package-lock.json`
+  (reconciled manually here); extending it to shell out to
+  `npm install --package-lock-only` remains the recommended follow-up.
+- The provisioned venv dist-info rename is local and Git-ignored; a fresh
+  environment must reinstall the editable package to observe the new version.
+- P2.5 residuals and Phase 3 risks recorded in the P2.6 handover remain open.
+
+## 8. Exact Next Recommended Task
+
+- **Push `v0.1.2`** (user-owned) and proceed to **Phase 3** (headless medical
+  engine: Cornerstone adapter, volume loading, residency manager, offscreen
+  `RenderTarget`), consuming the bridge through its typed queries only.
