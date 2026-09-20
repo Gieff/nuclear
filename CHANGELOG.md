@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Phase 1 (Clinical Data Contracts in `@nuclear/shared-types`)**:
+  - Defined pure TypeScript contracts in `@nuclear/shared-types` with zero runtime dependencies and zero runtime code (`StudyReference`, `ImagingAsset`, `SourceLocator`, `SourceFingerprint`, `AssetAvailability`, `AssetResidency`, `SpatialTransform`, `ViewProvenance`).
+  - Implemented nominal branded identifiers for clinical IDs and DICOM UIDs (`StudyId`, `AssetId`, `ViewId`, `SurfaceId`, `RowId`, `CellId`, `TransformId`, `StudyInstanceUID`, `SeriesInstanceUID`, `SOPInstanceUID`, `FrameOfReferenceUID`).
+  - Defined strict physical patient geometry in LPS coordinates in millimeters (`AssetGeometry`, `Point3D`, `DirectionCosines`, `Matrix4x4`, `BoundingBox3D`).
+  - Added quantitative PET metadata contracts (`PetAcquisitionMetadata`) with decay correction (`START`/`ADMIN`) and SUVbw scaling factor calculations.
+  - Formulated discriminated unions for `SourceLocator` across local paths, file lists, archives, DICOMweb endpoints, and managed cache.
+  - Implemented headless clinical contract validators and type guards in `tests/contracts/validators.ts`.
+  - Added curated oncology PET/CT fixtures in `tests/fixtures/clinical-contracts.fixture.ts` and automated verification test suite in `tests/contracts/clinical-data-contracts.test.ts`.
+  - Established composite TypeScript project references and package configurations across all monorepo workspaces.
 - **Phase 0 (Foundation & Contracts Setup)**:
   - Initialized NuClear repository structure with 7 decoupled domain packages (`shared-types`, `rendering-presets`, `medical-engine`, `view-engine`, `figure-engine`, `project-model`, `ui`).
   - Adopted Master Architecture Blueprint v3 (`docs/NUCLEAR_ARCHITECTURE_V3.md`) with explicit coordinate chains, persistent ViewportSurfaces, and offline-safe project state.

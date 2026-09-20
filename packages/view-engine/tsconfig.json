@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "references": [
+    { "path": "../shared-types" },
+    { "path": "../rendering-presets" },
+    { "path": "../medical-engine" }
+  ],
+  "include": ["src/**/*"]
+}

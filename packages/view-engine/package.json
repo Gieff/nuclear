@@ -1,0 +1,14 @@
+{
+  "name": "@nuclear/view-engine",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Imaging Workspace, ViewSlots, PreparedViews and linking for NuClear",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@nuclear/shared-types": "0.1.0",
+    "@nuclear/rendering-presets": "0.1.0",
+    "@nuclear/medical-engine": "0.1.0"
+  },
+  "files": ["dist", "src"]
+}

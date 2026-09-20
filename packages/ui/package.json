@@ -1,0 +1,15 @@
+{
+  "name": "@nuclear/ui",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Visual presentation layer and design system tokens for NuClear",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@nuclear/shared-types": "0.1.0",
+    "@nuclear/project-model": "0.1.0",
+    "@nuclear/view-engine": "0.1.0",
+    "@nuclear/figure-engine": "0.1.0"
+  },
+  "files": ["dist", "src"]
+}
