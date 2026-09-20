@@ -41,6 +41,10 @@
 - **RELEASE v0.1.2 — COMPLETE** (2026-09-20). Monorepo synchronized to 0.1.2,
   `CHANGELOG.md` promoted with the Phase 2 bridge capability, and the annotated
   `v0.1.2` tag created locally. Push left to the user.
+- **POST-RELEASE TOOLING FIXES — COMPLETE** (2026-09-20). Version bump now
+  synchronizes `package-lock.json`; Python API documentation is generated with
+  `pdoc` through the provisioned worker virtual environment. Version remains
+  0.1.2 and the `v0.1.2` tag is unchanged.
 - This file is append-only per slice. Each future slice appends its own
   eight-point handover below; do not rewrite completed entries.
 
@@ -1897,3 +1901,108 @@ No tests were added. The full configured suite was run on the bumped tree:
 - **Push `v0.1.2`** (user-owned) and proceed to **Phase 3** (headless medical
   engine: Cornerstone adapter, volume loading, residency manager, offscreen
   `RenderTarget`), consuming the bridge through its typed queries only.
+
+---
+
+# Handover Report — Post-Release Tooling Fixes: Bump Lockfile Sync & pdoc Docs
+
+## 1. What Was Implemented
+
+Two post-release tooling defects recorded during the v0.1.2 release were
+resolved. No product code, contract, version or fixture semantics changed.
+
+- **Bump now synchronizes the lockfile.** `scripts/bump-version.mjs` gained a
+  step 7 that reconciles the root `package-lock.json` by invoking
+  `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`
+  (npm remains the authority for npm-managed lock state). A dry run reports the
+  planned action without writing; a failure prints the manual recovery command
+  and exits non-zero so a stale lock can never be committed silently. Windows
+  uses `npm.cmd`.
+- **Python docs use real pdoc.** The `docs` extra (`pdoc>=14.4.0`) was already
+  declared in `python/pyproject.toml`; it was simply not installed and the
+  repository script ran under system `python3`. The root `package.json`
+  `docs:python` script now runs `scripts/build_python_docs.py` under the
+  provisioned interpreter (`python/worker/.venv/bin/python`), and `pdoc` was
+  installed into that environment. `npm run docs:python` now emits multi-page
+  pdoc HTML for every `dicom.*` and `worker.*` module instead of the
+  structured fallback.
+- **Provisioning documented.** `python/README.md` now installs
+  `pip install -e "python[dev,docs]"`, lists `pdoc 16.0.0` in the measured
+  dependency table, and explains that the structured page is a fallback, never
+  pdoc output.
+
+## 2. Files Changed / Created
+
+Modified:
+- `scripts/bump-version.mjs` (lockfile synchronization step and failure path)
+- `package.json` (`docs:python` script interpreter only)
+- `python/README.md` (provisioning command, dependency table, docs section)
+- `docs/agentlog/phase-2.md` (status line and this handover)
+
+Not modified: `python/pyproject.toml` (the `docs` extra was already declared),
+any package source or test, the version (`0.1.2` unchanged), the `v0.1.2` tag.
+
+## 3. Architectural Assumptions Made
+
+- npm is the authority for the lockfile format; shelling out to
+  `npm install --package-lock-only` is a developer-tooling action, not a runtime
+  dependency, and avoids hand-editing npm-managed state.
+- Documentation tooling follows the repository convention of pinning the
+  provisioned virtual-environment interpreter (as `test:python` and
+  `typecheck:python` already do), so `pdoc` is resolved from the declared
+  `docs` extra rather than an unmanaged system interpreter.
+- The structured documentation fallback is retained as graceful degradation for
+  an unprovisioned environment and must never be reported as pdoc output.
+
+## 4. Tests Added & Executed
+
+No automated tests were added (the affected code is release/dev tooling). It was
+verified end to end:
+
+- **Bump round-trip:** `node scripts/bump-version.mjs 0.1.3` set
+  `package-lock.json` `version` and `packages[""].version` to `0.1.3`;
+  `node scripts/bump-version.mjs 0.1.2` restored them to `0.1.2`; `git status`
+  afterwards showed only `scripts/bump-version.mjs` modified, proving the
+  lockfile is synchronized and the round-trip is net-zero.
+- **Dry run:** `node scripts/bump-version.mjs 0.1.3 --dry-run` printed
+  "Would synchronize package-lock.json..." and wrote nothing
+  (`package.json` remained `0.1.2`).
+- **Docs:** `python/worker/.venv/bin/python -m pip install -e "./python[dev,docs]"`
+  installed `pdoc 16.0.0`; `npm run docs` generated real pdoc HTML
+  (`docs/api/python/index.html`, `dicom.html`, `worker.html`, and per-module
+  pages) plus the portal, with no fallback message.
+- **Gates:** `npm run typecheck` clean; `npm test` 53/53; `npm run build`
+  clean; `npm run test:python` 166 passed; `npm run typecheck:python` strict
+  mypy clean over 43 source files.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- `python/README.md` documents the `docs` extra, the provisioned-interpreter
+  invocation and the pdoc fallback boundary. This handover satisfies the
+  AgentLog Gate for the maintenance slice. No ADR was required: the changes
+  enforce an existing release-flow expectation and use tooling already declared
+  in `pyproject.toml`.
+- `CHANGELOG.md` was not touched; these tooling fixes are not user-facing
+  product capabilities and the `v0.1.2` release notes are unaffected.
+
+## 6. Project Model Impact
+
+- None. No contract, `.ncp` schema, version or fixture semantics changed.
+
+## 7. Known Limitations & Technical Debt
+
+- `bump-version.mjs` now requires `npm` on `PATH` (developer tooling only); a
+  future programmatic lockfile writer could remove the nested npm invocation.
+- The structured documentation fallback remains as graceful degradation; it is
+  inert in the provisioned environment.
+- Pre-existing, unrelated cosmetic issue: the venv-metadata step prints
+  "✔ Synchronized ..." during a dry run although it only writes when not in
+  dry-run mode.
+- The untracked `docs/plans/PHASE_3_*` files present in the working tree were
+  not authored or staged by this task.
+
+## 8. Exact Next Recommended Task
+
+- Review the new `docs/plans/PHASE_3_*` planning documents, push `v0.1.2` and
+  these fixes when ready (user-owned), then begin **Phase 3** (headless medical
+  engine) consuming the bridge only through its typed queries.
