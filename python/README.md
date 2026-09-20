@@ -37,7 +37,7 @@ script; both run the same newline-delimited JSON-RPC 2.0 loop:
 ```bash
 # from the repository root, using the provisioned environment
 python/worker/.venv/bin/python -m worker
-# equivalent console entry point (after `pip install -e "python[dev]"`)
+# equivalent console entry point (after `pip install -e "python[dev,docs]"`)
 python/worker/.venv/bin/nuclear-worker
 ```
 
@@ -334,8 +334,12 @@ macOS.
 ```bash
 # from the repository root
 /opt/homebrew/bin/python3.14 -m venv python/worker/.venv
-python/worker/.venv/bin/python -m pip install -e "python[dev]"
+python/worker/.venv/bin/python -m pip install -e "python[dev,docs]"
 ```
+
+The `docs` extra installs `pdoc`, which `npm run docs:python` uses through the
+provisioned interpreter; without it the documentation builder degrades to its
+structured specification page instead of the full API reference.
 
 `python/worker/.venv/` is ignored by Git and must never be committed.
 
@@ -372,6 +376,7 @@ Recorded when the P2.0 runner was provisioned (2026-09-20). Re-run
 | pytest | `>=8.0.0` (dev) | 9.1.1 |
 | mypy | `>=1.9.0` (dev) | 2.3.1 |
 | ruff | `>=0.3.0` (dev) | 0.16.8 |
+| pdoc | `>=14.4.0` (docs) | 16.0.0 |
 
 ## Scope boundaries
 
@@ -389,5 +394,8 @@ unsupported units, or incompatible geometry.
 ## Documentation
 
 Python API documentation is generated into `docs/api/python/` by
-`npm run docs:python` (`scripts/build_python_docs.py`). Public modules use
-Google-style docstrings and strict type hints.
+`npm run docs:python` (`scripts/build_python_docs.py`), which runs under the
+provisioned interpreter (`python/worker/.venv/bin/python`) and uses `pdoc` from
+the `docs` extra. Public modules use Google-style docstrings and strict type
+hints. If `pdoc` is unavailable the builder emits a structured specification
+page instead and says so explicitly — that fallback is not pdoc output.

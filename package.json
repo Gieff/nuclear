@@ -16,7 +16,7 @@
     "typecheck:python": "python/worker/.venv/bin/python -m mypy --config-file python/pyproject.toml python/dicom python/worker python/tests",
     "build": "tsc -b",
     "docs:ts": "typedoc",
-    "docs:python": "python3 scripts/build_python_docs.py",
+    "docs:python": "python/worker/.venv/bin/python scripts/build_python_docs.py",
     "docs": "npm run docs:ts && npm run docs:python"
   },
   "devDependencies": {
