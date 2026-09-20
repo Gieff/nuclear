@@ -24,6 +24,10 @@
 - **P2.4.2 — COMPLETE** (2026-09-20). DT offset-range enforcement (DICOM
   PS3.5 §6.2), `Number.isFinite` PET numeric guards, and `isImagingAsset`
   PET-metadata validation.
+- **REPOSITORY TOOLING — COMPLETE** (2026-09-20). OpenCodeRAG integration and
+  `npm run bump` version-synchronization script added.
+- **RELEASE v0.1.1 — COMPLETE** (2026-09-20). Monorepo synchronized to 0.1.1
+  with CHANGELOG promotion and annotated tag.
 - **P2.5–P2.6 — NOT STARTED.** No TypeScript `ScientificWorkerBridge` code
   exists.
 - This file is append-only per slice. Each future slice appends its own
@@ -1240,3 +1244,147 @@ Not modified: the PET contract (`packages/shared-types/src/asset.ts`), the
   file lengths within limits, DT boundaries and TS guards independently
   reproduced, all expected fixtures unchanged. AgentLog was pending at QA time
   and is satisfied by this report.
+
+---
+
+# Handover Report — Repository Tooling: OpenCodeRAG & Version Bump Script
+
+## 1. What Was Implemented
+
+- **OpenCodeRAG integration** for NuClear: workspace config
+  (`opencode-rag.json`), OpenCode plugin wrappers
+  (`.opencode/plugins/rag-plugin.js`, `.opencode/plugins/rag-tui.js`), TUI
+  plugin registration (`.opencode/tui.json`), the `opencode-rag` skill
+  (`.opencode/skills/opencode-rag/SKILL.md`), the always-active
+  "Code Navigation" block in `AGENTS.md`, and workspace-state ignores.
+- **Monorepo version synchronization script** `scripts/bump-version.mjs`
+  exposed as `npm run bump <version> [--dry-run]`. It updates the root and all
+  workspace `package.json` files, synchronizes internal `@nuclear/*`
+  dependency ranges, updates `python/pyproject.toml`,
+  `python/dicom/__init__.py`, `python/worker/__init__.py`, the ratified
+  `tests/fixtures/protocol/response.handshake.json` workerVersion, and the
+  provisioned Python venv dist-info when present.
+
+## 2. Files Changed / Created
+
+Created:
+- `scripts/bump-version.mjs`
+- `opencode-rag.json`
+- `.opencode/opencode.json`, `.opencode/tui.json`,
+  `.opencode/plugins/rag-plugin.js`, `.opencode/plugins/rag-tui.js`,
+  `.opencode/skills/opencode-rag/SKILL.md`
+
+Modified:
+- `package.json` (adds the `bump` script)
+- `.gitignore` (OpenCode workspace-state ignores)
+- `AGENTS.md` (appended Code Navigation block)
+- `docs/agentlog/phase-2.md` (this handover)
+
+## 3. Architectural Assumptions Made
+
+- OpenCodeRAG is local developer tooling, not a product dependency: it uses a
+  local Ollama endpoint (`127.0.0.1:11434`), its vector store lives in the
+  ignored `.opencode/rag_db/`, and it never enters the runtime dependency graph
+  of the NuClear workstation.
+- The bump script is the single supported path for version changes (Rule 03),
+  keeping the Python worker version and the ratified handshake fixture in lock
+  step with the npm workspaces.
+
+## 4. Verification Executed
+
+- `node scripts/bump-version.mjs 0.1.1 --dry-run` reported the full file set
+  before any write.
+- Secret scan over the new config/plugin/skill files: no credentials or tokens
+  (only local loopback endpoints).
+- The real bump was subsequently exercised by the v0.1.1 release (see next
+  handover): `dist`/`dicom`/`worker` metadata all reported 0.1.1.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- `AGENTS.md` documents the Code Navigation workflow; `.opencode/skills/`
+  carries the on-demand skill body.
+- No ADR was required: this is developer tooling, not clinical or architectural
+  behaviour.
+
+## 6. Project Model Impact
+
+- None. No contract, fixture semantics or `.ncp` schema changed.
+
+## 7. Known Limitations & Technical Debt
+
+- **RAG plugin provisioning gap**: `.opencode/plugins/*` import
+  `opencode-rag-plugin` from the gitignored `.opencode/node_modules`, but
+  `.opencode/package.json` (also gitignored) declares only
+  `@opencode-ai/plugin`. A fresh clone would need the plugin installed
+  manually; declaring it and committing the `.opencode` manifest/lockfile is
+  the recommended follow-up.
+- The root `.gitignore` additions duplicate `.opencode/.gitignore` (harmless).
+- `bump-version.mjs` does not update the root `package-lock.json` (synced
+  manually for v0.1.1) nor the version literals used as synthetic fixture data
+  in `tests/fixtures/*.ts` (cosmetic, not asserted).
+
+## 8. Exact Next Recommended Task
+
+- Extend `bump-version.mjs` to rewrite the root `package-lock.json` (or shell
+  out to `npm install --package-lock-only`) so the release flow is one command.
+
+---
+
+# Handover Report — Release: Monorepo v0.1.1
+
+## 1. What Was Implemented
+
+- Ran the governed release flow: `npm run bump 0.1.1` synchronized every
+  workspace `package.json`, internal `@nuclear/*` ranges, Python package
+  versions, and the ratified handshake fixture; the root `package-lock.json`
+  was reconciled with `npm install --package-lock-only`.
+- Promoted `CHANGELOG.md` from the agentlog via the changelog writer, recording
+  the v0.1.0 milestone and the v0.1.1 release window (P2.1–P2.4.2 and the
+  repository tooling).
+- Created the annotated tag `v0.1.1` after the changelog and agentlog were in
+  place.
+
+## 2. Files Changed / Created
+
+- `package.json`, `package-lock.json`, `packages/*/package.json`
+- `python/pyproject.toml`, `python/dicom/__init__.py`,
+  `python/worker/__init__.py`
+- `tests/fixtures/protocol/response.handshake.json`
+- `CHANGELOG.md`, `docs/agentlog/phase-2.md`
+
+## 3. Architectural Assumptions Made
+
+- A release tag is only valid once the agentlog and changelog reflect the
+  release window; the tag is created after those artifacts, not before.
+- The version is the single monorepo SemVer; the Python worker versions track
+  it so worker provenance and the handshake fixture stay consistent.
+
+## 4. Tests Added & Executed
+
+- After the bump: `npm run test:python` -> **166 passed**; strict mypy clean
+  (43 files); ruff clean; `npm run typecheck` clean; `npm test` -> **35
+  passed**; `npm run build` clean.
+- Version consistency verified: `importlib.metadata.version('nuclear-scientific')`,
+  `dicom.__version__` and `worker.__version__` all report `0.1.1`.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- `CHANGELOG.md` promoted (see the promotion commit); `docs/agentlog/phase-2.md`
+  extended with the tooling and release handovers.
+- No ADR required.
+
+## 6. Project Model Impact
+
+- None. Only version metadata changed; no contract or schema change.
+
+## 7. Known Limitations & Technical Debt
+
+- The `v0.1.0` changelog section was backfilled from the previously
+  `[Unreleased]` Phase 1 content because the earlier milestone was tagged
+  without a promotion; future releases must run the promotion first.
+
+## 8. Exact Next Recommended Task
+
+- Resume **P2.5**: the TypeScript `ScientificWorkerBridge` in
+  `@nuclear/medical-engine` (correlation, timeout, restart, typed mapping of
+  the five operations, provenance preservation, no duplicated formula).
