@@ -1,0 +1,23 @@
+{
+  "method": "suv-bw",
+  "status": "invalid",
+  "seriesInstanceUID": "1.2.826.0.1.3680043.10.4006.2",
+  "studyInstanceUID": "1.2.826.0.1.3680043.10.4006.1",
+  "petAcquisition": {
+    "units": "BQML",
+    "decayCorrection": "START",
+    "acquisitionDateTime": "20260920100000",
+    "patientWeightKg": 70.0
+  },
+  "elapsedSeconds": null,
+  "decayedDoseBq": null,
+  "diagnostic": "Series has more than one RadiopharmaceuticalInformationSequence item.",
+  "diagnostics": [
+    {
+      "code": "dicom.quantitation.ambiguous-radiopharmaceutical-information",
+      "severity": "error",
+      "message": "Series has more than one RadiopharmaceuticalInformationSequence item.",
+      "file": "pet-ambiguous-1.dcm"
+    }
+  ]
+}

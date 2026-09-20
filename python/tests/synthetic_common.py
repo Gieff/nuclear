@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
-from pydicom.dataset import FileDataset, FileMetaDataset
+from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
 from pydicom.uid import UID, ExplicitVRLittleEndian
 
 
@@ -39,6 +40,10 @@ def write_metadata_dataset(
     radiopharmaceutical_start_time: str | None = None,
     series_time: str | None = None,
     patient_weight: float | None = None,
+    acquisition_datetime: str | None = None,
+    acquisition_date: str | None = None,
+    acquisition_time: str | None = None,
+    radiopharmaceutical_information: Sequence[Sequence[tuple[str, Any]]] | None = None,
 ) -> Path:
     """Write one minimal metadata-only DICOM instance and return its path."""
     meta = FileMetaDataset()
@@ -85,5 +90,19 @@ def write_metadata_dataset(
         dataset.SeriesTime = series_time
     if patient_weight is not None:
         dataset.PatientWeight = float(patient_weight)
+    if acquisition_datetime is not None:
+        dataset.AcquisitionDateTime = acquisition_datetime
+    if acquisition_date is not None:
+        dataset.AcquisitionDate = acquisition_date
+    if acquisition_time is not None:
+        dataset.AcquisitionTime = acquisition_time
+    if radiopharmaceutical_information is not None:
+        items: list[Dataset] = []
+        for item_tags in radiopharmaceutical_information:
+            item = Dataset()
+            for keyword, item_value in item_tags:
+                setattr(item, keyword, item_value)
+            items.append(item)
+        dataset.RadiopharmaceuticalInformationSequence = items
     dataset.save_as(str(path), enforce_file_format=True)
     return path

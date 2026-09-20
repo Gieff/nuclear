@@ -168,13 +168,15 @@ export function isPetAcquisitionMetadata(value: unknown): value is PetAcquisitio
   if (!isObject(value)) return false;
   return (
     typeof value['units'] === 'string' &&
-    (value['decayCorrection'] === 'START' || value['decayCorrection'] === 'ADMIN') &&
+    (value['decayCorrection'] === 'START' || value['decayCorrection'] === 'ADMIN' || value['decayCorrection'] === 'NONE') &&
     typeof value['radionuclideHalfLifeSeconds'] === 'number' &&
     value['radionuclideHalfLifeSeconds'] > 0 &&
     typeof value['radionuclideTotalDoseBq'] === 'number' &&
     value['radionuclideTotalDoseBq'] > 0 &&
-    typeof value['radiopharmaceuticalStartTime'] === 'string' &&
-    typeof value['seriesTime'] === 'string'
+    typeof value['radiopharmaceuticalStartDateTime'] === 'string' &&
+    typeof value['acquisitionDateTime'] === 'string' &&
+    typeof value['patientWeightKg'] === 'number' &&
+    value['patientWeightKg'] > 0
   );
 }
 

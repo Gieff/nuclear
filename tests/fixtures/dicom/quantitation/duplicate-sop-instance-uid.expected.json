@@ -1,11 +1,11 @@
 {
   "method": "suv-bw",
   "status": "invalid",
-  "seriesInstanceUID": "1.2.826.0.1.3680043.10.4004.2",
-  "studyInstanceUID": "1.2.826.0.1.3680043.10.4004.1",
+  "seriesInstanceUID": "1.2.826.0.1.3680043.10.4012.2",
+  "studyInstanceUID": "1.2.826.0.1.3680043.10.4012.1",
   "petAcquisition": {
     "units": "BQML",
-    "decayCorrection": "NONE",
+    "decayCorrection": "START",
     "radionuclideHalfLifeSeconds": 6586.2,
     "radionuclideTotalDoseBq": 370000000.0,
     "radiopharmaceuticalStartDateTime": "20260920090000",
@@ -14,13 +14,13 @@
   },
   "elapsedSeconds": null,
   "decayedDoseBq": null,
-  "diagnostic": "DecayCorrection 'NONE' is not START.",
+  "diagnostic": "SOPInstanceUID must be unique within a series.",
   "diagnostics": [
     {
-      "code": "dicom.quantitation.invalid-decay-correction",
+      "code": "dicom.quantitation.duplicate-sop-instance-uid",
       "severity": "error",
-      "message": "DecayCorrection 'NONE' is not START.",
-      "file": "pet-invalid-decay-1.dcm"
+      "message": "SOPInstanceUID must be unique within a series.",
+      "file": "pet-sop-1.dcm"
     }
   ]
 }

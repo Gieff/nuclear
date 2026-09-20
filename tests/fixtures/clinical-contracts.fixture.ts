@@ -173,8 +173,9 @@ export const mockPetAsset: ImagingAsset = {
       decayCorrection: 'START',
       radionuclideHalfLifeSeconds: 6586.2,
       radionuclideTotalDoseBq: 370000000,
-      radiopharmaceuticalStartTime: '090000',
-      seriesTime: '100000',
+      radiopharmaceuticalStartDateTime: '20260920090000.000000',
+      acquisitionDateTime: '20260920100000.000000',
+      patientWeightKg: 70,
     },
     petQuantitation: {
       method: 'suv-bw',

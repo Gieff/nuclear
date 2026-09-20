@@ -14,8 +14,13 @@
 - **P2.3.1 — COMPLETE** (2026-09-20). Fail-closed hardening: non-finite and
   non-positive geometry rejection, intra-series identity invariants, strict
   JSON boundary, and derived-finiteness guards.
-- **P2.4 — COMPLETE** (2026-09-20). PET raw metadata extraction and
-  `PetQuantitationResult` SUVbw factor production implemented and ratified.
+- **P2.4 — COMPLETE, CORRECTED BY P2.4.1** (2026-09-20). PET raw metadata
+  extraction and `PetQuantitationResult` SUVbw factor production implemented
+  and ratified.
+- **P2.4.1 — COMPLETE** (2026-09-20). DICOM extraction/interpretation
+  conformance: `RadiopharmaceuticalInformationSequence`, START-only decay
+  correction, date-aware acquisition timestamps, and intra-series identity
+  invariants.
 - **P2.5–P2.6 — NOT STARTED.** No TypeScript `ScientificWorkerBridge` code
   exists.
 - This file is append-only per slice. Each future slice appends its own
@@ -962,3 +967,165 @@ expected fixtures (6 classification + 13 geometry) are byte-identical.
   1e-12), missing-metadata, unsupported-units, invalid-decay, underflow,
   mixed-modality and series-not-found cases. AgentLog was pending at QA time
   and is satisfied by this report.
+
+---
+
+# Handover Report — P2.4.1: PET DICOM Extraction/Interpretation Conformance
+
+## 1. What Was Implemented
+
+A DICOM-conformance review rejected the committed P2.4 extraction: the numeric
+and fail-closed work was sound, but dose/half-life/administration time were read
+from the dataset root instead of `RadiopharmaceuticalInformationSequence`
+(0054,0016); `ADMIN` used the same formula as `START`; `SeriesTime` was treated
+as acquisition start; and intra-series Study/SOP invariants were missing. The
+synthetic fixtures encoded the wrong structure, so green tests certified the
+wrong path. P2.4.1 corrects extraction and interpretation; the arithmetic in
+`quantitation_math.py` is unchanged.
+
+- **Sequence-located extraction** (DICOM PS3.3 C.8.9.2): `RadionuclideTotalDose`
+  (0018,1074), `RadionuclideHalfLife` (0018,1075) and
+  `RadiopharmaceuticalStartDateTime` (0018,1078) are read only from a single
+  item of `RadiopharmaceuticalInformationSequence` (0054,0016). Root-level
+  placement does not satisfy the requirement; absent/empty sequence ->
+  `unavailable`/`missing-required-tag:RadiopharmaceuticalInformationSequence`;
+  more than one item -> `invalid`/`ambiguous-radiopharmaceutical-information`
+  (no silent selection).
+- **START-only decay correction** (C.8.9.1.1.5): `START` decays to the
+  acquisition start time; `ADMIN` decays to administration time and is a
+  different reference event, so v1 rejects it explicitly with
+  `unsupported-decay-correction`. `NONE`/other -> `invalid-decay-correction`.
+- **Date-aware acquisition timestamp**: `AcquisitionDateTime` (0008,002A), else
+  `AcquisitionDate` (0008,0022) + `AcquisitionTime` (0008,0032). `Series
+  Date/Time` are never used as acquisition start (C.8.9.1.1.2: implementation
+  dependent). Administration uses `RadiopharmaceuticalStartDateTime`; the
+  deprecated time-only `RadiopharmaceuticalStartTime` is not used.
+  `elapsedSeconds = acquisitionStart - administration`.
+- **Time-base fail-closed**: a mix of offset-aware and offset-less DT values is
+  ambiguous and rejected as `invalid`/`ambiguous-time-base`, closing a fail-open
+  path that otherwise produced a wrong computed factor.
+- **Intra-series invariants**: consistent `StudyInstanceUID`
+  (`inconsistent-study-uid`), missing `StudyInstanceUID`
+  (`missing-required-tag:StudyInstanceUID`, `studyInstanceUID: null`), unique
+  `SOPInstanceUID` (`duplicate-sop-instance-uid`), plus the existing
+  modality/units/decay/timing/numeric consistency.
+- **Contract correction**: `PetAcquisitionMetadata` now declares
+  `radiopharmaceuticalStartDateTime`, `acquisitionDateTime` and
+  `patientWeightKg` (the exact SUVbw input), removing the incorrect
+  `radiopharmaceuticalStartTime`/`seriesTime` fields; the authoritative
+  `nuclear-dicom` runbook §C was corrected to match.
+- **Conformant fixtures**: the synthetic PET writers build a one-item
+  `RadiopharmaceuticalInformationSequence`; 13 committed quantitation expected
+  outputs (4 regenerated + 9 new negatives/fallback).
+
+## 2. Files Changed / Created
+
+Created:
+- `python/tests/test_dicom_quantitation_conformance.py`,
+  `python/tests/test_dicom_quantitation_negatives.py`
+- `tests/fixtures/dicom/quantitation/{missing-sequence,
+  ambiguous-radiopharmaceutical-information, missing-dose, missing-half-life,
+  missing-start-datetime, unsupported-decay-correction, inconsistent-study-uid,
+  duplicate-sop-instance-uid, suvbw-datetime-fallback}.expected.json`
+
+Modified:
+- `python/dicom/{pet_metadata,quantitation_math,quantitation_validation,
+  quantitation}.py`; `python/tests/{synthetic_common,synthetic_pet,
+  test_dicom_quantitation}.py`
+- `python/README.md`; `tests/fixtures/manifest.json`;
+  four regenerated `tests/fixtures/dicom/quantitation/*.expected.json`
+- `packages/shared-types/src/asset.ts`; `tests/contracts/validators.ts`;
+  `tests/fixtures/clinical-contracts.fixture.ts`
+- `.agents/skills/nuclear-dicom/SKILL.md` §C
+- `docs/agentlog/phase-2.md` (this handover)
+
+Not modified: `apps/**`, any rendering code; the 19 classification/geometry
+expected fixtures are byte-identical.
+
+## 3. Architectural Assumptions Made
+
+- DICOM PS3.3 C.8.9 is the interpretation authority; where the previous runbook
+  contradicted it, the runbook was corrected rather than preserving the defect.
+- v1 supports exactly one radiopharmaceutical information item and only
+  `START`; alternatives fail closed with named dispositions, not silent
+  selection or a reused formula.
+- `Series Date/Time` are not a real-world event and are never used for
+  acquisition timing.
+- Weight is recorded in `PetAcquisitionMetadata` as the exact factor input, in
+  addition to `PatientReference.patientWeightKg`, for reproducibility.
+- `PatientWeight` remains the only accepted body-weight basis in v1 (SUVbw).
+
+## 4. Tests Added & Executed
+
+- `npm run test:python` -> **164 passed** (0 failed, 0 skipped), from 133 at
+  P2.4. Adds: conformant-positive field/unit checks, root-only regression,
+  ambiguous sequence, missing dose/half-life/StartDateTime, SeriesTime-only
+  exclusion, deprecated time-only exclusion, legacy root tags ignored,
+  `ADMIN` rejection, DA+TM fallback, mixed timezone rejection, offset-aware
+  computing, missing StudyInstanceUID, mixed Study UID, duplicate SOP UID,
+  DT fractional/offset parsing, and decay identities at Δt=0 and Δt=T½ using
+  acquisition − administration.
+- `npm run typecheck:python` -> strict mypy clean over 43 source files.
+- Ruff clean; `npm run typecheck`, `npm test` (33/33), `npm run build` green.
+- File-length gate: every source file <=250 lines.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- `python/README.md` documents sequence location, the exact-one-item rule, the
+  START-only policy and ADMIN deferral, timestamp sources, the same-time-base
+  rule, the new reasons and the result field names.
+- `.agents/skills/nuclear-dicom/SKILL.md` §C now matches DICOM PS3.3 and the
+  implementation, so future agents cannot re-import the corrected behaviour.
+- `PetAcquisitionMetadata` was corrected; no `.ncp` schema version exists yet
+  and no persisted projects exist, so no migration is required. Recorded here
+  as a pre-release contract correction.
+
+## 6. Project Model Impact
+
+- The Python `petAcquisition` evidence key set now exactly equals the
+  TypeScript `PetAcquisitionMetadata` key set (7 keys), so the P2.5 bridge can
+  map it without silent drops. No `.ncp` schema file changed.
+
+## 7. Known Limitations & Technical Debt
+
+- The deprecated time-only `RadiopharmaceuticalStartTime` reconstruction is
+  deferred; such datasets return `unavailable`.
+- `ADMIN` decay correction is explicitly unsupported in v1.
+- Negative elapsed time (cross-midnight in the negative direction) remains
+  deferred and fails closed; date-aware DT parsing handles positive
+  cross-midnight spans.
+- `python/tests/test_worker_envelope.py` remains at 249 lines; further growth
+  requires decomposition.
+- `emit_diagnostics` remains duplicated between `pet_metadata.py` and
+  `geometry_metadata.py` (pre-existing); a shared helper is future cleanup.
+
+## 8. Exact Next Recommended Task
+
+- **P2.5** (owner: `nuclear-engine-engineer` per the runbook, after P2.1–P2.4.1
+  protocol responses are accepted): implement the TypeScript
+  `ScientificWorkerBridge` facade in `@nuclear/medical-engine` — correlation,
+  timeout, restart, typed mapping of the five operations to NuClear contracts,
+  provenance preservation, and a test proving no formula is duplicated in
+  TypeScript. Do not start P2.6 until P2.5 review and QA evidence is recorded
+  here.
+
+---
+
+## Gate Review & QA Evidence (P2.4.1)
+
+- `nuclear-reviewer` first pass: **CONCERNS** — (1) MEDIUM fail-open mixed
+  timezone conventions produced a wrong computed factor; (2) MEDIUM the
+  authoritative runbook still contradicted the code; low findings on confounded
+  exclusion tests, untested DA+TM fallback / dead helpers, missing
+  `StudyInstanceUID` handling, and stale wording/asserts. All corrected.
+- `nuclear-reviewer` final pass: **PASS** — every finding resolved and the
+  full pipeline re-verified; contract parity exact.
+- `nuclear-qa` first pass: **7/8 PASS**, AgentLog pending, with the
+  `patientWeightKg` contract-parity finding.
+- `nuclear-qa` final pass: **all gates PASS** — 164/164 Python tests,
+  config-aware strict mypy over 43 files, ruff clean, 33/33 TS tests, build
+  clean, file lengths <=250, 13 quantitation fixtures established, the 19
+  classification/geometry fixtures byte-identical, no planned fixtures, and a
+  live dispatcher reproduction of all ten conformant/negative scenarios with
+  the independent formula match within 1e-12. The AgentLog gate was pending at
+  QA time and is satisfied by this report.

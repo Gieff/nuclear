@@ -20,25 +20,59 @@ import type { SourceFingerprint, SourceLocator } from './source.js';
 /**
  * Raw quantitative radiopharmaceutical and decay calibration parameters read
  * from DICOM. This contract deliberately contains no computed SUV value.
+ *
+ * DICOM DecayCorrection (0054,1102) distinguishes two different reference
+ * events: `START` decays the activity to the acquisition start time
+ * (`acquisitionDateTime`), while `ADMIN` decays it to the radiopharmaceutical
+ * administration time (`radiopharmaceuticalStartDateTime`). The two are not
+ * interchangeable. NuClear v1 quantitation supports `START` only.
  */
 export interface PetAcquisitionMetadata {
   /** DICOM Units (0054,1001), typically 'BQML', 'CNTS', or 'GML' */
   readonly units: 'BQML' | 'CNTS' | 'GML' | string;
 
-  /** DICOM DecayCorrection (0054,1102), must be 'START' or 'ADMIN' for valid SUV */
+  /**
+   * DICOM DecayCorrection (0054,1102) defined terms: 'NONE', 'START', 'ADMIN'.
+   * `START` = decay corrected to acquisition start (`acquisitionDateTime`);
+   * `ADMIN` = decay corrected to radiopharmaceutical administration time
+   * (`radiopharmaceuticalStartDateTime`). NuClear v1 quantitation supports
+   * `START` only.
+   */
   readonly decayCorrection: 'START' | 'ADMIN' | 'NONE' | string;
 
   /** Radionuclide half-life T_1/2 in seconds (0018,1075), e.g. 6586.2 s for 18F */
   readonly radionuclideHalfLifeSeconds: number;
 
-  /** Total injected dose in Becquerels (0018,1074) */
+  /**
+   * Total radiopharmaceutical dose in Becquerels (0018,1074). The value is
+   * defined at the radiopharmaceutical start date/time
+   * (`radiopharmaceuticalStartDateTime`).
+   */
   readonly radionuclideTotalDoseBq: number;
 
-  /** Time of radiopharmaceutical administration HHMMSS (0018,1072) */
-  readonly radiopharmaceuticalStartTime: string;
+  /**
+   * Radiopharmaceutical administration start date/time as a DICOM DT string
+   * (0018,1078 `RadiopharmaceuticalStartDateTime`, preferred; the deprecated
+   * 0018,1072 `RadiopharmaceuticalStartTime` is HHMMSS only). This is the
+   * reference event for DecayCorrection `ADMIN`.
+   */
+  readonly radiopharmaceuticalStartDateTime: string;
 
-  /** Series acquisition start time HHMMSS (0008,0031) */
-  readonly seriesTime: string;
+  /**
+   * Acquisition start date/time as a DICOM DT string, from `AcquisitionDateTime`
+   * (0008,002A) or `AcquisitionDate` (0008,0022) + `AcquisitionTime` (0008,0032).
+   * This is the reference event for DecayCorrection `START`.
+   */
+  readonly acquisitionDateTime: string;
+
+  /**
+   * PatientWeight (0010,1030) in kilograms. This is the exact body weight used
+   * by the scientific worker to compute the body-weight SUV factor, recorded
+   * here as that factor's reproducibility input. It mirrors
+   * `PatientReference.patientWeightKg` but is duplicated deliberately so the
+   * worker result carries every input required to reproduce the factor.
+   */
+  readonly patientWeightKg: number;
 
 }
 

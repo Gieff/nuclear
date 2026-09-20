@@ -338,6 +338,96 @@
       "generator": "python/tests/synthetic_pet.py::write_pet_invalid_decay",
       "expectedPath": "tests/fixtures/dicom/quantitation/invalid-decay-correction.expected.json",
       "description": "Unsupported DecayCorrection value failing closed."
+    },
+    {
+      "id": "quantitation.missing-sequence",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.4",
+      "generator": "python/tests/synthetic_pet.py::write_pet_missing_sequence",
+      "expectedPath": "tests/fixtures/dicom/quantitation/missing-sequence.expected.json",
+      "description": "Root-only dose/half-life without RadiopharmaceuticalInformationSequence is unavailable."
+    },
+    {
+      "id": "quantitation.ambiguous-radiopharmaceutical-information",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.4",
+      "generator": "python/tests/synthetic_pet.py::write_pet_multiple_sequence_items",
+      "expectedPath": "tests/fixtures/dicom/quantitation/ambiguous-radiopharmaceutical-information.expected.json",
+      "description": "More than one RadiopharmaceuticalInformationSequence item is rejected, not silently picked."
+    },
+    {
+      "id": "quantitation.missing-dose",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.4",
+      "generator": "python/tests/synthetic_pet.py::write_pet_missing_dose",
+      "expectedPath": "tests/fixtures/dicom/quantitation/missing-dose.expected.json",
+      "description": "Sequence item missing RadionuclideTotalDose is unavailable."
+    },
+    {
+      "id": "quantitation.missing-half-life",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.4",
+      "generator": "python/tests/synthetic_pet.py::write_pet_missing_half_life",
+      "expectedPath": "tests/fixtures/dicom/quantitation/missing-half-life.expected.json",
+      "description": "Sequence item missing RadionuclideHalfLife is unavailable."
+    },
+    {
+      "id": "quantitation.missing-start-datetime",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.4",
+      "generator": "python/tests/synthetic_pet.py::write_pet_missing_start_datetime",
+      "expectedPath": "tests/fixtures/dicom/quantitation/missing-start-datetime.expected.json",
+      "description": "Sequence item missing RadiopharmaceuticalStartDateTime is unavailable."
+    },
+    {
+      "id": "quantitation.unsupported-decay-correction",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.4",
+      "generator": "python/tests/synthetic_pet.py::write_pet_admin_decay",
+      "expectedPath": "tests/fixtures/dicom/quantitation/unsupported-decay-correction.expected.json",
+      "description": "DecayCorrection ADMIN references a different event and is deferred in v1."
+    },
+    {
+      "id": "quantitation.inconsistent-study-uid",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.4",
+      "generator": "python/tests/synthetic_pet.py::write_pet_inconsistent_study",
+      "expectedPath": "tests/fixtures/dicom/quantitation/inconsistent-study-uid.expected.json",
+      "description": "Instances of one series disagreeing on StudyInstanceUID are rejected."
+    },
+    {
+      "id": "quantitation.duplicate-sop-instance-uid",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.4",
+      "generator": "python/tests/synthetic_pet.py::write_pet_duplicate_sop",
+      "expectedPath": "tests/fixtures/dicom/quantitation/duplicate-sop-instance-uid.expected.json",
+      "description": "Duplicate SOPInstanceUID within one series is rejected."
+    },
+    {
+      "id": "quantitation.suvbw-datetime-fallback",
+      "kind": "synthetic-dicom",
+      "role": "positive",
+      "status": "established",
+      "ownerSlice": "P2.4",
+      "generator": "python/tests/synthetic_pet.py::write_pet_acquisition_date_time",
+      "expectedPath": "tests/fixtures/dicom/quantitation/suvbw-datetime-fallback.expected.json",
+      "description": "Acquisition start resolved from AcquisitionDate + AcquisitionTime when AcquisitionDateTime is absent."
     }
   ]
 }

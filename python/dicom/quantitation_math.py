@@ -1,12 +1,16 @@
-"""Authoritative SUVbw formula, DICOM TM parsing and named FP tolerances.
+"""Authoritative SUVbw formula, DICOM DT parsing and named FP tolerances.
 
-Formula (nuclear-dicom runbook §C, implemented verbatim)::
+Formula (nuclear-dicom runbook §C; DICOM PS3.3 C.8.9.1.1.5)::
 
-    elapsedSeconds = SeriesTime - RadiopharmaceuticalStartTime   # same day
+    elapsedSeconds = acquisitionStart - radiopharmaceuticalAdministration
     decayedDoseBq  = radionuclideTotalDoseBq
                      * exp(-ln(2) * elapsedSeconds / radionuclideHalfLifeSeconds)
     suvFactor      = patientWeightKg * 1000 / decayedDoseBq     # g/Bq
 
+``START`` decays to the acquisition start instant; ``ADMIN`` would reference the
+administration instant instead and is deferred in v1 (see ``quantitation.py``).
+Both timestamps of one computation must use the same timezone convention: an
+offset-aware and an offset-less DT are an ambiguous time base and fail closed.
 No SUV value and no pixel data are produced here.
 
 The named tolerances are floating-point comparison tolerances for deterministic
@@ -17,52 +21,92 @@ tolerance policy is explicitly deferred.
 from __future__ import annotations
 
 import math
+import re
+from datetime import datetime, timedelta, timezone
 
 SUV_FACTOR_RELATIVE_TOLERANCE = 1e-9  # relative FP comparison for suvFactor
-ELAPSED_SECONDS_EPSILON = 1e-6  # seconds; TM parsing / decay comparison
+ELAPSED_SECONDS_EPSILON = 1e-6  # seconds; DT parsing / decay comparison
 PET_METADATA_RELATIVE_TOLERANCE = 1e-9  # numeric PET tag consistency
 LN2 = math.log(2.0)
 
+_DT_PATTERN = re.compile(
+    r"^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\.(\d{1,6}))?(?:([+-])(\d{2})(\d{2}))?$"
+)
 
-def parse_dicom_time(value: str) -> float | None:
-    """Parse a DICOM TM value into seconds since midnight.
 
-    Accepts ``HH``, ``HHMM``, ``HHMMSS`` with optional ``.FFFFFF`` fractional
-    seconds.
+def parse_dicom_datetime_parts(value: str) -> tuple[float, bool] | None:
+    """Parse a DICOM DT value into ``(epoch_seconds, has_explicit_offset)``.
+
+    Accepts ``YYYYMMDDHHMMSS`` with optional ``.FFFFFF`` fractional seconds and
+    an optional ``+HHMM``/``-HHMM`` offset. An offset-less value is treated as
+    UTC so that two offset-less instants compare deterministically.
 
     Args:
-        value: Raw DICOM TM string.
+        value: Raw DICOM DT string.
 
     Returns:
-        Seconds since midnight, or ``None`` when the value is not a valid TM.
+        The epoch seconds and whether an explicit offset was present, or
+        ``None`` when the value is not a valid DT.
     """
-    text = value.strip()
-    if not text:
+    match = _DT_PATTERN.match(value.strip())
+    if match is None:
         return None
-    main, _, fraction = text.partition(".")
-    if not main.isdigit() or (fraction and not fraction.isdigit()):
+    year, month, day, hour, minute, second = (int(match.group(index)) for index in range(1, 7))
+    fraction = match.group(7) or ""
+    microsecond = int(fraction.ljust(6, "0")) if fraction else 0
+    tzinfo = timezone.utc
+    sign = match.group(8)
+    if sign is not None:
+        offset_hours, offset_minutes = int(match.group(9)), int(match.group(10))
+        if offset_hours > 23 or offset_minutes > 59:
+            return None
+        offset = timedelta(hours=offset_hours, minutes=offset_minutes)
+        tzinfo = timezone(-offset if sign == "-" else offset)
+    try:
+        moment = datetime(year, month, day, hour, minute, second, microsecond, tzinfo=tzinfo)
+    except ValueError:
         return None
-    if len(main) == 2:
-        hours, minutes, seconds = int(main), 0, 0
-    elif len(main) == 4:
-        hours, minutes, seconds = int(main[:2]), int(main[2:4]), 0
-    elif len(main) == 6:
-        hours, minutes, seconds = int(main[:2]), int(main[2:4]), int(main[4:6])
-    else:
-        return None
-    if hours > 23 or minutes > 59 or seconds > 60:
-        return None
-    fractional = float(f"0.{fraction}") if fraction else 0.0
-    return hours * 3600 + minutes * 60 + seconds + fractional
+    return moment.timestamp(), sign is not None
 
 
-def elapsed_seconds(series_time: str, start_time: str) -> float | None:
-    """Return ``SeriesTime - RadiopharmaceuticalStartTime`` in seconds (same day)."""
-    series = parse_dicom_time(series_time)
-    start = parse_dicom_time(start_time)
-    if series is None or start is None:
+def parse_dicom_datetime(value: str) -> float | None:
+    """Parse a DICOM DT value into epoch seconds, or ``None`` when invalid."""
+    parts = parse_dicom_datetime_parts(value)
+    return None if parts is None else parts[0]
+
+
+def time_base_ambiguous(acquisition_datetime: str, administration_datetime: str) -> bool:
+    """Return whether two DTs disagree on offset presence (mixed time base).
+
+    Args:
+        acquisition_datetime: DICOM DT of the acquisition start instant.
+        administration_datetime: DICOM DT of radiopharmaceutical administration.
+
+    Returns:
+        ``True`` only when both values parse and exactly one declares an offset.
+    """
+    acquisition = parse_dicom_datetime_parts(acquisition_datetime)
+    administration = parse_dicom_datetime_parts(administration_datetime)
+    if acquisition is None or administration is None:
+        return False
+    return acquisition[1] != administration[1]
+
+
+def elapsed_seconds(acquisition_datetime: str, administration_datetime: str) -> float | None:
+    """Return ``acquisitionStart - administration`` in seconds.
+
+    Args:
+        acquisition_datetime: DICOM DT of the acquisition start instant.
+        administration_datetime: DICOM DT of radiopharmaceutical administration.
+
+    Returns:
+        Elapsed seconds, or ``None`` when either DT is unparseable.
+    """
+    acquisition = parse_dicom_datetime(acquisition_datetime)
+    administration = parse_dicom_datetime(administration_datetime)
+    if acquisition is None or administration is None:
         return None
-    return series - start
+    return acquisition - administration
 
 
 def decayed_dose_bq(

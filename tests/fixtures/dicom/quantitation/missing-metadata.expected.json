@@ -8,8 +8,8 @@
     "decayCorrection": "START",
     "radionuclideHalfLifeSeconds": 6586.2,
     "radionuclideTotalDoseBq": 370000000.0,
-    "radiopharmaceuticalStartTime": "090000",
-    "seriesTime": "100000"
+    "radiopharmaceuticalStartDateTime": "20260920090000",
+    "acquisitionDateTime": "20260920100000"
   },
   "elapsedSeconds": null,
   "decayedDoseBq": null,

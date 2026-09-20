@@ -21,9 +21,9 @@ from .quantitation_math import is_close
 def first_non_finite(members: list[PetInstance]) -> tuple[str, PetInstance] | None:
     """Return the first non-finite numeric PET tag and its instance."""
     numeric: tuple[tuple[str, Callable[[PetInstance], float | None]], ...] = (
-        ("PatientWeight", lambda item: item.patient_weight_kg),
-        ("RadionuclideTotalDose", lambda item: item.radionuclide_total_dose_bq),
-        ("RadionuclideHalfLife", lambda item: item.radionuclide_half_life_seconds),
+        ("PatientWeight", lambda entry: entry.patient_weight_kg),
+        ("RadionuclideTotalDose", lambda entry: entry.radionuclide_total_dose_bq),
+        ("RadionuclideHalfLife", lambda entry: entry.radionuclide_half_life_seconds),
     )
     for tag, accessor in numeric:
         for member in members:
@@ -40,8 +40,9 @@ def all_consistent(members: list[PetInstance]) -> bool:
         if (
             member.units != first.units
             or member.decay_correction != first.decay_correction
-            or member.radiopharmaceutical_start_time != first.radiopharmaceutical_start_time
-            or member.series_time != first.series_time
+            or member.radiopharmaceutical_start_datetime
+            != first.radiopharmaceutical_start_datetime
+            or member.acquisition_datetime != first.acquisition_datetime
         ):
             return False
         pairs = (
@@ -72,3 +73,21 @@ def non_positive(member: PetInstance) -> tuple[str, str] | None:
 def inconsistent_modality(members: list[PetInstance]) -> bool:
     """Return whether the series instances disagree on Modality."""
     return len({member.modality for member in members}) > 1
+
+
+def inconsistent_study_uid(members: list[PetInstance]) -> bool:
+    """Return whether the series instances disagree on StudyInstanceUID."""
+    return len({member.study_instance_uid for member in members}) > 1
+
+
+def duplicate_sop_instance_uid(members: list[PetInstance]) -> bool:
+    """Return whether two instances share a non-null SOPInstanceUID."""
+    seen: set[str] = set()
+    for member in members:
+        sop = member.sop_instance_uid
+        if sop is None:
+            continue
+        if sop in seen:
+            return True
+        seen.add(sop)
+    return False

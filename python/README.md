@@ -241,46 +241,76 @@ Produces the `PetQuantitationResult` body-weight scaling factor only; it never
 computes an SUV value and never reads pixels. `RescaleSlope`/`RescaleIntercept`
 are not inputs.
 
-Authoritative formula (nuclear-dicom runbook §C, implemented verbatim):
+Data sources (DICOM PS3.3 C.8.9): the dose, half-life and administration
+instant are read from the single item of `RadiopharmaceuticalInformationSequence`
+(0054,0016), **never** from the dataset root. Exactly one item is required: an
+absent or empty sequence is
+`unavailable`/`missing-required-tag:RadiopharmaceuticalInformationSequence`, and
+more than one item is `invalid`/`ambiguous-radiopharmaceutical-information`
+(never a silent pick). `Units` (0054,1001), `DecayCorrection` (0054,1102) and
+`PatientWeight` (0010,1030) are root-level. The acquisition start instant comes
+from `AcquisitionDateTime` (0008,002A), or `AcquisitionDate` (0008,0022) +
+`AcquisitionTime` (0008,0032); `SeriesTime`/`SeriesDate` are never used.
+
+Authoritative formula (nuclear-dicom runbook §C; PS3.3 C.8.9.1.1.5):
 
 ```text
-elapsedSeconds = SeriesTime - RadiopharmaceuticalStartTime        # same day
+elapsedSeconds = acquisitionStart - radiopharmaceuticalAdministration
 decayedDoseBq  = RadionuclideTotalDose (Bq)
                  * exp(-ln(2) * elapsedSeconds / RadionuclideHalfLife (s))
 suvFactor      = PatientWeightKg * 1000 / decayedDoseBq           # g/Bq
 ```
 
-`petAcquisition` carries only the tags that parsed to present, finite values
-(`units`, `decayCorrection`, `radionuclideHalfLifeSeconds`,
-`radionuclideTotalDoseBq`, `radiopharmaceuticalStartTime`, `seriesTime`,
-`patientWeightKg`). The result is `{"method":"suv-bw","status":...}` with
-`seriesInstanceUID`, `studyInstanceUID`, `petAcquisition`, `elapsedSeconds`
-and `decayedDoseBq`; `suvFactor` (g/Bq) is present **only** when
-`status == "computed"`, and `diagnostic` only when `status != "computed"`. The
-disposition reason is mirrored in `diagnostics[0].code` as
-`dicom.quantitation.<reason>`.
+Only `DecayCorrection == START` computes: it decays to the **acquisition start**
+instant. `ADMIN` corrects to the **administration** instant (a different event)
+and is deferred in v1 as `invalid`/`unsupported-decay-correction`; `NONE`/other
+is `invalid`/`invalid-decay-correction`; missing is `unavailable`. The deprecated
+time-only `RadiopharmaceuticalStartTime` (0018,1072) is not used and the
+time-only reconstruction is explicitly deferred; `RadiopharmaceuticalStartDateTime`
+(0018,1078) is required (missing ->
+`unavailable`/`missing-required-tag:RadiopharmaceuticalStartDateTime`).
+`elapsedSeconds` is `acquisitionStart - administration` (never `SeriesTime`).
+
+`petAcquisition` carries only the tags that parsed to present, finite values:
+`units`, `decayCorrection`, `radionuclideHalfLifeSeconds`,
+`radionuclideTotalDoseBq`, `radiopharmaceuticalStartDateTime`,
+`acquisitionDateTime`, `patientWeightKg`. The result is
+`{"method":"suv-bw","status":...}` with `seriesInstanceUID`,
+`studyInstanceUID`, `petAcquisition`, `elapsedSeconds` and `decayedDoseBq`;
+`suvFactor` (g/Bq) is present **only** when `status == "computed"`, and
+`diagnostic` only when `status != "computed"`. The disposition reason is
+mirrored in `diagnostics[0].code` as `dicom.quantitation.<reason>`.
 
 Statuses and reasons (fail-closed; absent -> `unavailable`, present-but-unusable
 -> `invalid`):
 
+Both instants of one computation must use the same timezone convention (both
+offset-aware or both offset-less); a mixed pair is an ambiguous time base and
+fails closed.
+
 - `unavailable`: `series-not-found` (with `studyInstanceUID: null`);
   `not-a-pet-series` when all matched instances share a non-`PT` modality;
-  `missing-required-tag:<Tag>` for any of `PatientWeight`,
-  `RadionuclideTotalDose`, `RadionuclideHalfLife`,
-  `RadiopharmaceuticalStartTime`, `SeriesTime`, `Units`, `DecayCorrection`.
-  The disposition does not depend on on-disk scan order.
-- `invalid`: `unsupported-units` (`Units != BQML`); `invalid-decay-correction`
-  (`DecayCorrection` not `START`/`ADMIN`); `non-positive-patient-weight`,
-  `non-positive-total-dose`, `non-positive-half-life`; `unparseable-time`;
-  `negative-elapsed-time` (same-day assumption: cross-midnight handling is
-  explicitly deferred); `non-finite-pet-metadata`; `inconsistent-pet-metadata`
-  (including a series whose instances disagree on `Modality`);
-  `non-positive-decayed-dose` (the decayed dose underflows to `<= 0` — checked
-  before division); `non-finite-suv-factor` (defensive: the derived factor is
-  non-finite or non-positive).
+  `missing-required-tag:<Tag>` for `StudyInstanceUID`,
+  `RadiopharmaceuticalInformationSequence`, `PatientWeight`, `Units`,
+  `DecayCorrection`, `RadionuclideTotalDose`, `RadionuclideHalfLife`,
+  `RadiopharmaceuticalStartDateTime`, `AcquisitionDateTime` (an empty study UID
+  is never emitted). The disposition does not depend on on-disk scan order.
+- `invalid`: `unsupported-units` (`Units != BQML`);
+  `unsupported-decay-correction` (`DecayCorrection == ADMIN`, deferred);
+  `invalid-decay-correction` (`NONE`/other);
+  `ambiguous-radiopharmaceutical-information` (more than one sequence item);
+  `non-positive-patient-weight`, `non-positive-total-dose`,
+  `non-positive-half-life`; `unparseable-time`; `ambiguous-time-base` (mixed
+  off/offset-aware timestamps); `negative-elapsed-time` (acquisition before
+  administration; only negative elapsed remains deferred — date-aware DT
+  parsing handles cross-midnight); `non-finite-pet-metadata`;
+  `inconsistent-pet-metadata`; `inconsistent-study-uid`;
+  `duplicate-sop-instance-uid`; `non-positive-decayed-dose` (underflow `<= 0`,
+  checked before division); `non-finite-suv-factor` (defensive: the derived
+  factor is non-finite or non-positive).
 - `computed`: every input present, finite and positive, `Units == BQML`,
-  `DecayCorrection` in `{START, ADMIN}`, tags consistent, `elapsedSeconds >= 0`,
-  and the derived `suvFactor` finite and `> 0`.
+  `DecayCorrection == START`, tags consistent, `elapsedSeconds >= 0`, and the
+  derived `suvFactor` finite and `> 0`.
 
 Named quantitation tolerances are floating-point comparison tolerances for
 deterministic synthetic fixtures, **not clinical acceptance thresholds**:
@@ -288,7 +318,7 @@ deterministic synthetic fixtures, **not clinical acceptance thresholds**:
 | Constant | Value | Role |
 | --- | --- | --- |
 | `SUV_FACTOR_RELATIVE_TOLERANCE` | `1e-9` | relative `suvFactor` / decay identity checks |
-| `ELAPSED_SECONDS_EPSILON` | `1e-6` s | TM parsing / decay comparison |
+| `ELAPSED_SECONDS_EPSILON` | `1e-6` s | DT/TM parsing / decay comparison |
 | `PET_METADATA_RELATIVE_TOLERANCE` | `1e-9` | numeric PET tag consistency |
 
 

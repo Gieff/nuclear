@@ -1,0 +1,25 @@
+{
+  "method": "suv-bw",
+  "status": "unavailable",
+  "seriesInstanceUID": "1.2.826.0.1.3680043.10.4009.2",
+  "studyInstanceUID": "1.2.826.0.1.3680043.10.4009.1",
+  "petAcquisition": {
+    "units": "BQML",
+    "decayCorrection": "START",
+    "radionuclideHalfLifeSeconds": 6586.2,
+    "radionuclideTotalDoseBq": 370000000.0,
+    "acquisitionDateTime": "20260920100000",
+    "patientWeightKg": 70.0
+  },
+  "elapsedSeconds": null,
+  "decayedDoseBq": null,
+  "diagnostic": "Instance is missing required tag RadiopharmaceuticalStartDateTime.",
+  "diagnostics": [
+    {
+      "code": "dicom.quantitation.missing-required-tag:RadiopharmaceuticalStartDateTime",
+      "severity": "error",
+      "message": "Instance is missing required tag RadiopharmaceuticalStartDateTime.",
+      "file": "pet-missing-start-1.dcm"
+    }
+  ]
+}

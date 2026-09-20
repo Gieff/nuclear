@@ -1,0 +1,23 @@
+{
+  "method": "suv-bw",
+  "status": "unavailable",
+  "seriesInstanceUID": "1.2.826.0.1.3680043.10.4005.2",
+  "studyInstanceUID": "1.2.826.0.1.3680043.10.4005.1",
+  "petAcquisition": {
+    "units": "BQML",
+    "decayCorrection": "START",
+    "acquisitionDateTime": "20260920100000",
+    "patientWeightKg": 70.0
+  },
+  "elapsedSeconds": null,
+  "decayedDoseBq": null,
+  "diagnostic": "Instance is missing required tag RadiopharmaceuticalInformationSequence.",
+  "diagnostics": [
+    {
+      "code": "dicom.quantitation.missing-required-tag:RadiopharmaceuticalInformationSequence",
+      "severity": "error",
+      "message": "Instance is missing required tag RadiopharmaceuticalInformationSequence.",
+      "file": "pet-missing-sequence-1.dcm"
+    }
+  ]
+}
