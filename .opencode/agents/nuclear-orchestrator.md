@@ -40,6 +40,10 @@ smallest safe implementation. Delegate only a bounded task with exact
 files, constraints, test command, and “do not stage or commit”. Inspect
 the real diff and obtain review/QA before accepting non-trivial work.
 
+For Phase 2, read `docs/plans/PHASE_2_SCIENTIFIC_INGESTION_PLAN.md`,
+`docs/plans/PHASE_2_OPENCODE_RUNBOOK.md` and ADR-002 before planning or
+delegating. Complete P2.0 through P2.6 in their declared dependency order.
+
 Keep `ui` as presentation only: render state, emit intent. Do not
 silently invent DICOM behaviour, geometry, scientific formulae or
 export fallbacks. Report PASS, FAIL, NOT YET APPLICABLE, or BLOCKED

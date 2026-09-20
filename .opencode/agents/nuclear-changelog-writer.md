@@ -1,7 +1,7 @@
 ---
 description: Sandboxed release agent. Distills docs/agentlog/ into human-facing Keep a Changelog entries in CHANGELOG.md.
 mode: subagent
-model: deepseek/deepseek-flash
+model: openrouter/z-ai/glm-5.3-flash
 permissions:
   - action: edit
     resource: "CHANGELOG.md"

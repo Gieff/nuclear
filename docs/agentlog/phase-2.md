@@ -166,3 +166,57 @@ Not modified: `python/dicom/__init__.py`, `python/worker/__init__.py`
   `AGENTS.md`, `.opencode/agents/*`, `.opencode/commands/phase.md` and
   `CHANGELOG.md` (including a stray `## v0.1` heading), which predate this
   slice and remain for their own task.
+
+---
+
+# Handover Report — P2.0 Planning Integration & Changelog Consolidation
+
+## 1. What Was Implemented
+
+- Activated the Phase 2 plan and ADR-002 as mandatory inputs for the OpenCode
+  phase command and orchestrator.
+- Updated the repository baseline to show Phase 2 active with P2.0 complete.
+- Removed the invalid nested `v0.1` heading so unreleased notes remain under
+  the standard `Unreleased` section until an actual versioned release is
+  promoted.
+- Updated the sandboxed changelog-writer profile to its selected review model.
+
+## 2. Files Changed / Created
+
+- `AGENTS.md`
+- `.opencode/agents/nuclear-changelog-writer.md`
+- `.opencode/agents/nuclear-orchestrator.md`
+- `.opencode/commands/phase.md`
+- `CHANGELOG.md`
+- `docs/agentlog/phase-2.md`
+
+## 3. Architectural Assumptions Made
+
+- OpenCode reads the phase plan and ADR before P2.1 delegation; this does not
+  alter worker protocol or scientific behaviour.
+- A semantic version header is added only during an explicit release
+  promotion, not inside `Unreleased`.
+
+## 4. Tests Added & Executed
+
+- No runtime behaviour changed. Existing TypeScript and Python gates remain
+  the applicable evidence for the unchanged implementation.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-002 and both Phase 2 planning documents are now wired into OpenCode.
+- This report records the integration as a separate append-only slice.
+
+## 6. Project Model Impact
+
+- None.
+
+## 7. Known Limitations & Technical Debt
+
+- P2.1 remains paused and unmodified; no worker envelope or handshake has
+  been implemented by this consolidation.
+
+## 8. Exact Next Recommended Task
+
+- Resume P2.1 with `nuclear-scientific-engineer` using the mandatory Phase 2
+  plan, runbook and ADR-002 inputs.

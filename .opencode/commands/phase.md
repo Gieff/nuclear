@@ -21,6 +21,13 @@ Inspect the repository baseline before making a plan. State:
 5. the smallest bounded tasks and which specialist, if any, should do
    each one.
 
+When `$1` is `2`, also read
+`docs/plans/PHASE_2_SCIENTIFIC_INGESTION_PLAN.md`,
+`docs/plans/PHASE_2_OPENCODE_RUNBOOK.md`, and
+`docs/decisions/ADR-002-scientific-worker-stdio-json-rpc.md`. Execute one
+named P2.x slice at a time; do not start a later slice until the required
+review and QA evidence for its predecessor is recorded.
+
 Implement only work within the requested phase. For non-trivial edits,
 obtain `nuclear-reviewer` and `nuclear-qa` reports, inspect the real
 diff, and persist the complete 8-point Handover Report in
