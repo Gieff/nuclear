@@ -7,6 +7,7 @@ repository.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -85,3 +86,28 @@ def test_planned_slices_cover_dicom_geometry_and_quantitation(
         if fixture["status"] == "planned"
     }
     assert {"P2.2", "P2.3", "P2.4"} <= planned_slices
+
+
+def test_negative_request_shaped_fixtures_are_envelope_shaped(
+    manifest: dict[str, Any], repo_root: Path
+) -> None:
+    checked = 0
+    for fixture in _fixtures(manifest):
+        if fixture.get("kind") != "protocol-example" or fixture.get("role") != "negative":
+            continue
+        path = fixture.get("path")
+        assert isinstance(path, str) and path, fixture["id"]
+        record = json.loads((repo_root / path).read_text(encoding="utf-8"))
+        if not isinstance(record, dict) or "method" not in record:
+            continue
+        checked += 1
+        assert record["jsonrpc"] == "2.0", fixture["id"]
+        identifier = record.get("id")
+        assert (
+            isinstance(identifier, (str, int)) and not isinstance(identifier, bool)
+        ), fixture["id"]
+        method = record["method"]
+        assert isinstance(method, str) and method.startswith("nuclear."), fixture["id"]
+        assert method != "nuclear.", fixture["id"]
+        assert isinstance(record.get("protocolVersion"), str), fixture["id"]
+    assert checked >= 3

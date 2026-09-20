@@ -1,0 +1,7 @@
+{
+  "jsonrpc": "2.0",
+  "id": "req-0003",
+  "protocolVersion": "2.0",
+  "method": "nuclear.protocol.handshake",
+  "params": {}
+}

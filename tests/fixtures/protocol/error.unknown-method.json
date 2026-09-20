@@ -8,7 +8,7 @@
     "data": {
       "requestedMethod": "nuclear.unknown.operation",
       "supportedMethods": ["nuclear.protocol.handshake"],
-      "diagnostic": "No such worker operation is registered."
+      "diagnostic": "Method 'nuclear.unknown.operation' is not registered by this worker."
     }
   }
 }

@@ -5,8 +5,10 @@
 - **P2.0 — COMPLETE** (2026-09-20). Python runner, declared package README,
   versioned fixture manifest and ADR-002 protocol examples established and
   verified.
-- **P2.1–P2.6 — NOT STARTED.** No worker envelope, handshake, DICOM
-  classification, geometry, quantitation or bridge code exists.
+- **P2.1 — COMPLETE** (2026-09-20). JSON-RPC worker envelope, handshake,
+  error schema and stdio supervisor contract implemented and ratified.
+- **P2.2–P2.6 — NOT STARTED.** No DICOM classification, geometry,
+  quantitation or TypeScript bridge code exists.
 - This file is append-only per slice. Each future slice appends its own
   eight-point handover below; do not rewrite completed entries.
 
@@ -220,3 +222,139 @@ Not modified: `python/dicom/__init__.py`, `python/worker/__init__.py`
 
 - Resume P2.1 with `nuclear-scientific-engineer` using the mandatory Phase 2
   plan, runbook and ADR-002 inputs.
+
+---
+
+# Handover Report — P2.1: JSON-RPC Worker Envelope, Handshake & Stdio Supervisor
+
+## 1. What Was Implemented
+
+- **Versioned envelope layer** (`python/worker/protocol.py`): protocol version
+  `1.0`, `nuclear.<operation>` namespace, JSON-RPC 2.0 and NuClear reserved
+  error codes (`-32700`, `-32600`, `-32601`, `-32602`, `-32603`, `-32001`),
+  `ProtocolError`, deterministic second-precision ISO-8601 UTC formatting and
+  the success/error response builders. Error construction raises if a
+  non-empty `data.diagnostic` is missing, so fail-closed is enforced by
+  construction.
+- **Ordered, fail-closed validation** (`python/worker/envelope.py`): parse →
+  object/`jsonrpc`/`method`/`id` → `protocolVersion` → `params` → dispatch.
+  Every failure returns a structured error carrying `data.diagnostic` and
+  never a `result`; no fallback is emitted.
+- **Method registry and handshake** (`python/worker/dispatch.py`): only
+  `nuclear.protocol.handshake` is registered. It returns
+  `protocolVersions`, the implemented `operations`, and `workerMetadata`
+  (`workerVersion`, `operation`, `timestamp`, `parameters`). The clock is
+  injectable for determinism.
+- **Stdio supervisor contract** (`python/worker/stdio.py`, `__main__.py`):
+  newline-delimited records, one compact JSON response per non-empty line,
+  flushed; stdout is protocol-only, diagnostics and tracebacks go to stderr; a
+  malformed or failing record is always answered and never terminates the
+  process; EOF exits `0`. Process, serialization and write/flush are all
+  inside one protective guard that emits a fail-closed `-32603` on failure.
+  `python -m worker` and the `nuclear-worker` console script both run it.
+- **Fixture ratification**: all P2.0 protocol examples flipped to
+  `normative: true`; the handshake fixture updated to
+  `operations: ["nuclear.protocol.handshake"]`; the three id-bearing error
+  transactions now have correlated `request.*` fixtures, closing the P2.0
+  reviewer finding.
+
+## 2. Files Changed / Created
+
+Created:
+- `python/worker/protocol.py`, `envelope.py`, `dispatch.py`, `stdio.py`,
+  `__main__.py`
+- `python/tests/test_worker_envelope.py`, `test_worker_handshake.py`,
+  `test_worker_stdio.py`
+- `tests/fixtures/protocol/request.unknown-method.json`,
+  `request.protocol-mismatch.json`, `request.invalid-params.json`
+
+Modified:
+- `python/worker/__init__.py` (exports only), `python/pyproject.toml`
+  (`[project.scripts] nuclear-worker`), `python/README.md` (running the worker
+  and the supervisor contract)
+- `tests/fixtures/protocol/response.handshake.json`,
+  `error.unknown-method.json`, `README.md`, `tests/fixtures/manifest.json`
+- `docs/agentlog/phase-2.md` (this handover)
+
+Not modified: `python/dicom/**`, `packages/**`, `apps/**`, all TypeScript.
+
+## 3. Architectural Assumptions Made
+
+- ADR-002 remains the transport authority; the handshake and error schema are
+  now ratified, so the P2.0 examples are normative rather than illustrative.
+- `protocolVersion` is checked before `params` and dispatch; a missing or
+  non-`1.0` version is a NuClear mismatch (`-32001`), not an invalid request.
+  A parse error cannot correlate an `id` and therefore uses `id: null`.
+- `ProtocolError` maps to its declared code for explicit scientific failures;
+  only unexpected exceptions become `-32603`. Tracebacks are logged to stderr
+  and never leak into the protocol record.
+- The worker is stateless across records and safely restartable with no
+  cleanup. Restart, backoff, timeout and correlation belong to the P2.5
+  TypeScript bridge, not the worker.
+- Only implemented operations may appear in `operations`/`supportedMethods`;
+  P2.2–P2.4 register handlers on the same registry without changing the
+  envelope or stdio contracts.
+
+## 4. Tests Added & Executed
+
+- `npm run test:python` → **47 passed** (0 failed, 0 skipped). P2.1 adds 28
+  tests over the P2.0 baseline of 19: validation order and error codes,
+  handshake provenance and arbitrary-id correlation, manifest-driven
+  round-trip equality for all five normative pairs (including
+  `malformed → parse error`), pair-set completeness, negative-fixture
+  envelope shape, stdio liveness, channel discipline, EOF exit code, and a
+  real kill/restart test.
+- Ruff clean; mypy strict clean (14 source files); `npm run typecheck`,
+  `npm test` (33/33) and `npm run build` all green.
+- File-length gate: largest P2.1 file 249 lines.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- `python/README.md` documents launching the worker and the six-point
+  supervisor contract; `tests/fixtures/protocol/README.md` documents the
+  ratified fixtures, the request/error pairing and the `jq -c .` compaction
+  note for piping.
+- No new ADR was required; ADR-002 already governs the transport and its
+  examples are now ratifying evidence.
+
+## 6. Project Model Impact
+
+- No `@nuclear/shared-types` contract, `.ncp` schema or TypeScript file was
+  changed. The worker now produces the versioned envelope and provenance that
+  the P2.5 `ScientificWorkerBridge` will map to NuClear contracts.
+
+## 7. Known Limitations & Technical Debt
+
+- `python/dicom/__init__.py` still advertises `scanner`/`geometry`/
+  `quantitation` modules that do not exist (pre-existing; to be realised in
+  P2.2–P2.4).
+- The worker has no TypeScript bridge yet; correlation, timeouts and backoff
+  are documented but are implemented in P2.5.
+- `test_worker_envelope.py` is 249 lines, at the decomposition threshold
+  (Rule 02); split it if it grows in P2.2+.
+- The `error.parse.json` record index is 0 in the stdio round-trip; the
+  bridge must not assume the index is globally stable across restarts.
+
+## 8. Exact Next Recommended Task
+
+- **P2.2** (owner: `nuclear-scientific-engineer`): DICOM study/series
+  inspection and classification behind a newly registered
+  `nuclear.*` operation, using synthetic CT/PT/unsupported fixtures with
+  negative localizer, secondary-capture and missing-tag cases. Do not start
+  P2.3 until P2.2 review and QA evidence is recorded here.
+
+---
+
+## Gate Review & QA Evidence (P2.1)
+
+- `nuclear-reviewer` first pass: **CONCERNS** — (1) unknown-method fixture
+  diagnostic drift, (2) no error round-trip net, (3) serialization outside
+  the liveness guard, plus low findings. All six were corrected.
+- `nuclear-reviewer` re-review: **PASS** — 5/5 fixture pairs replay
+  byte-identically, liveness guard verified by probe, boundaries and file
+  lengths clean.
+- `nuclear-qa` re-verification: **PASS on all gates** — 47/47 Python tests,
+  ruff, mypy strict, TS typecheck/tests/build, file length, fixture integrity
+  (all protocol fixtures normative, P2.2–P2.4 still planned), channel
+  discipline. The AgentLog gate was pending at QA time and is satisfied by
+  this report.

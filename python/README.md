@@ -17,12 +17,46 @@ python/
 ├── pyproject.toml        # PEP 621 package metadata (source of truth for deps)
 ├── dicom/                # DICOM parsing, geometry verification, SUVbw
 ├── worker/               # stdio JSON-RPC 2.0 daemon
+│   ├── protocol.py       # version, error codes and envelope builders
+│   ├── envelope.py       # ordered, fail-closed request validation
+│   ├── dispatch.py       # method registry and handshake operation
+│   ├── stdio.py          # newline-delimited supervisor loop
+│   └── __main__.py       # `python -m worker` entry point
 └── tests/                # headless pytest suite for this package
 ```
 
 Versioned fixture data and protocol examples live in the repository-level
 `tests/fixtures/` directory and are indexed by
 `tests/fixtures/manifest.json`.
+
+## Running the worker
+
+The worker is launched either as a module or through the registered console
+script; both run the same newline-delimited JSON-RPC 2.0 loop:
+
+```bash
+# from the repository root, using the provisioned environment
+python/worker/.venv/bin/python -m worker
+# equivalent console entry point (after `pip install -e "python[dev]"`)
+python/worker/.venv/bin/nuclear-worker
+```
+
+### Supervisor contract
+
+- **Stateless across records.** Every request is validated and handled
+  independently. The worker holds no session state, so a restarted process
+  needs no cleanup or handover.
+- **stdout is the protocol channel only.** Exactly one compact JSON-RPC
+  response is written per non-empty request line, followed by a single `\n`
+  and flushed. Logs are never written to stdout.
+- **stderr carries diagnostics**, including handler tracebacks.
+- **A malformed or failing record never terminates the process.** It receives
+  a structured error response carrying a non-empty `data.diagnostic`.
+- **EOF on stdin exits `0`.** A non-zero exit is reserved for unrecoverable
+  startup errors.
+- **Restart, backoff, timeout and request/response correlation are owned by
+  the TypeScript `ScientificWorkerBridge`** (P2.5), not by the worker.
+
 
 ## Environment provisioning
 

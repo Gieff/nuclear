@@ -1,0 +1,7 @@
+{
+  "jsonrpc": "2.0",
+  "id": "req-0002",
+  "protocolVersion": "1.0",
+  "method": "nuclear.unknown.operation",
+  "params": {}
+}

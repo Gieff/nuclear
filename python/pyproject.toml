@@ -17,6 +17,9 @@ dependencies = [
     "SimpleITK>=2.3.0",
 ]
 
+[project.scripts]
+nuclear-worker = "worker.__main__:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",

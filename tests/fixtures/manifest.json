@@ -14,7 +14,7 @@
       "kind": "protocol-example",
       "role": "request",
       "status": "established",
-      "normative": false,
+      "normative": true,
       "ownerSlice": "P2.0",
       "path": "tests/fixtures/protocol/request.handshake.json",
       "description": "Correlated JSON-RPC request envelope carrying protocolVersion 1.0."
@@ -24,7 +24,7 @@
       "kind": "protocol-example",
       "role": "response",
       "status": "established",
-      "normative": false,
+      "normative": true,
       "ownerSlice": "P2.0",
       "path": "tests/fixtures/protocol/response.handshake.json",
       "description": "Success envelope carrying workerMetadata provenance for the request id."
@@ -34,7 +34,7 @@
       "kind": "protocol-example",
       "role": "error",
       "status": "established",
-      "normative": false,
+      "normative": true,
       "ownerSlice": "P2.0",
       "path": "tests/fixtures/protocol/error.unknown-method.json",
       "description": "Structured -32601 Method not found failure without a result."
@@ -44,7 +44,7 @@
       "kind": "protocol-example",
       "role": "error",
       "status": "established",
-      "normative": false,
+      "normative": true,
       "ownerSlice": "P2.0",
       "path": "tests/fixtures/protocol/error.protocol-mismatch.json",
       "description": "Reserved -32001 failure reporting requested versus supported protocol versions."
@@ -54,7 +54,7 @@
       "kind": "protocol-example",
       "role": "error",
       "status": "established",
-      "normative": false,
+      "normative": true,
       "ownerSlice": "P2.0",
       "path": "tests/fixtures/protocol/error.invalid-params.json",
       "description": "Structured -32602 Invalid params failure with actionable violations."
@@ -64,7 +64,7 @@
       "kind": "protocol-example",
       "role": "error",
       "status": "established",
-      "normative": false,
+      "normative": true,
       "ownerSlice": "P2.0",
       "path": "tests/fixtures/protocol/error.parse.json",
       "description": "Structured -32700 Parse error with a null id, as required by JSON-RPC 2.0."
@@ -74,10 +74,40 @@
       "kind": "protocol-example",
       "role": "malformed-record",
       "status": "established",
-      "normative": false,
+      "normative": true,
       "ownerSlice": "P2.0",
       "path": "tests/fixtures/protocol/malformed.request.txt",
       "description": "Non-JSON record that must fail closed with a parse error."
+    },
+    {
+      "id": "protocol.request.unknown-method",
+      "kind": "protocol-example",
+      "role": "negative",
+      "status": "established",
+      "normative": true,
+      "ownerSlice": "P2.1",
+      "path": "tests/fixtures/protocol/request.unknown-method.json",
+      "description": "Request paired to the -32601 error transaction; method is namespaced but unregistered."
+    },
+    {
+      "id": "protocol.request.protocol-mismatch",
+      "kind": "protocol-example",
+      "role": "negative",
+      "status": "established",
+      "normative": true,
+      "ownerSlice": "P2.1",
+      "path": "tests/fixtures/protocol/request.protocol-mismatch.json",
+      "description": "Request paired to the -32001 error transaction; declares unsupported protocolVersion 2.0."
+    },
+    {
+      "id": "protocol.request.invalid-params",
+      "kind": "protocol-example",
+      "role": "negative",
+      "status": "established",
+      "normative": true,
+      "ownerSlice": "P2.1",
+      "path": "tests/fixtures/protocol/request.invalid-params.json",
+      "description": "Request paired to the -32602 error transaction; params is a JSON array, not an object."
     },
     {
       "id": "dicom.classification.ct-primary",
