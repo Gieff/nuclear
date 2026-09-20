@@ -14,6 +14,7 @@
  *   npm run bump <new-version>
  */
 
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -193,6 +194,32 @@ if (fs.existsSync(venvLibDir)) {
       }
     }
   }
+}
+
+// 7. Synchronize the root package-lock.json so a bump never leaves the
+//    lockfile stale. npm is the authority for the lockfile format; letting it
+//    reconcile workspace versions and internal dependency ranges avoids
+//    hand-editing npm-managed state.
+if (isDryRun) {
+  console.log('• Would synchronize package-lock.json via "npm install --package-lock-only"');
+} else {
+  console.log('Synchronizing package-lock.json...');
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const lockResult = spawnSync(
+    npmCmd,
+    ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'],
+    { cwd: rootDir, stdio: 'inherit' }
+  );
+  if (lockResult.error || lockResult.status !== 0) {
+    console.error(
+      `\nError: failed to synchronize package-lock.json (` +
+        `${lockResult.error ? lockResult.error.message : `exit code ${lockResult.status}`}).\n` +
+        'The version files were updated, but the lockfile is now stale.\n' +
+        'Run "npm install --package-lock-only" manually and re-check before committing.'
+    );
+    process.exit(1);
+  }
+  console.log('✔ Updated package-lock.json');
 }
 
 console.log(`\n🎉 Successfully synchronized NuClear monorepo to v${newVersion}!`);
