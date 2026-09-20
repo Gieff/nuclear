@@ -61,6 +61,9 @@ test_dicom/
 tests/fixtures/cases/
 tests/cases/
 
+# Renderer harness generated bundle (tests/rendering)
+tests/rendering/.harness/
+
 # OpenCode / OpenCodeRAG workspace state
 .opencode/.gitignore
 .opencode/node_modules/

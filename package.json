@@ -12,6 +12,7 @@
     "bump": "node scripts/bump-version.mjs",
     "typecheck": "tsc -b",
     "test": "node --test",
+    "test:renderer": "node --test \"tests/rendering/**/*.test.ts\"",
     "test:python": "python/worker/.venv/bin/python -m pytest python/tests -q",
     "typecheck:python": "python/worker/.venv/bin/python -m mypy --config-file python/pyproject.toml python/dicom python/worker python/tests",
     "build": "tsc -b",
@@ -20,7 +21,11 @@
     "docs": "npm run docs:ts && npm run docs:python"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
+    "events": "3.3.0",
+    "playwright": "1.63.0",
     "typedoc": "^0.28.20",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "url": "0.11.4"
   }
 }
