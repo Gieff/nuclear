@@ -23,7 +23,10 @@ Inspect the repository baseline before making a plan. State:
 
 Implement only work within the requested phase. For non-trivial edits,
 obtain `nuclear-reviewer` and `nuclear-qa` reports, inspect the real
-diff, and update docs/changelog when the change is notable. A missing
-runner or fixture is BLOCKED or NOT YET APPLICABLE, never PASS. Commit
-only after a verified task and only if this repository is actually a Git
-repository; never push without the user's explicit instruction.
+diff, and persist the complete 8-point Handover Report in
+`docs/agentlog/phase-$1.md` (ADR-001 / Rule 03 Gate 1). Never dump raw
+handover notes into `CHANGELOG.md`; release notes are compiled via
+`/promote-changelog $1`. A missing runner or fixture is BLOCKED or
+NOT YET APPLICABLE, never PASS. Commit only after a verified task and
+only if this repository is actually a Git repository; never push
+without the user's explicit instruction.

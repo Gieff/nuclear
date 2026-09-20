@@ -24,14 +24,14 @@ NuClear is a clinical-grade, publication-ready multimodal medical imaging workst
 ## Harness (opencode)
 - Model: `deepseek/deepseek-flash` (set in [`opencode.json`](opencode.json)).
 - Always-active entry point: this `AGENTS.md`. OpenCode V2 does not resolve the former `instructions` array, so every agent must read the applicable files in [`.agents/rules/`](.agents/rules/) before editing.
-- Subagents: [`.opencode/agents/`](.opencode/agents/) — implementers `nuclear-scientific-engineer`, `nuclear-engine-engineer`, `nuclear-ui-engineer`; controls `nuclear-reviewer`, `nuclear-qa`, `nuclear-ux-auditor`.
-- Commands: [`.opencode/commands/`](.opencode/commands/) — `/phase <0–7> [goal]` drives one milestone; `/verify [scope]` reports the real verification state; `/review [scope]` runs the independent audit.
+- Subagents: [`.opencode/agents/`](.opencode/agents/) — implementers `nuclear-scientific-engineer`, `nuclear-engine-engineer`, `nuclear-ui-engineer`; controls `nuclear-reviewer`, `nuclear-qa`, `nuclear-ux-auditor`; release `nuclear-changelog-writer`.
+- Commands: [`.opencode/commands/`](.opencode/commands/) — `/phase <0–7> [goal]` drives one milestone; `/verify [scope]` reports the real verification state; `/review [scope]` runs the independent audit; `/promote-changelog [phase]` synthesizes distilled release notes.
 - Skills: [`.agents/skills/`](.agents/skills/) — loaded on demand via the `skill` tool.
 
 ### Rules (`.agents/rules/`) — Always Active
 - [`01-project-core.md`](.agents/rules/01-project-core.md): Mission, principles P1–P8, non-simplification law, no-invented-behavior rule.
 - [`02-architecture.md`](.agents/rules/02-architecture.md): Package ownership matrix, acyclic dependency graph, universal file size limit (≤ 250–300 lines).
-- [`03-code-quality.md`](.agents/rules/03-code-quality.md): Strict TypeScript, explicit error propagation, pre-commit gates (Changelog, File Length), atomic commits.
+- [`03-code-quality.md`](.agents/rules/03-code-quality.md): Strict TypeScript, explicit error propagation, pre-commit gates (Agentlog, Changelog, File Length), atomic commits.
 - [`04-orchestration.md`](.agents/rules/04-orchestration.md): Orchestrator duties, headless-first milestones, verification-before-acceptance.
 
 ### Skills (`.agents/skills/`) — Procedural Runbooks On-Demand

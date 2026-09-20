@@ -1464,19 +1464,23 @@ The root `README.md` is the public front door of the project.
 * It must provide: product purpose, target problem, current development status, tech stack summary, quickstart instructions for local setup/testing, and clear links to the detailed guides in `docs/`.
 * It must **not** duplicate in-depth architectural specifications or contracts from `PROJECT_VADEMECUM.md` to avoid documentation drift.
 
-### CHANGELOG.md & Versioning
+### CHANGELOG.md, AgentLog & Versioning
 
-The project adheres to the [Keep a Changelog](https://keepachangelog.com/) standard and [Semantic Versioning](https://semver.org/) (SemVer).
+The project adheres to the [Keep a Changelog](https://keepachangelog.com/) standard and [Semantic Versioning](https://semver.org/) (SemVer), implemented through a **Two-Tier Changelog & Handover System** (see [`ADR-001`](decisions/ADR-001-two-tier-changelog-and-agentlog.md)):
 
-* The root `CHANGELOG.md` maintains an active `## [Unreleased]` section at the top.
-* For every non-trivial task or feature, the agent must log notable changes under `## [Unreleased]` using standard categories:
-  * `Added` (new user-facing or architectural capabilities);
-  * `Changed` (modifications to existing workflows or contracts);
-  * `Deprecated` (features planned for upcoming removal);
-  * `Removed` (deprecated features now eliminated);
-  * `Fixed` (bug fixes);
-  * `Security` (anonymization, data privacy, or security enhancements).
-* Official releases (`v0.1.0`, etc.) freeze the unreleased entries and record the release date.
+1. **Machine / AI Tier (`docs/agentlog/phase-<N>.md`)**:
+   - Each phase/milestone maintains its dedicated handover log (e.g. `docs/agentlog/phase-0.md`, `phase-1.md`).
+   - Every completed task slice or phase MUST persist the verbatim 8-point **Mandatory Handover Report** (§30.2) into this file.
+   - Contains exhaustive, fine-grained technical evidence: exact file paths, commit references, formulas, test assertion results, and technical debt.
+
+2. **Human / Release Tier (`CHANGELOG.md`)**:
+   - Root `CHANGELOG.md` maintains an active `## [Unreleased]` section at the top, frozen on official releases (`v0.1.0`, etc.).
+   - Governed strictly by the **Changelog Style Contract**:
+     - **Prohibited**: internal file paths, line numbers, git commit hashes, internal task/slice codes (`Phase 1.1`, `M5-04`), and internal function/variable symbols.
+     - **Required**: one concise bullet per user-facing or architectural capability.
+     - **Consolidation**: intermediate, superseded changes within the same phase or release window must be synthesized into a single coherent entry.
+     - **Categories**: standard Keep a Changelog headings (`Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`).
+   - **Delegation**: compilation and promotion of `CHANGELOG.md` is delegated to the `nuclear-changelog-writer` subagent (invoked via `/promote-changelog`).
 
 ### Git & GitHub Workflow Standards
 
@@ -1505,7 +1509,7 @@ Every AI coding agent must:
 5. Explicitly state assumptions regarding DICOM, geometry, rendering, and image processing.
 6. Update diagrams whenever the data flow changes.
 7. Create an ADR for significant architectural decisions or changes.
-8. Update `CHANGELOG.md` under `[Unreleased]` for notable changes.
+8. Persist the mandatory handover report in `docs/agentlog/phase-<N>.md` upon completing any phase or slice; compile `CHANGELOG.md` via the changelog promotion workflow.
 9. Never declare a feature "documented" or "tested" if it is not actually so.
 10. Explicitly report any technical debt introduced.
 11. Leave the repository self-contained and understandable to the next AI agent without requiring conversation memory.
@@ -1771,23 +1775,24 @@ Before declaring work complete, the agent must ensure that:
 3.  **High-value code comments:** Comments explain the **why** and intent behind non-obvious code, rather than merely paraphrasing the syntax.
 4.  **API & interaction documentation:** All new or modified public APIs have comprehensive TSDoc/docstrings; cross-component interactions are documented, and data flow diagrams (Mermaid) are updated if flows changed.
 5.  **Architectural decisions recorded (ADRs):** Any significant architectural decision, change, or trade-off is recorded in `docs/decisions/`.
-6.  **Changelog & commit hygiene:** Notable additions, changes, or fixes are documented under `## [Unreleased]` in `CHANGELOG.md` according to Keep a Changelog categories, and commits follow Conventional Commits.
+6.  **Agentlog & commit hygiene:** The mandatory 8-point Handover Report is persisted verbatim in `docs/agentlog/phase-<N>.md`, and commits follow Conventional Commits. `CHANGELOG.md` is updated strictly via the Changelog Style Contract when promoting a release.
 7.  **Project model evolution:** Any `.ncp` schema change is versioned and has round-trip tests. A migration layer is introduced only after NuClear has shipped an earlier schema that it explicitly chooses to support.
 8.  **Repository self-sufficiency:** The repository and documentation are entirely self-contained, allowing any subsequent AI agent or human developer to understand and build upon the work without requiring past conversation history.
 
 ## 30.2 Mandatory Handover Report
 
-Before handing off work to the next agent or human developer, the agent must deliver a structured summary containing:
+Before handing off work to the next agent or human developer, the agent must persist verbatim in `docs/agentlog/phase-<N>.md` a structured summary containing:
 
 1.  **What was implemented:** A concise overview of the features, fixes, or refactors completed.
 2.  **Files changed:** Complete list of created, modified, or deleted files.
 3.  **Architectural assumptions made:** Clear technical rationale and confirmation of architectural boundary adherence.
 4.  **Tests added & executed:** Test suites added, test commands executed, and verification outcomes.
-5.  **Documentation, Changelog & ADR status:** Confirmation of updated docs, diagrams, `CHANGELOG.md [Unreleased]` entries, and newly created or updated ADRs.
+5.  **Documentation, Agentlog & ADR status:** Confirmation of updated docs, diagrams, `docs/agentlog/phase-<N>.md` entry, and newly created or updated ADRs.
 6.  **Project model impact:** Any changes required for `FigureState`, schemas, or serialized state contracts.
 7.  **Known limitations & technical debt:** Explicit disclosure of edge cases, temporary shortcuts, or deferred tasks.
 8.  **Exact next recommended task:** The single, concrete, prioritized task for the next agent or developer.
 
+Agents must NEVER dump this raw handover report into `CHANGELOG.md` (see [`ADR-001`](decisions/ADR-001-two-tier-changelog-and-agentlog.md)). `CHANGELOG.md` is reserved exclusively for distilled, user-facing release notes.
 Agents must not silently change architecture.
 
 ------------------------------------------------------------------------

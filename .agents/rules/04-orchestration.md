@@ -44,4 +44,5 @@ Your comparative advantage is decomposition, judgment, verification, and integra
 - **IF** concluding any milestone phase, feature, or contract set:
 - **THEN** delegate acceptance to `nuclear-qa` (or run `nuclear-testing` directly) and confirm all clinical parameters against NuClear-owned curated fixtures and declared tolerances.
 - **NEVER** declare a task done based on assumptions or mocks without terminal verification.
-- Update `CHANGELOG.md` under `## [Unreleased]` with only the phases actually completed.
+- Persist the complete 8-point Handover Report in `docs/agentlog/phase-<N>.md` (Gate 1: Agentlog Gate).
+- When promoting or tagging a release, delegate `CHANGELOG.md` compilation to `nuclear-changelog-writer` (or invoke `/promote-changelog`), verify the distilled diff, and stage the commit. Never dump raw handover notes into `CHANGELOG.md`.
