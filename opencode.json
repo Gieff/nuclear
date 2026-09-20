@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "plugin": ["opencode-snip@latest"],
   "model": "deepseek/deepseek-flash",
   "default_agent": "nuclear-orchestrator",
   "mcp": {
