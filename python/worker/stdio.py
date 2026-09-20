@@ -29,8 +29,13 @@ from .protocol import ERROR_MESSAGES, INTERNAL_ERROR, error_response
 
 
 def _serialize(response: dict[str, Any]) -> str:
-    """Render a response as a single compact JSON line without its newline."""
-    return json.dumps(response, separators=(",", ":"), ensure_ascii=False)
+    """Render a response as a single compact, standards-valid JSON line.
+
+    ``allow_nan=False`` guarantees a non-finite result can never be emitted as
+    invalid JSON; the caller's guard converts the resulting ``ValueError`` into
+    a structured ``-32603`` response and keeps the process alive.
+    """
+    return json.dumps(response, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
 
 
 def _write_response(stdout: TextIO, response: dict[str, Any]) -> None:

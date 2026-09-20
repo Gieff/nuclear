@@ -1,0 +1,14 @@
+{
+  "status": "rejected",
+  "seriesInstanceUID": "1.2.826.0.1.3680043.10.3015.2",
+  "studyInstanceUID": "1.2.826.0.1.3680043.10.3015.1",
+  "reason": "inconsistent-frame-of-reference",
+  "diagnostics": [
+    {
+      "code": "dicom.geometry.inconsistent-frame-of-reference",
+      "severity": "error",
+      "message": "Instances disagree on FrameOfReferenceUID.",
+      "file": "geometry-inconsistent-frame-2.dcm"
+    }
+  ]
+}

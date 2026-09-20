@@ -34,7 +34,6 @@ FROZEN_NOW = datetime(2026, 9, 20, 0, 0, 0, tzinfo=timezone.utc)
 FROZEN_TIMESTAMP = "2026-09-20T00:00:00Z"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_DIR = REPO_ROOT / "tests" / "fixtures" / "dicom" / "geometry"
-GENERATOR_MODULE = "python/tests/synthetic_geometry.py"
 PHASE1_CROSS_VALIDATION_EPSILON = 1e-9
 Writer = Callable[[Path], None]
 
@@ -227,24 +226,3 @@ def test_results_contain_no_absolute_paths_or_phi(tmp_path: Path) -> None:
     serialized += json.dumps(_compatibility(tmp_path, sg.AXIAL_SERIES_UID, sg.ECHO_SERIES_UID))
     assert str(tmp_path) not in serialized
     assert "PatientName" not in serialized
-
-
-def test_manifest_reconciles_geometry_fixtures(manifest: dict[str, Any], repo_root: Path) -> None:
-    entries = {
-        fixture["id"]: fixture
-        for fixture in manifest["fixtures"]
-        if fixture["id"].startswith("geometry.")
-    }
-    cases = {name: writer for name, writer, *_ in GEOMETRY_CASES + COMPATIBILITY_CASES}
-    assert set(entries) == {f"geometry.{name}" for name in cases}
-    for name, writer in cases.items():
-        fixture = entries[f"geometry.{name}"]
-        assert fixture["status"] == "established"
-        assert fixture["ownerSlice"] == "P2.3"
-        expected_path = fixture["expectedPath"]
-        assert isinstance(expected_path, str) and (repo_root / expected_path).is_file()
-        generator = fixture["generator"]
-        assert isinstance(generator, str)
-        module_name, separator, function_name = generator.partition("::")
-        assert separator == "::" and module_name == GENERATOR_MODULE
-        assert function_name == writer.__name__

@@ -52,6 +52,12 @@ python/worker/.venv/bin/nuclear-worker
 - **stderr carries diagnostics**, including handler tracebacks.
 - **A malformed or failing record never terminates the process.** It receives
   a structured error response carrying a non-empty `data.diagnostic`.
+- **Outgoing JSON is standards-valid.** Responses are serialized with
+  `allow_nan=False`; a handler returning a non-finite value can never emit
+  invalid JSON and is answered with a structured `-32603` response.
+- **Incoming JSON is strict.** The non-standard `NaN`, `Infinity` and
+  `-Infinity` constants are rejected as `-32700` parse errors rather than being
+  accepted as floating-point values.
 - **EOF on stdin exits `0`.** A non-zero exit is reserved for unrecoverable
   startup errors.
 - **Restart, backoff, timeout and request/response correlation are owned by
@@ -134,9 +140,37 @@ A series with no matching instance returns
 `{"status":"unavailable","reason":"series-not-found"}`. A geometrically invalid
 grid returns `{"status":"rejected","reason":<reason>,"diagnostics":[...]}` and
 **never** emits a `geometry` object. The reasons are
-`missing-required-tag:<name>`, `irregular-slice-spacing`,
-`inconsistent-orientation`, `gantry-tilt`, `duplicate-slice-position`,
-`insufficient-slices` and `inconsistent-pixel-spacing`.
+`missing-required-tag:<name>`, `non-finite-geometry`,
+`non-positive-dimensions`, `non-positive-pixel-spacing`,
+`inconsistent-study-uid`, `inconsistent-frame-of-reference`,
+`inconsistent-modality`, `duplicate-sop-instance-uid`,
+`insufficient-slices`, `irregular-slice-spacing`, `inconsistent-orientation`,
+`gantry-tilt`, `duplicate-slice-position` and `inconsistent-pixel-spacing`.
+
+Validation is deterministic and fail-closed, evaluated before any ordering or
+bounds computation:
+
+1. the requested `seriesInstanceUID` must match at least one instance
+   (`series-not-found` otherwise);
+2. every required identity/geometry tag must be present
+   (`missing-required-tag:<name>`; a present-but-unusable numeric vector is
+   reported under the same disposition);
+3. `StudyInstanceUID`, `FrameOfReferenceUID` and `Modality` must agree across
+   the series and every `SOPInstanceUID` must be unique
+   (`inconsistent-study-uid`, `inconsistent-frame-of-reference`,
+   `inconsistent-modality`, `duplicate-sop-instance-uid`);
+4. at least `MIN_SLICES` slices are required (`insufficient-slices`);
+5. all `ImagePositionPatient`/`ImageOrientationPatient`/`PixelSpacing`
+   components must be finite and `Rows`/`Columns`/`PixelSpacing` must be
+   strictly positive (`non-finite-geometry`, `non-positive-dimensions`,
+   `non-positive-pixel-spacing`), so `AssetGeometry` never carries `NaN`,
+   `Infinity` or non-positive sampling;
+6. derived values are re-checked for finiteness before a `computed` result is
+   returned: slice projections, consecutive spacing differences, the aggregated
+   slice spacing, and the final `origin`/`spacing`/`sliceNormal`/`bounds`. A
+   per-component-finite input that overflows the projection or bounds math is
+   rejected with `non-finite-geometry` rather than escaping to the transport
+   layer as a generic `-32603`.
 
 A required geometry tag that is present but is not a usable numeric vector of
 the required arity (for example a wrong-length `PixelSpacing`) is reported under

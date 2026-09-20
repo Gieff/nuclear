@@ -9,8 +9,11 @@
   error schema and stdio supervisor contract implemented and ratified.
 - **P2.2 — COMPLETE** (2026-09-20). `nuclear.dicom.inspect` study/series
   discovery and explicit classification implemented and ratified.
-- **P2.3 — COMPLETE** (2026-09-20). Regular-grid geometry extraction and
-  compatibility evidence implemented and ratified.
+- **P2.3 — COMPLETE, HARDENED BY P2.3.1** (2026-09-20). Regular-grid geometry
+  extraction and compatibility evidence implemented and ratified.
+- **P2.3.1 — COMPLETE** (2026-09-20). Fail-closed hardening: non-finite and
+  non-positive geometry rejection, intra-series identity invariants, strict
+  JSON boundary, and derived-finiteness guards.
 - **P2.4–P2.6 — NOT STARTED.** No quantitation or TypeScript bridge code
   exists.
 - This file is append-only per slice. Each future slice appends its own
@@ -673,3 +676,139 @@ Unrelated harness artifacts present in the working tree (`AGENTS.md` RAG block,
   lengths <=250, fixture integrity, and live stdio checks (axial computed,
   irregular rejected, compatibility unavailable side). Gate 8 (AgentLog) was
   pending at QA time and is satisfied by this report.
+
+---
+
+# Handover Report — P2.3.1: Geometry Fail-Closed Hardening
+
+## 1. What Was Implemented
+
+An independent probe of the committed P2.3 geometry path found three real
+fail-closed violations plus a transport JSON-validity gap. P2.3.1 closes all
+of them.
+
+- **Numeric validity (fail-closed)**: every `ImagePositionPatient`,
+  `ImageOrientationPatient` and `PixelSpacing` component must be finite;
+  `Rows` and `Columns` must be positive; every `PixelSpacing` component must be
+  positive. Reasons: `non-finite-geometry`, `non-positive-dimensions`,
+  `non-positive-pixel-spacing`.
+- **Intra-series identity invariants**: `StudyInstanceUID`,
+  `FrameOfReferenceUID` and `Modality` must be identical across the series and
+  every `SOPInstanceUID` must be unique. Reasons: `inconsistent-study-uid`,
+  `inconsistent-frame-of-reference`, `inconsistent-modality`,
+  `duplicate-sop-instance-uid`.
+- **Derived-value finiteness**: slice projections, consecutive spacing
+  differences, the aggregated `sliceSpacing`, and the final
+  `origin`/`spacing`/`sliceNormal`/`bounds` are re-checked for finiteness; any
+  non-finite derived value is rejected with the named `non-finite-geometry`
+  disposition instead of escaping to a generic internal error. This catches a
+  crafted huge-but-finite `ImagePositionPatient` whose dot product overflows.
+- **Deterministic validation order**: match series -> missing-required-tag ->
+  identity -> insufficient-slices -> numeric -> orientation ->
+  grid/pixel-spacing consistency -> ordering/duplicate/gantry/irregular ->
+  derived finiteness -> computed. No rejection ever carries a `geometry` key.
+- **Strict JSON boundary**: the stdio serializer uses
+  `json.dumps(..., allow_nan=False)`, so a non-finite value can never be
+  emitted as invalid JSON; the existing guard converts the resulting
+  `ValueError` into a structured `-32603` and the worker stays alive. Incoming
+  `NaN`/`Infinity`/`-Infinity` constants are rejected at parse time as
+  `-32700`, conforming to JSON-RPC 2.0 / RFC 8259.
+- **Committed negative fixtures**: seven DICOM negative fixtures in the first
+  pass plus one derived-overflow fixture, all manifest-indexed as
+  `established` with generator and expected output.
+
+## 2. Files Changed / Created
+
+Created:
+- `python/tests/test_dicom_geometry_hardening.py`,
+  `python/tests/test_worker_json_validity.py`
+- `tests/fixtures/dicom/geometry/{non-finite-coordinate,
+  non-finite-derived, non-positive-dimensions, non-positive-pixel-spacing,
+  inconsistent-study-uid, inconsistent-frame-of-reference,
+  inconsistent-modality, duplicate-sop-instance-uid}.expected.json`
+
+Modified:
+- `python/dicom/{geometry,geometry_validation,geometry_metadata}.py`
+- `python/worker/{stdio,envelope}.py`
+- `python/tests/{synthetic_geometry_invalid,test_dicom_geometry}.py`
+- `python/README.md`; `tests/fixtures/manifest.json`
+- `docs/agentlog/phase-2.md` (this handover)
+
+Not modified: `packages/**`, `apps/**`, any TypeScript; the eleven
+pre-existing expected fixtures (6 classification + 5 geometry) are
+byte-identical.
+
+## 3. Architectural Assumptions Made
+
+- `AssetGeometry` requires positive dimensions/spacing and finite values, so
+  these checks belong at the geometry boundary, not only at serialization.
+- All geometry rejections remain explicit domain dispositions
+  (`status:"rejected"` with a named reason and diagnostic), not transport
+  errors; malformed params stay `-32602` and unreadable sources `-32010`.
+- Strict JSON is a transport conformance requirement, not a new protocol
+  feature: JSON-RPC 2.0 forbids `NaN`/`Infinity`.
+- The transport `allow_nan=False` guard is defence-in-depth; the primary
+  guarantee is the domain validation.
+
+## 4. Tests Added & Executed
+
+- `npm run test:python` -> **105 passed** (0 failed, 0 skipped), from 90 at
+  P2.3. Adds 15 tests: eight committed negative-fixture rejections
+  (non-positive pixel spacing/dimensions, non-finite coordinate, non-finite
+  derived, inconsistent study/FoR/modality, duplicate SOP), computed-geometry
+  strict-JSON round-trip, a direct negative-spacing unit check, full
+  `geometry.*` manifest reconciliation, stdio non-finite -> `-32603` survival,
+  and incoming `NaN`/`Infinity`/`-Infinity` -> `-32700`.
+- `npm run typecheck:python` -> strict mypy clean over 34 source files.
+- Ruff clean; `npm run typecheck`, `npm test` (33/33), `npm run build` green.
+- File-length gate: every source file <=250 lines.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- `python/README.md` documents the new reasons, the deterministic validation
+  order including derived finiteness, strict outgoing JSON, and incoming
+  `NaN`/`Infinity` rejection.
+- No new ADR: the changes enforce existing NuClear invariants and RFC 8259
+  conformance.
+
+## 6. Project Model Impact
+
+- No contract or `.ncp` schema change. Computed geometry is now guaranteed
+  finite and positive before the P2.5 bridge can map it to `AssetGeometry`.
+
+## 7. Known Limitations & Technical Debt
+
+- `python/tests/test_worker_envelope.py` remains at 249 lines and
+  `python/dicom/geometry.py` at 239; further growth requires decomposition.
+- A crafted extreme offset (~1e200) in the collinearity check can overflow to
+  `inf` and reject as `gantry-tilt` rather than `non-finite-geometry`; the
+  disposition is still fail-closed with no `geometry` key, and the input is
+  unreachable in real patient-space coordinates (recorded for completeness).
+- The seven first-pass fixtures carry `ownerSlice:"P2.3"` (phase-level
+  convention; no `P2.x.y` slice ids exist in the manifest).
+
+## 8. Exact Next Recommended Task
+
+- **P2.4** (owner: `nuclear-scientific-engineer`): PET raw metadata extraction
+  and `PetQuantitationResult` production — BQML positive result; missing
+  weight/dose/time, unsupported units and invalid decay correction failures,
+  with Python-only SUVbw provenance. Do not start P2.5 until P2.4 review and QA
+  evidence is recorded here.
+
+---
+
+## Gate Review & QA Evidence (P2.3.1)
+
+- `nuclear-reviewer` first pass: **CONCERNS** — (1) commit-hygiene warning to
+  exclude out-of-scope working-tree tooling artifacts (honoured: strictly
+  selective staging), (2) derived slice spacing not explicitly finite-guarded.
+- `nuclear-reviewer` final pass: **PASS** — derived finiteness verified at all
+  four stages, overflow fixture genuine, precedence unchanged, gates green.
+- `nuclear-qa` first pass: **7/8 PASS**, AgentLog pending.
+- `nuclear-qa` final pass: **all gates PASS** — 105/105 Python tests,
+  config-aware strict mypy over 34 files, ruff clean, 33/33 TS tests, build
+  clean, file lengths <=250, 19 expected fixtures (6 classification +
+  13 geometry) with the 11 git-tracked ones byte-identical to 6b48763, four
+  `quantitation.*` still planned, live transport checks (NaN -> `-32700`,
+  process survives, stdout token-free). AgentLog was pending at QA time and is
+  satisfied by this report.

@@ -220,6 +220,86 @@
       "description": "Inconsistent ImageOrientationPatient rejected with diagnostics."
     },
     {
+      "id": "geometry.non-finite-coordinate",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.3",
+      "generator": "python/tests/synthetic_geometry_invalid.py::write_geometry_non_finite",
+      "expectedPath": "tests/fixtures/dicom/geometry/non-finite-coordinate.expected.json",
+      "description": "Non-finite ImagePositionPatient component rejected before ordering or bounds."
+    },
+    {
+      "id": "geometry.non-positive-dimensions",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.3",
+      "generator": "python/tests/synthetic_geometry_invalid.py::write_geometry_non_positive_dimensions",
+      "expectedPath": "tests/fixtures/dicom/geometry/non-positive-dimensions.expected.json",
+      "description": "Non-positive Rows/Columns rejected instead of producing AssetGeometry."
+    },
+    {
+      "id": "geometry.non-positive-pixel-spacing",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.3",
+      "generator": "python/tests/synthetic_geometry_invalid.py::write_geometry_non_positive_spacing",
+      "expectedPath": "tests/fixtures/dicom/geometry/non-positive-pixel-spacing.expected.json",
+      "description": "Zero or negative PixelSpacing rejected instead of producing AssetGeometry."
+    },
+    {
+      "id": "geometry.inconsistent-study-uid",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.3",
+      "generator": "python/tests/synthetic_geometry_invalid.py::write_geometry_inconsistent_study",
+      "expectedPath": "tests/fixtures/dicom/geometry/inconsistent-study-uid.expected.json",
+      "description": "Instances of one series disagreeing on StudyInstanceUID rejected."
+    },
+    {
+      "id": "geometry.inconsistent-frame-of-reference",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.3",
+      "generator": "python/tests/synthetic_geometry_invalid.py::write_geometry_inconsistent_frame",
+      "expectedPath": "tests/fixtures/dicom/geometry/inconsistent-frame-of-reference.expected.json",
+      "description": "Instances of one series disagreeing on FrameOfReferenceUID rejected."
+    },
+    {
+      "id": "geometry.inconsistent-modality",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.3",
+      "generator": "python/tests/synthetic_geometry_invalid.py::write_geometry_inconsistent_modality",
+      "expectedPath": "tests/fixtures/dicom/geometry/inconsistent-modality.expected.json",
+      "description": "Instances of one series disagreeing on Modality rejected."
+    },
+    {
+      "id": "geometry.duplicate-sop-instance-uid",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.3",
+      "generator": "python/tests/synthetic_geometry_invalid.py::write_geometry_duplicate_sop",
+      "expectedPath": "tests/fixtures/dicom/geometry/duplicate-sop-instance-uid.expected.json",
+      "description": "Duplicate SOPInstanceUID within one series rejected."
+    },
+    {
+      "id": "geometry.non-finite-derived",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "established",
+      "ownerSlice": "P2.3",
+      "generator": "python/tests/synthetic_geometry_invalid.py::write_geometry_non_finite_derived",
+      "expectedPath": "tests/fixtures/dicom/geometry/non-finite-derived.expected.json",
+      "description": "Per-component-finite ImagePositionPatient whose projection overflows to infinity is rejected."
+    },
+    {
       "id": "quantitation.suvbw-bqml",
       "kind": "synthetic-dicom",
       "role": "positive",

@@ -58,6 +58,18 @@ def _has_valid_id(payload: dict[str, Any]) -> bool:
     return isinstance(value, (str, int)) and not isinstance(value, bool)
 
 
+def _reject_json_constant(token: str) -> Any:
+    """Reject the non-standard ``NaN``/``Infinity`` JSON constants.
+
+    JSON-RPC 2.0 forbids these; raising makes ``json.loads`` fail so the record
+    is answered as a ``-32700`` parse error instead of being accepted.
+
+    Raises:
+        ValueError: Always, naming the offending token.
+    """
+    raise ValueError(f"Non-standard JSON constant {token!r} is not allowed.")
+
+
 def _invalid_request(request_id: RequestId | None, diagnostic: str) -> dict[str, Any]:
     """Build a ``-32600`` response for a malformed request envelope."""
     return error_response(
@@ -81,8 +93,8 @@ def process_record(raw_line: str, record_index: int, dispatcher: Dispatcher) -> 
         this function never raises for malformed or failing input.
     """
     try:
-        payload: Any = json.loads(raw_line)
-    except json.JSONDecodeError:
+        payload: Any = json.loads(raw_line, parse_constant=_reject_json_constant)
+    except ValueError:
         return error_response(
             None,
             PARSE_ERROR,
