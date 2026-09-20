@@ -28,8 +28,14 @@
   `npm run bump` version-synchronization script added.
 - **RELEASE v0.1.1 — COMPLETE** (2026-09-20). Monorepo synchronized to 0.1.1
   with CHANGELOG promotion and annotated tag.
-- **P2.5–P2.6 — NOT STARTED.** No TypeScript `ScientificWorkerBridge` code
-  exists.
+- **P2.5 — COMPLETE** (2026-09-20). TypeScript `ScientificWorkerBridge` facade
+  in `@nuclear/medical-engine` implemented and ratified: local worker
+  lifecycle/handshake, request correlation, per-request timeout, bounded
+  restart/backoff, typed provenance-preserving mapping of the five operations
+  to NuClear contracts, and a no-duplicated-formula guard. Independent
+  `nuclear-reviewer` PASS (after one CONCERN resolved) and `nuclear-qa` all
+  applicable gates PASS.
+- **P2.6 — NOT STARTED.** Phase-level consolidated review/handover remains.
 - This file is append-only per slice. Each future slice appends its own
   eight-point handover below; do not rewrite completed entries.
 
@@ -1388,3 +1394,241 @@ Modified:
 - Resume **P2.5**: the TypeScript `ScientificWorkerBridge` in
   `@nuclear/medical-engine` (correlation, timeout, restart, typed mapping of
   the five operations, provenance preservation, no duplicated formula).
+
+---
+
+# Handover Report — P2.5: `ScientificWorkerBridge` Facade
+
+## 1. What Was Implemented
+
+A headless, UI-agnostic `ScientificWorkerBridge` in `@nuclear/medical-engine`,
+the only TypeScript consumer of the ADR-002 worker protocol. It performs no
+scientific computation; it maps worker results verbatim.
+
+- **Lifecycle** (`worker/supervisor.ts`, `worker/process.ts`): spawns and
+  supervises the local worker through `node:child_process` with a default
+  command of `python/worker/.venv/bin/python -m worker` (cwd `process.cwd()`,
+  overridable). `start()` is idempotent and single-flight; `stop()` ends stdin,
+  waits a named grace period, then SIGKILLs. No Electron/React/DOM dependency.
+  The six-point supervisor contract from `python/worker/stdio.py` is preserved:
+  stateless across records, safely restartable, stdout protocol-only, stderr
+  diagnostics-only.
+- **Handshake** (`worker/protocol.ts`): calls `nuclear.protocol.handshake` and
+  requires the envelope `protocolVersion === "1.0"`, that
+  `result.protocolVersions` includes `"1.0"`, and that all four scientific
+  operations (`inspect`, `geometry`, `compatibility`, `quantitation`) are
+  advertised. Any mismatch or missing operation throws a structured
+  `WorkerHandshakeError`, sets availability `failed`, and never falls back.
+- **Correlation** (`worker/process.ts`): monotonic `req-<n>` string ids map to
+  pending promises, so concurrent requests are supported. Late responses whose
+  pending entry was already removed (e.g. after a timeout) are ignored rather
+  than misrouted. stderr is surfaced only through an optional `onStderr`
+  consumer and is never parsed as protocol.
+- **Timeout**: a per-request timeout (default 30 s, per-call override) produces
+  a `WorkerTimeoutError` carrying the method and timeout; the pending entry and
+  its timer are cleared on every outcome (response, timeout, write failure,
+  exit, contract fault, stop).
+- **Restart/backoff** (`worker/supervisor.ts`): an unexpected exit rejects all
+  pending with `WorkerUnavailableError`, transitions availability to
+  `restarting`, and re-spawns/re-handshakes with bounded exponential backoff
+  (`maxAttempts`/`baseDelayMs`/`maxDelayMs`, defaults 3/250 ms/4000 ms);
+  exhaustion sets `failed`. `stop()` cancels a scheduled backoff immediately.
+  Availability is exposed via a getter and `onAvailabilityChange(listener)`.
+  Requests while not `ready` fail closed (never silently queued).
+- **Typed mapping preserving provenance** (`worker/mapping*.ts`): pure,
+  arithmetic-free translations.
+  - handshake -> worker version + operations + `ScientificWorkerMetadata`.
+  - inspect -> study/series inspection entries carrying modality, series UID,
+    instance count, explicit `classification`, `supported` and `reason`, plus
+    `toStudySeriesReference()` projecting onto the Phase 1 `StudySeriesReference`.
+  - geometry -> discriminated result whose `computed` branch contains
+    `assetGeometry: AssetGeometry` plus the preserved `geometricDigest`,
+    `sliceNormal` and `slicePositionsLpsMm`; `rejected`/`unavailable` are typed
+    results.
+  - quantitation -> `PetQuantitationResult` plus `PetAcquisitionMetadata` only
+    when all seven keys are present; the exact present-key map is always kept
+    as `petAcquisition` and no missing field is fabricated.
+  - compatibility -> bridge-local pairwise evidence (frame equality,
+    coplanarity, spacing/origin/extent, incompatibilities). The Phase 1
+    `GeometryVerificationSnapshot` is intentionally not used: it requires a
+    per-asset `assetId` and `SourceFingerprint`, which the pairwise worker
+    result does not carry, so mapping onto it would fabricate identity fields.
+- **Typed errors** (`worker/errors.ts`): `WorkerError` base with `kind`, plus
+  `WorkerProtocolError` (JSON-RPC code/message/diagnostic/data),
+  `WorkerTimeoutError`, `WorkerHandshakeError`, `WorkerUnavailableError` and
+  `WorkerContractError`. No `any`, no empty catch, no fallback.
+- **Test seam**: `options.spawnWorker(attempt)` returns a stdio-piped child so
+  tests can inject scripted/hanging/crashing processes; the default factory
+  spawns the configured command. The only dependency change is dev-only
+  `@types/node@^24` (type-only; no runtime dependency).
+
+## 2. Files Changed / Created
+
+Created under `packages/medical-engine/src/worker/`:
+- `types.ts` (215), `errors.ts` (94), `narrowing.ts` (88), `protocol.ts` (197),
+  `mapping.ts` (186), `mapping-quantitation.ts` (125),
+  `mapping-compatibility.ts` (77), `process.ts` (250), `supervisor.ts` (249),
+  `bridge.ts` (135), `index.ts` (17)
+
+Created tests / test-only fixtures:
+- `tests/medical/worker-lifecycle.test.ts`, `worker-mapping.test.ts`,
+  `worker-real.test.ts`, `worker-source-integrity.test.ts`
+- `tests/medical/fixtures/fake-worker.mjs` (scripted protocol double),
+  `tests/medical/fixtures/ts-resolve-hook.mjs` (Node module resolve hook)
+
+Modified:
+- `packages/medical-engine/src/index.ts` (barrel export)
+- `packages/medical-engine/package.json` (devDependencies `@types/node ^24`)
+- `package-lock.json` (generated: `@types/node@24.13.6` + `undici-types@7.18.2`,
+  both `dev`)
+- `docs/agentlog/phase-2.md` (this handover)
+
+Not modified: `python/**` (worker untouched), `packages/shared-types/**`,
+`tests/contracts/**`, `tests/fixtures/**` (including `manifest.json`), all
+`apps/**`, root `package.json` scripts, `CHANGELOG.md`.
+
+**Justified deviation from the brief's file list:** the single-file
+`bridge.ts`/`mapping.ts` naturally exceeded 250 lines, so the slice was split
+by responsibility (`supervisor`/`process`, `narrowing`, two extra mapping
+modules) per Rule 02's Facade/decomposition directive. The public API is
+unchanged. Field naming differs cosmetically from the brief: the bridge exposes
+`petAcquisition` (present-key) and `petAcquisitionMetadata` (complete contract)
+instead of `acquisitionEvidence`/`acquisition`.
+
+## 3. Architectural Assumptions Made
+
+- ADR-002 is the transport authority; the bridge owns lifecycle, correlation,
+  timeout and version compatibility, while the worker owns every DICOM,
+  geometry and SUVbw computation. TypeScript maps envelopes and copies numbers
+  verbatim; the no-`Math` guard plus `Object.is` fixture-identity tests enforce
+  this.
+- A malformed or uncorrelatable stdout record is a protocol desynchronization:
+  all pending requests fail closed (`WorkerContractError`) and the process is
+  restarted. There is no attempt to resynchronize a corrupt stream.
+- `WorkerHandshakeError`/`WorkerContractError` are deterministic and
+  non-retryable, so they set `failed` immediately; spawn/exit/timeout failures
+  are transient and back off.
+- The committed DICOM fixtures are payloads without top-level
+  `workerMetadata`; the mapping tests inject a synthetic provenance record,
+  while the real-worker test exercises genuine worker provenance
+  (`workerVersion 0.1.1`). No manifest fixture was added or changed.
+- The compatibility contract is bridge-local because no Phase 1 pairwise
+  compatibility contract exists and `GeometryVerificationSnapshot` cannot be
+  populated without fabricated identity fields (documented in
+  `mapping-compatibility.ts`).
+- A test-only Node resolve hook is required because Node v24 type stripping
+  does not rewrite `.js` specifiers to `.ts`; the earlier `tests/contracts`
+  suites were unaffected only because all their `.js` imports were `import type`
+  and erased. The hook falls back only after the real `.js` resolution fails
+  and rethrows the original error when neither target exists.
+
+## 4. Tests Added & Executed
+
+- `npm test` -> **53 passed** (14 suites), up from 35 (10 suites) at v0.1.1.
+  The 18 P2.5 tests cover: 6-way concurrent correlation against the scripted
+  double (reversed delays, no cross-talk, pending drains); 4-way concurrent
+  mixed-outcome correlation against the **real spawned worker** (one fulfilled
+  handshake, `-32601`, `-32602`, `-32010` with distinct diagnostics, pending
+  drains); timeout -> `WorkerTimeoutError{method,timeoutMs}` with the bridge
+  still usable; kill-mid-flight -> `WorkerUnavailableError`, bounded backoff
+  re-handshake to `ready`, subsequent request succeeds; exhaustion -> `failed`
+  after exactly `maxAttempts` spawns; three handshake mismatch modes -> typed
+  `WorkerHandshakeError` with asserted reasons; malformed stdout ->
+  `WorkerContractError` and recovery; committed-fixture mapping for inspect
+  (primary/unsupported/missing-tag), geometry (computed/rejected), quantitation
+  (computed/invalid/unavailable, `Object.is` identity of `suvFactor`/
+  `elapsedSeconds`/`decayedDoseBq`, exact 7-key and 6-key PET key sets) and
+  compatibility (`frame-of-reference-mismatch`); and the engine source
+  integrity scan (no `Math.`, no enum/namespace).
+- `npm run typecheck` -> clean; `tsc -b --force` -> clean;
+  `npm run build` -> clean.
+- `npm run test:python` -> **166 passed** (unchanged); `npm run typecheck:python`
+  -> strict mypy clean over 43 source files. The Python worker was not touched.
+- File-length gate: longest new file `packages/medical-engine/src/worker/process.ts`
+  = 250 lines; every slice file <= 250.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- No new ADR was required: ADR-002 already governs the transport, and the
+  worker supervisor contract is documented in `python/worker/stdio.py` and now
+  enforced by the bridge.
+- The P2.5 status header entry and this eight-point report satisfy the AgentLog
+  Gate for the slice. `CHANGELOG.md` was deliberately not touched; promotion
+  remains a release-time `/promote-changelog 2` action (ADR-001).
+- The reviewer/QA evidence for this slice is recorded below.
+
+## 6. Project Model Impact
+
+- No `@nuclear/shared-types` contract or `.ncp` schema changed. The bridge
+  reuses `AssetGeometry`, `DirectionCosines` (via a validated 6-tuple),
+  `BoundingBox3D`, `PetAcquisitionMetadata`, `PetQuantitationResult`,
+  `ScientificWorkerMetadata`, `StudySeriesReference`, `SourceLocator`,
+  `SeriesInstanceUID`, `StudyInstanceUID`, `FrameOfReferenceUID` and `Modality`.
+- The bridge is now the sanctioned path from Python scientific results to
+  NuClear contracts for Phase 3 rendering/residency work; `apps/desktop` will
+  own process provisioning while the bridge owns the supervised lifecycle.
+
+## 7. Known Limitations & Technical Debt
+
+- **Non-blocking (reviewer residual):** no runtime negative test exercises
+  `requireModality`'s `WorkerContractError` branch; every committed inspection
+  fixture uses a valid modality. The worker normalizes modality to the
+  shared-types vocabulary upstream, so the branch is defensive. A curated
+  negative fixture would close the gap.
+- **Non-blocking (reviewer LOW):** an uncorrelatable but well-formed response
+  (e.g. a numeric id the bridge never issues) is currently ignored rather than
+  faulted; late responses after timeout are correctly discarded, so no
+  misrouting exists.
+- **Non-blocking (reviewer LOW):** the stdout line buffer is unbounded; a
+  runaway worker could grow host memory. Hardening only; ADR-002 trusts the
+  local worker.
+- **Non-blocking (reviewer LOW):** a concurrent second `stop()` returns before
+  the first teardown completes (final availability is still truthful `stopped`,
+  and no restart-after-stop path exists).
+- **Non-blocking (reviewer LOW):** public `request<TResult>` performs an
+  unchecked cast; all internal callers use `request<unknown>` plus a validating
+  mapper.
+- `DEFAULT_WORKER_COMMAND` depends on `process.cwd()` matching the repository
+  root; consumers must pass an explicit `command`/`cwd` (the tests do).
+- `tsc -b` type-checks `packages/**` only; `tests/**` runs through Node type
+  stripping, so test-file type errors surface at runtime, not at typecheck
+  (pre-existing repository property).
+
+## 8. Exact Next Recommended Task
+
+- **P2.6** (owner: `nuclear-reviewer` + `nuclear-qa`): phase-level independent
+  review and verification of the consolidated Phase 2 evidence, then the final
+  phase handover. Do not start Phase 3 (Cornerstone/WebGL/residency) until
+  P2.6 is recorded and accepted.
+
+---
+
+## Gate Review & QA Evidence (P2.5)
+
+- `nuclear-reviewer` first pass: **CONCERNS** — (1) the runtime modality
+  vocabulary list in `mapping.ts` could drift from the shared-types `Modality`
+  union without a compile-time signal; (2) the P2.5 AgentLog handover was not
+  yet appended (resolved by this report); (3) `opencode.json` is an unrelated
+  harness artifact that must be excluded from staging. Three further LOW
+  hardening notes (uncorrelatable response, unbounded buffer, concurrent stop,
+  public `request` cast) were recorded as non-blocking.
+- `nuclear-reviewer` focused re-review after the fix: **PASS** — the vocabulary
+  is now `Readonly<Record<Modality, true>>`, empirically proven to fail
+  `tsc` when a `Modality` member is added or removed, with `hasOwnProperty`
+  runtime semantics and no `any`/non-erasable syntax; the three handshake
+  mismatch tests now assert the exact `WorkerHandshakeError.reason` fragments
+  produced by `mapWorkerHandshake`, non-tautologically.
+- `nuclear-qa` audit: **11 PASS / 1 FAIL / 1 NOT YET APPLICABLE** — PASS on
+  typecheck, 53/53 tests, forced build, 166/166 Python tests, strict mypy (43
+  files), file length, fixture integrity (`python/**`, `tests/contracts/**`,
+  `tests/fixtures/**` untouched; manifest unchanged), dependency boundary
+  (dev-only `@types/node`, runtime deps unchanged), independent reproduction of
+  rejected/unavailable/computed dispositions plus real-worker `-32010` and
+  4-way mixed-outcome correlation, and diff scope. FAIL on the AgentLog gate at
+  audit time (no P2.5 handover); satisfied by this report. `CHANGELOG.md`
+  promotion is NOT YET APPLICABLE for this slice.
+- Orchestrator post-review fix: `MODALITY_SET: Readonly<Record<Modality, true>>`
+  and strengthened handshake-reason assertions; re-verified `npm run typecheck`
+  clean, `npm test` 53/53, `tsc -b --force` clean, Python gates unchanged.
+- Deliberately not staged: the pre-existing unrelated `opencode.json` harness
+  change (`"plugin": ["opencode-snip@latest"]`).

@@ -1,2 +1,2 @@
 // @nuclear/medical-engine — Headless medical rendering and residency manager
-export {};
+export * from './worker/index.js';
