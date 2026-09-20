@@ -1,5 +1,5 @@
 /**
- * NuClear — Synthetic Curated Clinical Fixtures for Contract Verification
+ * NuClear — Synthetic Contract Fixtures for Contract Verification
  *
  * Provides synthetic clinically accurate test fixtures representing a 18F-FDG PET/CT study:
  * - Diagnostic CT axial volume (512x512, 2.5mm slice thickness)
@@ -32,7 +32,6 @@ export const MOCK_FOR_UID = '1.2.840.10008.1.3.20260920.401' as FrameOfReference
 export const MOCK_FOLLOWUP_FOR_UID = '1.2.840.10008.1.3.20261020.402' as FrameOfReferenceUID;
 
 export const mockPatient: PatientReference = {
-  patientId: 'SYNTH-ONCO-042',
   patientSex: 'M',
   patientWeightKg: 70.0,
 };
@@ -40,25 +39,18 @@ export const mockPatient: PatientReference = {
 export const mockStudyReference: StudyReference = {
   id: 'study-onco-042' as StudyId,
   studyInstanceUID: MOCK_STUDY_UID,
-  studyId: 'ST-042',
-  accessionNumber: 'ACC-2026-0920',
-  studyDate: '20260920',
-  studyTime: '093000',
-  studyDescription: 'PET/CT WHOLE BODY ONCOLOGY',
   patient: mockPatient,
   modalities: ['CT', 'PT'],
   series: [
     {
       seriesInstanceUID: MOCK_CT_SERIES_UID,
       seriesNumber: 2,
-      seriesDescription: 'CT Thorax-Abdomen 2.5mm',
       modality: 'CT',
       numberOfInstances: 200,
     },
     {
       seriesInstanceUID: MOCK_PET_SERIES_UID,
       seriesNumber: 3,
-      seriesDescription: 'PET Whole Body 3D AC',
       modality: 'PT',
       numberOfInstances: 200,
     },
@@ -78,6 +70,22 @@ export const mockCtGeometry: AssetGeometry = {
   bounds: {
     min: [-250.0, -250.0, -501.25],
     max: [250.0, 250.0, -1.25],
+  },
+};
+
+/** Oblique grid fixture: row/column axes are orthogonal but not LPS-aligned. */
+export const mockObliqueGeometry: AssetGeometry = {
+  frameOfReferenceUID: MOCK_FOR_UID,
+  dimensions: [2, 3, 1],
+  spacing: [2.0, 3.0, 4.0],
+  origin: [10.0, 20.0, 30.0],
+  direction: [
+    Math.SQRT1_2, Math.SQRT1_2, 0.0,
+    0.0, 0.0, 1.0,
+  ],
+  bounds: {
+    min: [7.878679656440357, 17.878679656440358, 28.5],
+    max: [13.535533905932738, 23.535533905932738, 37.5],
   },
 };
 
@@ -167,7 +175,16 @@ export const mockPetAsset: ImagingAsset = {
       radionuclideTotalDoseBq: 370000000,
       radiopharmaceuticalStartTime: '090000',
       seriesTime: '100000',
+    },
+    petQuantitation: {
+      method: 'suv-bw',
+      status: 'computed',
       suvFactor: 0.0002764,
+      workerMetadata: {
+        workerVersion: '0.1.0',
+        operation: 'suv-scaling',
+        timestamp: '2026-09-20T10:00:00Z',
+      },
     },
   },
   valueSemantics: {

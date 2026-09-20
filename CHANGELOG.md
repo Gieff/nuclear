@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Phase 1.3 (Figure Contracts)**:
+  - Added serializable Composer view instances, medical bindings, panel framing/layout/decoration and Figure Sheet contracts with explicit millimetre spaces.
+  - Added renderable discriminated annotations (patient LPS, panel-content and sheet anchors; lines/arrows, ROI, text, measurements and scalebars); screen pixels cannot be persisted as clinical anchors.
+  - Added live high-resolution RenderTarget and publication output contracts for flattened TIFF/PNG and hybrid PDF with native vector editorial layers; offline cached-preview output is explicitly non-resampled and never presented as live medical rendering.
+  - Added branded preview identities, panel membership integrity, PreparedView/provenance checks and explicit live-medical versus offline-cached-preview export modes.
+  - Added positive/negative headless fixtures and validators for override isolation, coordinate-space separation and fail-closed export availability.
+- **Phase 1.3 (View Contracts)**:
+  - Added serializable `MedicalViewState` composition with explicit Patient LPS mm → View Plane → Viewport pixel transforms.
+  - Added `ViewSlot`, `ViewGroup`, `PreparedView`, and stable `ViewportSurface` contracts independent of WebGL contexts.
+  - Added distinct co-referenced intra-study and relative/transformed inter-study links, granular locks, and local overrides.
+  - Added headless positive/negative fixtures and validators for coordinate chains, link semantics, surface identity, and override isolation.
+  - Hardened structural validation for affine matrices, direction cosines, state constraints, layer composition, link evidence, locks, slots, groups, prepared views, and preview references.
+  - Added distinct `ComposerViewInstanceId` and explicit registered-transform evidence for transformed inter-study links.
+- **Phase 1.2 (Clinical Contract Geometry, Privacy & Quantitation Hardening)**:
+  - Defined `AssetGeometry.bounds` as the LPS axis-aligned envelope of all eight oriented outer voxel corners, including a validator and oblique-grid regression fixture.
+  - Restricted persistible `.ncp` study contracts to non-identifying metadata; removed patient/source identifiers and clinical descriptions from `StudyReference` and series summaries.
+  - Removed computed SUVbw from raw `PetAcquisitionMetadata`; added `PetQuantitationResult` with mandatory Python scientific-worker provenance and structural validation.
 - **Phase 1.1 (Clinical Data Contracts Correction & Hardening)**:
   - Purged runtime SUVbw formula computation from TypeScript validators, restricting Node to pure structural contracts and reserving numerical quantitation for the Python worker (P3).
   - Constrained `SourceLocator` strictly to v1 scope (`local-folder`, `local-file-list`, `archive-entry`), removing premature `dicomweb` and cache locators.

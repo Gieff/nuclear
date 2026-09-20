@@ -15,10 +15,10 @@ export type Vector3D = readonly [number, number, number];
 
 /** 
  * Axis-aligned bounding box in LPS physical patient coordinates (mm).
- * Represents the physical spatial extent of the volume (`voxel-extent`, covering outer half-voxel borders):
- * `min = origin - 0.5 * spacing`
- * `max = origin + (dimensions - 0.5) * spacing`
- * where `origin` is DICOM `ImagePositionPatient` (the center of voxel [0,0,0]).
+ * Represents the axis-aligned physical extent of the complete volume in LPS
+ * (`voxel-extent`, covering outer half-voxel borders). The box is an AABB of
+ * the eight oriented outer corners; it is not obtained by subtracting the
+ * spacing components directly when the image is oblique.
  */
 export interface BoundingBox3D {
   readonly min: Point3D;
@@ -86,6 +86,16 @@ export interface AssetGeometry {
   /** Row and column direction cosines in LPS space (ImageOrientationPatient) */
   readonly direction: DirectionCosines;
 
-  /** Physical bounding box in LPS space (mm) spanning the complete volume covering outer half-voxel borders */
+  /**
+   * Ingestion normalizes slice ordering so increasing slice indices follow the
+   * right-handed normal `row × column`. Non-regular or non-normalized stacks
+   * must be represented by a future geometry contract rather than this grid.
+   */
+
+  /**
+   * Axis-aligned bounding box in LPS space (mm), enclosing the eight outer
+   * corners. `origin` is the centre of voxel [0,0,0]; the corner coefficients
+   * are -0.5 and dimension-0.5 along each oriented grid axis.
+   */
   readonly bounds: BoundingBox3D;
 }

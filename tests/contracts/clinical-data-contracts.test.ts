@@ -20,6 +20,7 @@ import {
   MOCK_STUDY_UID,
   mockCtAsset,
   mockIdentityTransform,
+  mockObliqueGeometry,
   mockPetAsset,
   mockRigidFollowupTransform,
   mockStudyReference,
@@ -27,6 +28,7 @@ import {
 } from '../fixtures/clinical-contracts.fixture.ts';
 import {
   isAssetGeometry,
+  calculatePhysicalBounds,
   isDirectionCosinesValid,
   isImagingAsset,
   isHomogeneousAffineMatrix4x4,
@@ -36,6 +38,7 @@ import {
   isStudyReference,
   isViewProvenance,
   isPetAcquisitionMetadata,
+  isPetQuantitationResult,
 } from './validators.ts';
 
 describe('NuClear Phase 1 — Clinical Data Contracts', () => {
@@ -74,6 +77,23 @@ describe('NuClear Phase 1 — Clinical Data Contracts', () => {
       assert.equal(mockPetAsset.valueSemantics.unit, 'g/mL');
     });
 
+    it('should calculate and validate an oblique LPS AABB from all eight outer corners', () => {
+      const expected = calculatePhysicalBounds(
+        mockObliqueGeometry.dimensions,
+        mockObliqueGeometry.spacing,
+        mockObliqueGeometry.origin,
+        mockObliqueGeometry.direction,
+      );
+      assert.deepEqual(expected, mockObliqueGeometry.bounds);
+      assert.ok(isAssetGeometry(mockObliqueGeometry));
+
+      const inconsistent = {
+        ...mockObliqueGeometry,
+        bounds: { ...mockObliqueGeometry.bounds, min: [0, 0, 0] as const },
+      };
+      assert.equal(isAssetGeometry(inconsistent), false);
+    });
+
     it('should verify that bounding boxes strictly match the declared outer half-voxel extent formula', () => {
       for (const asset of [mockCtAsset, mockPetAsset]) {
         const { origin, spacing, dimensions, bounds } = asset.geometry;
@@ -106,11 +126,35 @@ describe('NuClear Phase 1 — Clinical Data Contracts', () => {
       assert.equal(mockPetAsset.metadata.pet.units, 'BQML');
       assert.ok(mockPetAsset.metadata.pet.radionuclideHalfLifeSeconds > 0);
       assert.ok(mockPetAsset.metadata.pet.radionuclideTotalDoseBq > 0);
+      assert.equal('suvFactor' in mockPetAsset.metadata.pet, false);
+      assert.ok(mockPetAsset.metadata.petQuantitation);
+      assert.ok(isPetQuantitationResult(mockPetAsset.metadata.petQuantitation));
     });
 
     it('should reject invalid PET metadata', () => {
       const badPet = { ...mockPetAsset.metadata.pet, units: 123 };
       assert.equal(isPetAcquisitionMetadata(badPet), false);
+      assert.equal(isPetQuantitationResult({
+        method: 'suv-bw',
+        status: 'computed',
+        suvFactor: -1,
+        workerMetadata: {},
+      }), false);
+      assert.equal(isPetQuantitationResult({
+        method: 'suv-bw',
+        status: 'computed',
+        workerMetadata: {
+          workerVersion: '0.1.0', operation: 'suv-scaling', timestamp: '2026-09-20T10:00:00Z',
+        },
+      }), false);
+      assert.equal(isPetQuantitationResult({
+        method: 'suv-bw',
+        status: 'invalid',
+        suvFactor: 0.1,
+        workerMetadata: {
+          workerVersion: '0.1.0', operation: 'suv-scaling', timestamp: '2026-09-20T10:00:00Z',
+        },
+      }), false);
     });
   });
 
@@ -141,6 +185,10 @@ describe('NuClear Phase 1 — Clinical Data Contracts', () => {
     it('should validate SourceFingerprint', () => {
       assert.ok(isSourceFingerprint(mockCtAsset.sourceFingerprint));
       assert.equal(isSourceFingerprint({ studyInstanceUID: '1.2.3' }), false);
+      assert.equal(isSourceFingerprint({ ...mockCtAsset.sourceFingerprint, sopInstanceUIDsHash: '' }), false);
+      assert.equal(isSourceFingerprint({ ...mockCtAsset.sourceFingerprint, geometricDigest: '' }), false);
+      assert.equal(isSourceFingerprint({ ...mockCtAsset.sourceFingerprint, totalBytes: -1 }), false);
+      assert.equal(isSourceFingerprint({ ...mockCtAsset.sourceFingerprint, totalBytes: 1.5 }), false);
     });
   });
 
@@ -197,6 +245,13 @@ describe('NuClear Phase 1 — Clinical Data Contracts', () => {
       ] as const;
       assert.equal(isHomogeneousAffineMatrix4x4(badMatrix as unknown as [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]), false);
     });
+
+    it('should reject malformed structural transform metadata', () => {
+      assert.equal(isSpatialTransform({ ...mockRigidFollowupTransform, transformType: 'unknown' }), false);
+      assert.equal(isSpatialTransform({ ...mockRigidFollowupTransform, matrix4x4: [...mockRigidFollowupTransform.matrix4x4.slice(0, 15), Number.NaN] }), false);
+      assert.equal(isSpatialTransform({ ...mockRigidFollowupTransform, validity: { ...mockRigidFollowupTransform.validity, errorMarginMm: -1 } }), false);
+      assert.equal(isSpatialTransform({ ...mockRigidFollowupTransform, provenance: { ...mockRigidFollowupTransform.provenance, method: 'invented' } }), false);
+    });
   });
 
   describe('ViewProvenance & Deterministic Reproducibility', () => {
@@ -205,6 +260,12 @@ describe('NuClear Phase 1 — Clinical Data Contracts', () => {
       assert.equal(mockViewProvenance.sourceAssetIds.length, 2);
       assert.equal(mockViewProvenance.sourceFingerprints.length, 2);
       assert.ok(mockViewProvenance.renderStateHash?.startsWith('sha256:'));
+    });
+
+    it('should reject empty or malformed provenance collections', () => {
+      assert.equal(isViewProvenance({ ...mockViewProvenance, sourceAssetIds: [] }), false);
+      assert.equal(isViewProvenance({ ...mockViewProvenance, sourceFingerprints: [{}] }), false);
+      assert.equal(isViewProvenance({ ...mockViewProvenance, appliedTransforms: [] }), false);
     });
   });
 });

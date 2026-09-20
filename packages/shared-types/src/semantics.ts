@@ -27,14 +27,13 @@ export type AssetKind =
 export type PatientSex = 'M' | 'F' | 'O' | 'U';
 
 /**
- * Anonymized or clinical patient demographic reference.
- * STRICT PRIVACY REQUIREMENT: Direct PHI fields (e.g. patientName, patientBirthDate)
- * MUST NOT be part of this persisted clinical reference in .ncp.
+ * Minimal non-identifying demographic/quantitative metadata allowed in a
+ * persisted `.ncp` project. Direct identifiers and source-side patient IDs
+ * are intentionally not represented here. Weight is retained because it is a
+ * required input for PET SUVbw quantitation; sex is retained only as the
+ * DICOM demographic category, never as an identifier.
  */
 export interface PatientReference {
-  /** Anonymized or pseudo patient identifier */
-  readonly patientId?: string;
-
   /** Patient administrative sex */
   readonly patientSex?: PatientSex;
 

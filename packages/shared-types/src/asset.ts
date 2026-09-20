@@ -14,11 +14,12 @@ import type {
   StudyInstanceUID,
 } from './identifiers.js';
 import type { AssetKind, Modality, ValueSemantics } from './semantics.js';
+import type { ScientificWorkerMetadata } from './provenance.js';
 import type { SourceFingerprint, SourceLocator } from './source.js';
 
 /**
- * Quantitative radiopharmaceutical and decay calibration parameters for PET/SPECT.
- * Defined according to DICOM PS 3.3 C.8.9 and NuClear DICOM skill.
+ * Raw quantitative radiopharmaceutical and decay calibration parameters read
+ * from DICOM. This contract deliberately contains no computed SUV value.
  */
 export interface PetAcquisitionMetadata {
   /** DICOM Units (0054,1001), typically 'BQML', 'CNTS', or 'GML' */
@@ -39,11 +40,21 @@ export interface PetAcquisitionMetadata {
   /** Series acquisition start time HHMMSS (0008,0031) */
   readonly seriesTime: string;
 
-  /**
-   * Computed SUV body-weight scaling factor (g/Bq):
-   * suvFactor = 1.0 / (DecayedDose_Bq / PatientWeight_g)
-   */
+}
+
+/**
+ * Result of SUVbw quantitation produced by the Python scientific worker.
+ * The worker provenance is mandatory so a computed value cannot be confused
+ * with raw DICOM acquisition metadata.
+ */
+export interface PetQuantitationResult {
+  readonly method: 'suv-bw';
+  readonly status: 'computed' | 'invalid' | 'unavailable';
+  /** Computed body-weight scaling factor (g/Bq), present only when computed. */
   readonly suvFactor?: number;
+  /** Human-readable diagnostic for invalid or unavailable results. */
+  readonly diagnostic?: string;
+  readonly workerMetadata: ScientificWorkerMetadata;
 }
 
 /**
@@ -76,6 +87,9 @@ export interface AssetMetadata {
 
   /** PET-specific radionuclide and decay parameters */
   readonly pet?: PetAcquisitionMetadata;
+
+  /** Optional Python-worker result derived from the raw PET metadata. */
+  readonly petQuantitation?: PetQuantitationResult;
 }
 
 /**

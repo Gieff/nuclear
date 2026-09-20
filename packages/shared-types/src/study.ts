@@ -10,7 +10,8 @@ import type { Modality, PatientReference } from './semantics.js';
 import type { SourceLocator } from './source.js';
 
 /**
- * Summary reference for a series contained within a clinical study.
+ * Persistable summary reference for a series contained within a study.
+ * Direct clinical descriptions and patient/source identifiers are excluded.
  */
 export interface StudySeriesReference {
   /** DICOM Series Instance UID (0020,000E) */
@@ -18,9 +19,6 @@ export interface StudySeriesReference {
 
   /** Clinical series number (0020,0011) */
   readonly seriesNumber?: number;
-
-  /** Clinical series description (0008,103E) */
-  readonly seriesDescription?: string;
 
   /** Imaging modality for this series */
   readonly modality: Modality;
@@ -41,22 +39,7 @@ export interface StudyReference {
   /** DICOM Study Instance UID (0020,000D) */
   readonly studyInstanceUID: StudyInstanceUID;
 
-  /** Clinical Study ID tag (0020,0010) */
-  readonly studyId?: string;
-
-  /** Clinical Accession Number (0008,0050) */
-  readonly accessionNumber?: string;
-
-  /** Examination date in DICOM format YYYYMMDD (0008,0020) */
-  readonly studyDate?: string;
-
-  /** Examination time in DICOM format HHMMSS (0008,0030) */
-  readonly studyTime?: string;
-
-  /** Clinical study description (0008,1030) */
-  readonly studyDescription?: string;
-
-  /** Patient demographics and anthropometric parameters */
+  /** Minimal quantitative/demographic metadata; no direct identifiers. */
   readonly patient: PatientReference;
 
   /** List of modalities present within this study */

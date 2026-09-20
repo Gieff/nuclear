@@ -13,6 +13,15 @@ export type {
   StudyId,
   AssetId,
   ViewId,
+  PreparedViewId,
+  ComposerViewInstanceId,
+  FigureSheetId,
+  FigurePanelId,
+  FigureAnnotationId,
+  PreviewId,
+  ViewGroupId,
+  ViewSlotId,
+  ViewportId,
   SurfaceId,
   RowId,
   CellId,
@@ -72,6 +81,7 @@ export type {
 // Imaging Asset & Quantitative Metadata
 export type {
   PetAcquisitionMetadata,
+  PetQuantitationResult,
   AssetMetadata,
   ImagingAsset,
 } from './asset.js';
@@ -91,3 +101,75 @@ export type {
   ScientificWorkerMetadata,
   ViewProvenance,
 } from './provenance.js';
+
+// View state and workspace
+export type {
+  BindingRole,
+  DataBinding,
+  SpatialState,
+  FitMode,
+  CameraState,
+  PresentationState,
+  ProjectionMode,
+  PrimitiveValue,
+  ProjectionState,
+  CompositionMode,
+  CompositionState,
+  CoordinateTransformSet,
+  MedicalViewState,
+} from './view-state.js';
+export type {
+  ViewSlotRole,
+  ViewSlotStatus,
+  ViewSlot,
+  ViewGroup,
+  ViewportSurfaceLifecycle,
+  ViewportSurface,
+} from './view-workspace.js';
+export type {
+  LinkableState,
+  IntraStudyLink,
+  InterStudyLinkMode,
+  InterStudyLink,
+  ViewLink,
+  LockableState,
+  StateLock,
+  ViewStateOverride,
+  LocalViewOverride,
+} from './view-links.js';
+export type { CachedPreviewReference, PreparedView } from './prepared-view.js';
+
+// Figure Composer and publication contracts
+export type {
+  PanelContentPointMm,
+  PanelContentSizeMm,
+  SheetPointMm,
+  SheetSizeMm,
+  NormalizedViewportCrop,
+  PanelFramingState,
+  PanelLayoutState,
+  PanelDecorationState,
+  MedicalViewBinding,
+  ComposerViewInstance,
+  PatientAnnotationAnchor,
+  PanelContentAnnotationAnchor,
+  SheetAnnotationAnchor,
+  AnnotationAnchor,
+  AnnotationCoordinateSpace,
+  AnnotationPoint,
+  FigureAnnotationBase,
+  FigureLineAnnotation,
+  FigureRoiAnnotation,
+  FigureTextAnnotation,
+  FigureScaleBarAnnotation,
+  FigureMeasurementAnnotation,
+  FigureAnnotation,
+  ComposerPanel,
+  FigureSheet,
+  TemporaryRenderTargetSpec,
+  CachedPreviewRenderTargetSpec,
+  PublicationRenderTargetSpec,
+  PublicationOutputSpec,
+  PublicationPanelInput,
+  PublicationRenderRequest,
+} from './figure.js';
