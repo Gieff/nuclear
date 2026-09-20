@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "strict": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@nuclear/shared-types": ["packages/shared-types/src/index.ts"],
+      "@nuclear/rendering-presets": ["packages/rendering-presets/src/index.ts"],
+      "@nuclear/medical-engine": ["packages/medical-engine/src/index.ts"],
+      "@nuclear/view-engine": ["packages/view-engine/src/index.ts"],
+      "@nuclear/figure-engine": ["packages/figure-engine/src/index.ts"],
+      "@nuclear/project-model": ["packages/project-model/src/index.ts"],
+      "@nuclear/ui": ["packages/ui/src/index.ts"]
+    }
+  }
+}

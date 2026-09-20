@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared-types" },
+    { "path": "./packages/rendering-presets" },
+    { "path": "./packages/medical-engine" },
+    { "path": "./packages/view-engine" },
+    { "path": "./packages/figure-engine" },
+    { "path": "./packages/project-model" },
+    { "path": "./packages/ui" }
+  ]
+}
