@@ -20,7 +20,7 @@ from typing import Any, cast
 
 import pytest
 
-from worker.dispatch import Dispatcher
+from worker.dispatch import build_dispatcher
 from worker.protocol import INTERNAL_ERROR, PROTOCOL_VERSION
 from worker.stdio import serve
 
@@ -193,7 +193,7 @@ def _unserializable_handler(params: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def test_non_serializable_result_is_answered_fail_closed() -> None:
-    dispatcher = Dispatcher()
+    dispatcher = build_dispatcher()
     dispatcher.register("nuclear.test.unserializable", _unserializable_handler)
     request = json.dumps(
         {

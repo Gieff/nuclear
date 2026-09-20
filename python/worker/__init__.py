@@ -13,7 +13,7 @@ the TypeScript bridge owns restart, backoff, timeout and correlation.
 
 from __future__ import annotations
 
-from .dispatch import Dispatcher
+from .dispatch import Dispatcher, build_dispatcher
 from .envelope import process_record
 from .protocol import (
     METHOD_PREFIX,
@@ -31,5 +31,6 @@ __all__ = [
     "Dispatcher",
     "ProtocolError",
     "__version__",
+    "build_dispatcher",
     "process_record",
 ]

@@ -1,9 +1,11 @@
-"""Method registry and dispatch for the NuClear scientific worker.
+"""Method registry and production composition for the NuClear worker.
 
-The registry is intentionally minimal for P2.1: only
-``nuclear.protocol.handshake`` is registered. Later slices (P2.2-P2.4)
-register DICOM inspection, geometry and quantitation handlers on the same
-:class:`Dispatcher` without changing the envelope or stdio contracts.
+:class:`Dispatcher` is a bare, stateless method registry. The single
+production composition point is :func:`build_dispatcher`, which registers
+every operation the worker actually implements. ``python -m worker`` and tests
+that reproduce the ratified protocol fixtures both use it, so the handshake
+operation list and the unknown-method ``supportedMethods`` list can never
+drift from the handler set.
 
 Handlers receive the request ``params`` mapping and return a JSON-serializable
 result dictionary. A handler that detects a structured failure must raise
@@ -18,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .protocol import (
+    DICOM_INSPECT_METHOD,
     ERROR_MESSAGES,
     HANDSHAKE_METHOD,
     METHOD_NOT_FOUND,
@@ -38,12 +41,14 @@ def _default_clock() -> datetime:
 class Dispatcher:
     """Routes validated ``nuclear.*`` methods to registered handlers.
 
-    The instance is stateless across records: it holds only the method registry
-    and an injectable clock, so a restarted worker needs no cleanup.
+    The instance is a bare registry. Production code must obtain its dispatcher
+    from :func:`build_dispatcher`; the instance is stateless across records
+    (only the method registry and an injectable clock), so a restarted worker
+    needs no cleanup.
     """
 
     def __init__(self, now: Clock | None = None) -> None:
-        """Create a dispatcher and register the handshake operation.
+        """Create an empty dispatcher.
 
         Args:
             now: Clock returning the current instant. Tests inject a frozen
@@ -51,11 +56,15 @@ class Dispatcher:
         """
         self._now: Clock = now if now is not None else _default_clock
         self._handlers: dict[str, Handler] = {}
-        self.register(HANDSHAKE_METHOD, self._handshake)
 
     def register(self, method: str, handler: Handler) -> None:
         """Register ``method`` to ``handler``, replacing any existing entry."""
         self._handlers[method] = handler
+
+    @property
+    def clock(self) -> Clock:
+        """The injectable clock used for provenance timestamps."""
+        return self._now
 
     @property
     def supported_methods(self) -> list[str]:
@@ -102,3 +111,31 @@ class Dispatcher:
                 "parameters": {},
             },
         }
+
+
+def build_dispatcher(now: Clock | None = None) -> Dispatcher:
+    """Compose the production worker by registering every operation.
+
+    This is the single composition point shared by ``python -m worker`` and by
+    tests that must reproduce the ratified protocol fixtures exactly. The
+    handshake's ``operations`` list and the unknown-method error's
+    ``supportedMethods`` list are derived from this registration, so they stay
+    consistent automatically.
+
+    Args:
+        now: Optional clock injection for deterministic provenance timestamps.
+
+    Returns:
+        A dispatcher registering ``nuclear.protocol.handshake`` and
+        ``nuclear.dicom.inspect``.
+    """
+    from dicom.scanner import inspect_source
+
+    dispatcher = Dispatcher(now=now)
+
+    def inspect(params: Mapping[str, Any]) -> dict[str, Any]:
+        return inspect_source(params, clock=dispatcher.clock)
+
+    dispatcher.register(HANDSHAKE_METHOD, dispatcher._handshake)
+    dispatcher.register(DICOM_INSPECT_METHOD, inspect)
+    return dispatcher

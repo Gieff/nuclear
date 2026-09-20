@@ -4,7 +4,7 @@
   "protocolVersion": "1.0",
   "result": {
     "protocolVersions": ["1.0"],
-    "operations": ["nuclear.protocol.handshake"],
+    "operations": ["nuclear.dicom.inspect", "nuclear.protocol.handshake"],
     "workerMetadata": {
       "workerVersion": "0.1.0",
       "operation": "nuclear.protocol.handshake",

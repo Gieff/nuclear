@@ -55,7 +55,9 @@ def test_established_fixtures_exist_on_disk(
     established = [f for f in _fixtures(manifest) if f["status"] == "established"]
     assert established
     for fixture in established:
-        path = fixture.get("path")
+        # Synthetic fixtures are generated at test time; their committed artifact
+        # is the expected output, not a stored input file.
+        path = fixture.get("path") or fixture.get("expectedPath")
         assert isinstance(path, str) and path, fixture["id"]
         assert (repo_root / path).is_file(), f"{fixture['id']} missing {path}"
 
@@ -80,12 +82,20 @@ def test_established_synthetic_dicom_requires_expected_output(
 def test_planned_slices_cover_dicom_geometry_and_quantitation(
     manifest: dict[str, Any]
 ) -> None:
+    established_slices = {
+        fixture["ownerSlice"]
+        for fixture in _fixtures(manifest)
+        if fixture["status"] == "established"
+    }
     planned_slices = {
         fixture["ownerSlice"]
         for fixture in _fixtures(manifest)
         if fixture["status"] == "planned"
     }
-    assert {"P2.2", "P2.3", "P2.4"} <= planned_slices
+    # P2.2 classification is established; geometry (P2.3) and quantitation
+    # (P2.4) remain explicitly planned and are never evidence for PASS.
+    assert "P2.2" in established_slices
+    assert {"P2.3", "P2.4"} <= planned_slices
 
 
 def test_negative_request_shaped_fixtures_are_envelope_shaped(

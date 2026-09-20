@@ -7,8 +7,10 @@
   verified.
 - **P2.1 — COMPLETE** (2026-09-20). JSON-RPC worker envelope, handshake,
   error schema and stdio supervisor contract implemented and ratified.
-- **P2.2–P2.6 — NOT STARTED.** No DICOM classification, geometry,
-  quantitation or TypeScript bridge code exists.
+- **P2.2 — COMPLETE** (2026-09-20). `nuclear.dicom.inspect` study/series
+  discovery and explicit classification implemented and ratified.
+- **P2.3–P2.6 — NOT STARTED.** No geometry extraction, quantitation or
+  TypeScript bridge code exists.
 - This file is append-only per slice. Each future slice appends its own
   eight-point handover below; do not rewrite completed entries.
 
@@ -358,3 +360,156 @@ Not modified: `python/dicom/**`, `packages/**`, `apps/**`, all TypeScript.
   (all protocol fixtures normative, P2.2–P2.4 still planned), channel
   discipline. The AgentLog gate was pending at QA time and is satisfied by
   this report.
+
+---
+
+# Handover Report — P2.2: DICOM Study/Series Inspection & Classification
+
+## 1. What Was Implemented
+
+- **`nuclear.dicom.inspect` operation**: resolves a shared-types
+  `SourceLocator` (`local-folder`, `local-file-list`, `archive-entry`), reads
+  DICOM **metadata only** (`stop_before_pixels=True`), groups instances by
+  `StudyInstanceUID`/`SeriesInstanceUID`, and returns a deterministic study /
+  series summary.
+- **Explicit classification tree** (standard DICOM tags only, no free-text
+  heuristics): `ct-primary` (CT + `ORIGINAL`+`PRIMARY`+`AXIAL`),
+  `pt-primary` (PT + `CorrectedImage` `ATTN`), `pt-uncorrected`,
+  `localizer` (CT + `LOCALIZER`), `secondary-capture` (Secondary Capture SOP
+  Class or `ImageType` `SECONDARY`), and `unsupported`
+  (`unsupported-modality`, `non-primary-image-type`,
+  `inconsistent-series-metadata`, `missing-required-tag:<name>`). Every
+  non-primary series is returned with `supported:false` and a reason; nothing
+  is silently dropped.
+- **Fail-closed source handling**: malformed/unknown locator -> `-32602` with
+  `violations`; unresolvable/unreadable source -> the new reserved code
+  `SOURCE_UNAVAILABLE = -32010` with a basename-only diagnostic and no
+  plausible empty result. Non-DICOM/unparseable files are skipped, counted
+  and reported as warnings without aborting inspection.
+- **Protocol integration**: single composition point `build_dispatcher()`
+  registers `nuclear.protocol.handshake` and `nuclear.dicom.inspect`; the
+  handshake `operations` and unknown-method `supportedMethods` fixtures were
+  updated to `["nuclear.dicom.inspect","nuclear.protocol.handshake"]` and are
+  still reproduced exactly by the manifest-driven round-trip tests.
+- **Deterministic synthetic fixtures**: `python/tests/synthetic_dicom.py`
+  generates metadata-only datasets with fixed valid UIDs for CT primary, PT
+  attenuation-corrected, CT localizer, secondary capture, unsupported
+  modality, missing `Modality`, a non-axial CT, and a mixed folder with a
+  non-DICOM file.
+
+## 2. Files Changed / Created
+
+Created:
+- `python/dicom/metadata.py`, `classification.py`, `aggregation.py`,
+  `sources.py`, `scanner.py`
+- `python/tests/synthetic_dicom.py`, `python/tests/test_dicom_classification.py`
+- `tests/fixtures/dicom/classification/{ct-primary, pt-attenuation-corrected,
+  localizer, secondary-capture, unsupported-modality,
+  missing-required-tag}.expected.json`
+
+Modified:
+- `python/dicom/__init__.py` (module layout)
+- `python/worker/protocol.py` (`DICOM_INSPECT_METHOD`, `SOURCE_UNAVAILABLE`
+  `-32010`), `dispatch.py` (`build_dispatcher`, `clock` property),
+  `stdio.py`, `__init__.py`
+- `python/tests/{test_worker_envelope, test_worker_handshake,
+  test_worker_stdio, test_fixture_manifest}.py`
+- `python/README.md`; `tests/fixtures/manifest.json`;
+  `tests/fixtures/protocol/{response.handshake.json,
+  error.unknown-method.json, README.md}`
+- `docs/agentlog/phase-2.md` (this handover)
+
+Not modified: `packages/**`, `apps/**`, any TypeScript, `python/pyproject.toml`
+(`dicom*` was already packaged), `python/dicom/geometry`, `quantitation`.
+
+## 3. Architectural Assumptions Made
+
+- Classification is discrete and tag-based; it introduces **no tolerance** and
+  no free-text `SeriesDescription` heuristic. The Primary CT rule follows the
+  NuClear-owned `nuclear-dicom` runbook (`ORIGINAL`+`PRIMARY`+`AXIAL`); a
+  non-axial primary CT is explicitly `unsupported` rather than silently
+  accepted, with P2.3 geometry verification as the later backstop.
+- The result carries no absolute machine paths and no PHI: diagnostics use
+  basenames only, and `workerMetadata.parameters` reports locator kind and
+  counts. An instance missing `StudyInstanceUID` is grouped under
+  `studyInstanceUID: ""` and fails closed with
+  `missing-required-tag:StudyInstanceUID`; no UID is invented.
+- `-32010` extends the NuClear reserved server range and is ratified here with
+  tests; transport envelope semantics from P2.1 are unchanged.
+- The `python/dicom` modules are layered acyclically
+  (`metadata` <- `classification` <- `aggregation`; `metadata` <- `sources`;
+  `{aggregation, sources}` <- `scanner`), with `worker.dispatch` importing the
+  scanner lazily inside `build_dispatcher()`.
+
+## 4. Tests Added & Executed
+
+- `npm run test:python` -> **70 passed** (0 failed, 0 skipped), up from the
+  P2.1 baseline of 47. New coverage: classification tree for all six ratified
+  cases, exact equality against the six committed expected files, non-axial CT
+  rejection, mixed folder with non-DICOM skip, non-DICOM-only folder,
+  `local-file-list` with `basePath`, `archive-entry` zip read, malformed
+  locator `-32602`, five `-32010` source-failure paths, no-absolute-paths/PHI
+  assertion, effective-parameter provenance, and manifest<->generator
+  reconciliation.
+- Ruff clean; mypy strict clean (21 source files); `npm run typecheck`,
+  `npm test` (33/33), `npm run build` green.
+- File-length gate: every source file <=250 lines (largest is
+  `python/tests/test_worker_envelope.py` at 250).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- `python/README.md` documents `nuclear.dicom.inspect`, the locator shapes,
+  the `-32602`/`-32010` failure codes, the result shape and the full
+  classification tree including the `AXIAL` requirement.
+- `tests/fixtures/protocol/README.md` documents the two reserved codes
+  (`-32001`, `-32010`) and the new fixture directory.
+- No new ADR was required; the classification rules are NuClear-owned and
+  covered by fixtures and tests.
+
+## 6. Project Model Impact
+
+- No `@nuclear/shared-types` contract or `.ncp` schema changed. The result
+  vocabulary is aligned with the shared-types `Modality` set so the P2.5
+  `ScientificWorkerBridge` can map series classifications to `AssetKind`
+  without re-deriving DICOM rules.
+
+## 7. Known Limitations & Technical Debt
+
+- Classification uses the union of `ImageType`/`CorrectedImage` tokens across
+  a series; a single `AXIAL` instance in an otherwise non-axial series would
+  still be `ct-primary`. Mixed-orientation volumes will be rejected by the
+  P2.3 geometry verification, which is the fail-closed backstop.
+- `dicom.sources` imports `worker.protocol` for the error vocabulary; a future
+  shared error-vocabulary module would remove this soft inversion.
+- `python/dicom/geometry.py` and `quantitation.py` remain unimplemented
+  (P2.3/P2.4); `python/dicom/__init__.py` now documents them as pending.
+- Archive support is read-only ZIP via `zipfile`; no other archive formats are
+  promised.
+
+## 8. Exact Next Recommended Task
+
+- **P2.3** (owner: `nuclear-scientific-engineer`): regular-grid geometry
+  extraction in LPS mm with compatibility evidence — axial and oblique
+  positive cases; irregular spacing, differing `FrameOfReferenceUID` and
+  inconsistent `ImageOrientationPatient` failures. Do not start P2.4 until
+  P2.3 review and QA evidence is recorded here.
+
+---
+
+## Gate Review & QA Evidence (P2.2)
+
+- `nuclear-reviewer` first pass: **CONCERNS** — (1) CT-primary omitted the
+  documented `AXIAL` token, plus low findings on `-32010` coverage and
+  manifest-generator drift. Finding 2 was determined to be a **reviewer false
+  positive**: the P2.1 manifest-driven `test_normative_fixture_round_trip`
+  already replays `request.unknown-method.json` against
+  `error.unknown-method.json` for full equality.
+- `nuclear-reviewer` re-review: **PASS** — `AXIAL` requirement verified against
+  the runbook, all low findings resolved, six expected fixtures byte-identical,
+  all gates green.
+- `nuclear-qa` re-verification: **PASS on all gates** — 70/70 Python tests,
+  ruff, mypy strict, TS typecheck/tests/build, file length, fixture integrity
+  (6 P2.2 established, P2.3/P2.4 still planned, protocol fixtures normative),
+  and a live stdio check of both axial (`ct-primary`) and non-axial
+  (`unsupported`/`non-primary-image-type`) CT. The AgentLog gate was pending at
+  QA time and is satisfied by this report.

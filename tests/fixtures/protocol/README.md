@@ -45,8 +45,10 @@ piping it (for example `jq -c . request.handshake.json`).
 Standard JSON-RPC 2.0 codes are used where they apply: `-32700` parse error,
 `-32600` invalid request, `-32601` method not found, `-32602` invalid params,
 `-32603` internal error. NuClear-specific failures use the reserved server
-range `-32000`..`-32099`; `-32001` (protocol version mismatch) is the one
-reserved code ratified by P2.1.
+range `-32000`..`-32099`; `-32001` (protocol version mismatch) was ratified by
+P2.1 and `-32010` (`SOURCE_UNAVAILABLE`, an unresolvable or unreadable source)
+by P2.2. No protocol fixture above encodes a DICOM result; the P2.2
+classification fixtures are generated under `tests/fixtures/dicom/`.
 
 Every failure carries a structured `data.diagnostic`. Missing tags,
 unsupported representations, incompatible geometry, and invalid quantitation

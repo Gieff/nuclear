@@ -5,9 +5,13 @@ geometric compatibility verification (FrameOfReferenceUID, ImageOrientationPatie
 PixelSpacing), and quantitative PET SUVbw factor determination.
 
 Modules:
-    scanner: Multimodal study and series discovery.
-    geometry: Physical patient coordinate validation in LPS mm space.
-    quantitation: Quantitative SUVbw calibration and decay factor calculation.
+    metadata: Metadata-only instance record and shared tag vocabulary.
+    classification: Deterministic standard-tag series classification.
+    aggregation: Study/series grouping and result assembly.
+    sources: Source-locator resolution and metadata-only DICOM reading.
+    scanner: ``nuclear.dicom.inspect`` handler and provenance.
+    geometry: Physical patient coordinate validation in LPS mm space (P2.3).
+    quantitation: Quantitative SUVbw calibration and decay factor (P2.4).
 """
 
 __version__ = "0.1.0"

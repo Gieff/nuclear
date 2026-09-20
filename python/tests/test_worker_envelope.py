@@ -13,9 +13,10 @@ from typing import Any
 
 import pytest
 
-from worker.dispatch import Dispatcher
+from worker.dispatch import Dispatcher, build_dispatcher
 from worker.envelope import process_record
 from worker.protocol import (
+    DICOM_INSPECT_METHOD,
     HANDSHAKE_METHOD,
     INVALID_PARAMS,
     INVALID_REQUEST,
@@ -34,7 +35,7 @@ MANIFEST_PATH = REPO_ROOT / "tests" / "fixtures" / "manifest.json"
 
 @pytest.fixture
 def dispatcher() -> Dispatcher:
-    return Dispatcher(now=lambda: FROZEN_NOW)
+    return build_dispatcher(now=lambda: FROZEN_NOW)
 
 
 def _base_request(**overrides: Any) -> dict[str, Any]:
@@ -135,7 +136,7 @@ def test_unknown_method_is_method_not_found_without_result(dispatcher: Dispatche
     assert response["id"] == "req-test"
     error = _assert_error(response, METHOD_NOT_FOUND)
     assert error["data"]["requestedMethod"] == "nuclear.unknown.operation"
-    assert error["data"]["supportedMethods"] == [HANDSHAKE_METHOD]
+    assert error["data"]["supportedMethods"] == [DICOM_INSPECT_METHOD, HANDSHAKE_METHOD]
 
 
 def test_every_failure_has_diagnostic_and_no_result(dispatcher: Dispatcher) -> None:

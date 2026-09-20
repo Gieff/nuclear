@@ -23,7 +23,7 @@ import traceback
 from collections.abc import Iterable
 from typing import Any, TextIO
 
-from .dispatch import Dispatcher
+from .dispatch import Dispatcher, build_dispatcher
 from .envelope import process_record
 from .protocol import ERROR_MESSAGES, INTERNAL_ERROR, error_response
 
@@ -89,4 +89,4 @@ def serve(
 
 def main() -> int:
     """Run the stdio loop over the real process streams and return its code."""
-    return serve(sys.stdin, sys.stdout, sys.stderr, Dispatcher())
+    return serve(sys.stdin, sys.stdout, sys.stderr, build_dispatcher())
