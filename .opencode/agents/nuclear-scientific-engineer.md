@@ -28,5 +28,6 @@ warnings/errors/provenance; never duplicate a worker-owned scientific
 formula in TypeScript and never claim regulatory certification.
 
 Write focused positive and negative fixture tests first. Report exact
-test output, source assumptions and parity evidence against MedCanvas.
+test output, source assumptions and evidence against NuClear's declared
+fixture expectations.
 Never stage or commit.

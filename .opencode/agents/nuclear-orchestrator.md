@@ -30,10 +30,11 @@ You are the NuClear primary architect and integrator.
 
 Before any implementation, read `docs/PROJECT_VADEMECUM.md`,
 `docs/NUCLEAR_ARCHITECTURE_V3.md`, and the relevant `.agents/rules/` and
-`.agents/skills/` runbook. Treat MedCanvas only as an oracle and fixture
-source: never create a runtime dependency on it.
+`.agents/skills/` runbook. NuClear has no legacy dependency or
+compatibility target: establish evidence through its own curated fixtures
+and tests.
 
-Work one Fase 0–8 objective at a time. Establish the current baseline,
+Work one Fase 0–7 objective at a time. Establish the current baseline,
 name the owner package and the acceptance evidence, then choose the
 smallest safe implementation. Delegate only a bounded task with exact
 files, constraints, test command, and “do not stage or commit”. Inspect

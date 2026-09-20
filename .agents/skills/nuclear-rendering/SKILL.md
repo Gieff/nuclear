@@ -20,7 +20,7 @@ Activate this skill when:
 ## 3. Procedures & Technical Contracts
 
 ### A. Stable Viewport Surfaces & Single Rendering Path
-- MedCanvas/NuClear allocates up to 16 persistent `ViewportSurface` objects managed by `ViewportSurfaceRegistry`.
+- NuClear allocates up to 16 persistent `ViewportSurface` objects managed by `ViewportSurfaceRegistry`.
 - Switching between Viewer and Composer does NOT recreate or re-initialize WebGL contexts; surfaces are assigned dynamically by `SurfaceLayoutManager`.
 - Principle: **"Stable viewport identity is not one WebGL context per slot."**
 

@@ -25,7 +25,7 @@ ViewSlot / ViewportSurface (persistent WebGL pool)
   ↓
 PreparedView
   ↓
-project-model (.mcv offline-safe)
+project-model (.ncp offline-safe)
   ↓
 ComposerViewInstance (local overrides)
   ↓
@@ -53,7 +53,7 @@ packages/
 ├── medical-engine/     # Headless Cornerstone3D volume rendering, residency & Python IPC
 ├── view-engine/        # Imaging Workspace, ViewSlots, PreparedViews, linking & surfaces
 ├── figure-engine/      # Figure layout, panel framing/layout, vector composition & export
-├── project-model/      # Project persistence schemas (.mcv) & offline cache
+├── project-model/      # Project persistence schemas (.ncp) & offline cache
 └── ui/                 # Atomic presentation components & design system
 
 apps/

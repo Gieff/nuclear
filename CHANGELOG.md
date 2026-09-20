@@ -15,5 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configured agent directives (`AGENTS.md`), OpenCode profiles/commands, rules (`01-project-core.md`, `02-architecture.md`, `03-code-quality.md`, `04-orchestration.md`), and specialized skills (`nuclear-dicom`, `nuclear-rendering`, `nuclear-testing`).
 
 ### Changed
-- Reconciled the vademecum with the v3 NuClear architecture: seven package boundaries, headless-first Fase 0–8 delivery, source verification, persistent surfaces, and high-resolution hybrid export are now the governing execution model.
+- Reconciled the vademecum with the v3 NuClear architecture: seven package boundaries, headless-first Fase 0–7 delivery, source verification, persistent surfaces, and high-resolution hybrid export are now the governing execution model.
 - Migrated OpenCode profiles, commands, permissions, and Playwright MCP configuration to the current V2 project layout; verification now reports unavailable evidence instead of masking it as success.
+- Adopted `.ncp` (NuClearProject) as the sole project extension; legacy project import is out of scope.
+- Excluded local DICOM test cases in `tests/cases/` from version control.

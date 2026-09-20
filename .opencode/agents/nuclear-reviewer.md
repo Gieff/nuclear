@@ -1,7 +1,7 @@
 ---
 description: Read-only independent reviewer for NuClear package boundaries, clinical invariants and diffs.
 mode: subagent
-model: deepseek/deepseek-flash
+model: openrouter/z-ai/glm-5.3-flash
 permissions:
   - action: edit
     resource: "*"

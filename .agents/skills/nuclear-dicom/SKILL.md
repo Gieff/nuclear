@@ -15,7 +15,7 @@ Activate this skill when:
 
 ## 2. Preconditions
 - Python virtual environment available at `python/worker/.venv` with `pydicom`, `SimpleITK`, and `numpy` installed.
-- Test DICOM datasets located in `tests/fixtures/` or referenced from MedCanvas legacy oracle.
+- Curated anonymized DICOM datasets located in `tests/fixtures/`; local raw cases belong under ignored `tests/cases/` and are never committed test evidence.
 
 ## 3. Procedures & Technical Contracts
 

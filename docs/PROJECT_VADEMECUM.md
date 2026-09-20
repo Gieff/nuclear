@@ -17,7 +17,7 @@ The normative technical model is [`NUCLEAR_ARCHITECTURE_V3.md`](NUCLEAR_ARCHITEC
 
 The authoritative plan for a new NuClear repository is §4.1 below. Sections 5–31 are retained as a product backlog/reference catalogue only; they do not authorize an implementation order that conflicts with §4.1. In particular, they must not be used to build a product UI before the headless contracts and engines have evidence behind them.
 
-This document uses `.mcv` for the serialized project artifact. Changing to `.ncr` is an explicit schema and migration decision, not a branding substitution that an agent may make unilaterally.
+NuClear uses `.ncp` (**NuClearProject**) as its only serialized project artifact. No legacy project format, import adapter or compatibility layer is in scope.
 
 ------------------------------------------------------------------------
 
@@ -142,7 +142,7 @@ easier to implement.
 
 ## P8 --- Reproducibility and source verification are product features
 
-A `.mcv` project must contain enough information to reconstruct the
+A `.ncp` project must contain enough information to reconstruct the
 figure.
 
 The project should record: - schema version; - application version; -
@@ -275,7 +275,7 @@ NuClear has **seven** domain packages, not six:
 | `@nuclear/rendering-presets` | declarative PET/CT/fusion/projection presets | UI state, shaders or patient data |
 | `@nuclear/medical-engine` | DICOM-facing assets, geometry, Cornerstone adapter, worker bridge, RAM/VRAM residency and RenderTargets | workspace layout or React |
 | `@nuclear/view-engine` | workspace, ViewSlots, PreparedViews, link/lock/override, view state, surface registry and resource demand | physical cache policy or UI chrome |
-| `@nuclear/project-model` | `.mcv`, migrations, source locator/fingerprint, cache preview and versioned provenance | runtime rendering |
+| `@nuclear/project-model` | `.ncp`, versioned schema evolution, source locator/fingerprint, cache preview and provenance | runtime rendering |
 | `@nuclear/figure-engine` | sheets in mm, panels, annotations, framing/layout and publication composition | a second medical renderer |
 | `@nuclear/ui` | design system, visual controls and surface hosts | slice math, geometry, render policy or GPU lifecycle |
 
@@ -329,7 +329,7 @@ clear owner, explicit units, validators and fixtures.
 
 “Headless-first” does not demand a fake CPU renderer. A controlled
 DOM/WebGL harness is valid when required to exercise the real
-Cornerstone path; what is forbidden before Fase 7 is a product UI that
+Cornerstone path; what is forbidden before Fase 6 is a product UI that
 becomes the accidental owner of domain behaviour.
 
 ### Coordinate and annotation contract
@@ -374,7 +374,7 @@ Screen pixels are never a persisted clinical anchor.
 
 ### Semantic Lifetime vs Resource Residency
 
-An asset or prepared view can exist for the lifetime of a `.mcv`
+An asset or prepared view can exist for the lifetime of a `.ncp`
 project while its pixels are absent from RAM and its textures absent
 from VRAM.
 
@@ -418,7 +418,7 @@ scientific formula or geometry rule already assigned to Python. Missing
 quantitation or incompatible geometry is an explicit result, never a
 plausible-looking fallback.
 
-### Offline-safe `.mcv`
+### Offline-safe `.ncp`
 
 Persist separately:
 
@@ -470,17 +470,15 @@ version.
 | 3 | headless medical engine and resource manager | production UI | real renderer harness and explicit failures |
 | 4 | view engine, surfaces, link/lock/override | UI chrome | intra/inter-study and residency tests |
 | 5 | figure engine, high-res export, hybrid PDF | live desktop shell | no screenshot upscale; vectors preserved |
-| 6 | MedCanvas `.mcv` transition adapter | runtime legacy dependency | mapped import and migration report |
-| 7 | UI mockups with fake surfaces | production GPU wiring | intents and status UX testable |
-| 8 | desktop shell and production UI integration | unrelated PACS scope | UI composes, does not reimplement, engines |
+| 6 | UI mockups with fake surfaces | production GPU wiring | intents and status UX testable |
+| 7 | desktop shell and production UI integration | unrelated PACS scope | UI composes, does not reimplement engines |
 
-### Verification and oracle
+### Verification baseline
 
-MedCanvas legacy is an oracle and fixture source, not an npm dependency.
-Compare only proven behaviour: SUVbw factors, geometry, preset/radiometry,
-resource lifecycle and persistence. Record fixture, tolerance, expected
-result and intentional difference. No agent may claim parity without
-the evidence.
+NuClear owns its acceptance evidence. For SUVbw, geometry,
+preset/radiometry, resource lifecycle and persistence, record a curated
+fixture, declared tolerance, expected result and provenance. No agent
+may claim correctness without this evidence.
 
 Gate status is one of **PASS**, **FAIL**, **NOT YET APPLICABLE**, or
 **BLOCKED**. A missing runner, zero discovered tests, absent fixture, or
@@ -488,11 +486,11 @@ command that masks failures is never PASS.
 
 ------------------------------------------------------------------------
 
-# Appendix A — Legacy Workstream Catalogue (reference only)
+# Appendix A — Product Scope Catalogue (reference only)
 
-The following inherited workstreams remain useful for feature scope and
-future acceptance criteria. Their sequence is superseded by §4.1 and
-must not be used to justify UI-first implementation.
+The following workstreams remain useful for feature scope and future
+acceptance criteria. Their sequence is superseded by §4.1 and must not
+be used to justify UI-first implementation.
 
 ## Workstream A --- Foundation / Desktop Runtime
 
@@ -1191,12 +1189,12 @@ This is a critical acceptance test.
 
 # 20. Reproducibility
 
-The `.mcv` project file is a first-class artifact.
+The `.ncp` project file is a first-class artifact.
 
 Conceptually:
 
 ``` text
-project.mcv
+project.ncp
 ```
 
 It should contain: - schema version; - application version; - renderer
@@ -1227,7 +1225,7 @@ nuclear/
 │   ├── medical-engine/           # Headless Cornerstone3D volume rendering, residency & Python bridge
 │   ├── view-engine/              # Imaging Workspace, ViewSlots, PreparedViews, linking & surfaces
 │   ├── figure-engine/            # Layout composition, panel framing/layout & publication export
-│   ├── project-model/            # NuClear project schemas (.mcv / .ncr) & offline persistence
+│   ├── project-model/            # NuClear project schemas (.ncp) & offline persistence
 │   └── ui/                       # Modular React application UI (Components, Hooks, Theme CSS)
 │
 ├── python/                       # Scientific worker (pyproject.toml, pydicom, SUV calculations)
@@ -1239,7 +1237,7 @@ nuclear/
 │   ├── medical/                  # Headless Cornerstone3D & Python IPC integration tests
 │   ├── rendering/                # Headless render target & high-res export tests
 │   ├── project/                  # Serialization, migration adapter & round-trip tests
-│   └── fixtures/                 # Anonymized DICOM test cases and golden oracle outputs
+│   └── fixtures/                 # Anonymized DICOM test cases and declared expected outputs
 │
 ├── docs/
 │   ├── PROJECT_VADEMECUM.md      # Master blueprint & AI agent development guide
@@ -1594,7 +1592,7 @@ packaging.
 
 # 25. Development Sequence
 
-This legacy sequence is superseded. Use the Fase 0–8 plan in §4.1.
+This sequence is superseded. Use the Fase 0–7 plan in §4.1.
 
 The decisive ordering rules remain:
 
@@ -1647,8 +1645,8 @@ One or more local anonymized PET/CT studies.
 
 ### Reproducibility
 
--   save `.mcv`;
--   reopen `.mcv`;
+-   save `.ncp`;
+-   reopen `.ncp`;
 -   reproduce the figure.
 
 If these capabilities work reliably, the project has achieved its core
@@ -1774,7 +1772,7 @@ Before declaring work complete, the agent must ensure that:
 4.  **API & interaction documentation:** All new or modified public APIs have comprehensive TSDoc/docstrings; cross-component interactions are documented, and data flow diagrams (Mermaid) are updated if flows changed.
 5.  **Architectural decisions recorded (ADRs):** Any significant architectural decision, change, or trade-off is recorded in `docs/decisions/`.
 6.  **Changelog & commit hygiene:** Notable additions, changes, or fixes are documented under `## [Unreleased]` in `CHANGELOG.md` according to Keep a Changelog categories, and commits follow Conventional Commits.
-7.  **Project model & backward compatibility:** Any changes to `FigureState`, presets, or `.mcv` project models preserve backward compatibility and include migration logic where applicable.
+7.  **Project model evolution:** Any `.ncp` schema change is versioned and has round-trip tests. A migration layer is introduced only after NuClear has shipped an earlier schema that it explicitly chooses to support.
 8.  **Repository self-sufficiency:** The repository and documentation are entirely self-contained, allowing any subsequent AI agent or human developer to understand and build upon the work without requiring past conversation history.
 
 ## 30.2 Mandatory Handover Report

@@ -1,6 +1,6 @@
 ---
 name: nuclear-testing
-description: Phase-aware verification runbook for NuClear. Executes configured typechecking, tests, worker assertions, oracle comparison, and production-build checks without treating absent runners or fixtures as successful. Use before declaring any task complete or committing changes.
+description: Phase-aware verification runbook for NuClear. Executes configured typechecking, tests, worker assertions, curated-fixture regression checks, and production-build checks without treating absent runners or fixtures as successful. Use before declaring any task complete or committing changes.
 ---
 
 # NuClear Testing Skill
@@ -9,7 +9,7 @@ description: Phase-aware verification runbook for NuClear. Executes configured t
 Activate this skill when:
 - Verifying code changes before declaring completion or staging a commit.
 - Running the mandatory Rule 03 pre-commit verification gates.
-- Executing golden master comparisons against the MedCanvas legacy oracle.
+- Executing regression comparisons against curated NuClear fixtures and declared expected outputs.
 - Performing milestone acceptance audits (`nuclear-qa`).
 
 ## 2. Verification Gates Pipeline
@@ -32,13 +32,13 @@ Must pass with 0 errors across configured workspaces. Before a root
 solution `tsconfig` and package projects exist, report the state rather
 than treating an empty or failing command as a valid typecheck.
 
-### Gate 4: Test Suite & Oracle Parity
+### Gate 4: Test Suite & Fixture Regression
 ```bash
 npm test
 ```
 Must pass 100% of tests that are actually configured and discovered.
 For numerical algorithms (SUV, reslicing, co-registration), assert
-equivalence with a named MedCanvas fixture and an explicit tolerance.
+equivalence with a named NuClear fixture and an explicit tolerance.
 Zero discovered tests and `|| true` are not a passing gate.
 
 ### Gate 5: Production Build Verification

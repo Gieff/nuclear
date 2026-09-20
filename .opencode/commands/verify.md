@@ -12,7 +12,7 @@ and test discovery. Read the vademecum and `nuclear-testing` first.
 
 Run only gates that are implemented and relevant to this scope. Assess
 file length, TypeScript, JavaScript/TypeScript tests, Python tests,
-build and oracle parity independently. Do not infer a build from a
+build and fixture-regression evidence independently. Do not infer a build from a
 typecheck, and do not infer test success from a command that masks
 errors or discovers zero tests.
 

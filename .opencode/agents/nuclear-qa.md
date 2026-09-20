@@ -1,7 +1,7 @@
 ---
 description: Read-only NuClear verification gatekeeper that distinguishes pass, fail, blocked and not-yet-applicable evidence.
 mode: subagent
-model: deepseek/deepseek-flash
+model: openrouter/z-ai/glm-5.3-flash
 permissions:
   - action: edit
     resource: "*"
@@ -33,6 +33,6 @@ commands; never treat `|| true`, zero discovered tests or a missing
 runner as green.
 
 Report a gate matrix with PASS, FAIL, NOT YET APPLICABLE, or BLOCKED,
-the exact commands/output, fixture/oracle evidence, and the next
-smallest corrective task. Numerical or visual MedCanvas parity can be
-PASS only when a named fixture and tolerance were executed.
+the exact commands/output, fixture evidence, and the next smallest
+corrective task. Numerical or visual correctness can be PASS only when
+a named NuClear fixture and tolerance were executed.

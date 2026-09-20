@@ -14,7 +14,7 @@ permissions:
     effect: allow
 ---
 
-Review only UI work from Fase 7 onward. Read the vademecum, v3 and the
+Review only UI work from Fase 6 onward. Read the vademecum, v3 and the
 NuClear identity document. Audit intent feedback, visible distinction
 between medical and editorial operations, loading/offline/missing/
 mismatch states, readable vector/raster export choices and compliance

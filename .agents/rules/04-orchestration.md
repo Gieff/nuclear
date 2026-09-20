@@ -42,6 +42,6 @@ Your comparative advantage is decomposition, judgment, verification, and integra
 
 ## 5. Milestone Completion Protocol
 - **IF** concluding any milestone phase, feature, or contract set:
-- **THEN** delegate acceptance to `nuclear-qa` (or run `nuclear-testing` directly) and confirm all clinical parameters remain mathematically intact against the MedCanvas legacy oracle.
+- **THEN** delegate acceptance to `nuclear-qa` (or run `nuclear-testing` directly) and confirm all clinical parameters against NuClear-owned curated fixtures and declared tolerances.
 - **NEVER** declare a task done based on assumptions or mocks without terminal verification.
 - Update `CHANGELOG.md` under `## [Unreleased]` with only the phases actually completed.

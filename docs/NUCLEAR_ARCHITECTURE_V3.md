@@ -452,7 +452,7 @@ Deve poter serializzare riferimenti a:
 - annotation;
 - publication state.
 
-È inoltre responsabile del formato `.mcv` (o `.ncr`) offline-safe e della persistenza di:
+È inoltre responsabile del formato `.ncp` offline-safe e della persistenza di:
 
 - `SourceLocator`;
 - `SourceFingerprint`;
@@ -1295,7 +1295,7 @@ La `CachedPreview` è un raster disposable generato dall'ultimo stato approvato 
 
 Serve a:
 
-- riaprire un `.mcv` (o `.ncr`) mantenendo layout e leggibilità;
+- riaprire un `.ncp` mantenendo layout e leggibilità;
 - mostrare il contenuto approvato quando la sorgente è temporaneamente offline;
 - distinguere chiaramente una preview congelata da una vista medicale interattiva.
 
@@ -1750,7 +1750,7 @@ Questo livello dovrebbe configurare:
 
 Non dovrebbe nascondere o duplicare le primitive fondamentali.
 
-## 28.1 Progetto `.mcv` / `.ncr` offline-safe
+## 28.1 Progetto `.ncp` offline-safe
 
 Il file di progetto deve conservare separatamente identità attesa, posizione tentata e fallback visuale:
 

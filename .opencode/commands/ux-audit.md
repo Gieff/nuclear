@@ -1,5 +1,5 @@
 ---
-description: Audit NuClear UI and interaction feedback after Fase 7 without editing.
+description: Audit NuClear UI and interaction feedback after Fase 6 without editing.
 agent: nuclear-ux-auditor
 subagent: true
 ---
