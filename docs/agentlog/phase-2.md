@@ -21,6 +21,9 @@
   conformance: `RadiopharmaceuticalInformationSequence`, START-only decay
   correction, date-aware acquisition timestamps, and intra-series identity
   invariants.
+- **P2.4.2 — COMPLETE** (2026-09-20). DT offset-range enforcement (DICOM
+  PS3.5 §6.2), `Number.isFinite` PET numeric guards, and `isImagingAsset`
+  PET-metadata validation.
 - **P2.5–P2.6 — NOT STARTED.** No TypeScript `ScientificWorkerBridge` code
   exists.
 - This file is append-only per slice. Each future slice appends its own
@@ -1129,3 +1132,111 @@ expected fixtures are byte-identical.
   live dispatcher reproduction of all ten conformant/negative scenarios with
   the independent formula match within 1e-12. The AgentLog gate was pending at
   QA time and is satisfied by this report.
+
+---
+
+# Handover Report — P2.4.2: DT Offset, PET Finiteness and Type-Guard Gaps
+
+## 1. What Was Implemented
+
+A micro corrective slice closing three consistency gaps identified after
+P2.4.1, so the P2.5 bridge does not inherit them.
+
+- **DICOM DT offset range** (`python/dicom/quantitation_math.py`): offset-less
+  values remain interpreted in a single deterministic time base, but an
+  explicit `&ZZXX` suffix is now validated per DICOM PS3.5 §6.2 — minutes
+  `00`-`59`; positive hours `00`-`14` (hours `14` only with minutes `00`);
+  negative hours `00`-`12` (hours `12` only with minutes `00`); `-0000` is
+  forbidden; `+0000` is the UTC offset. An invalid suffix invalidates the whole
+  DT, surfacing as `invalid`/`unparseable-time`.
+- **PET numeric finiteness** (`tests/contracts/validators.ts`):
+  `isPetAcquisitionMetadata` now requires `Number.isFinite` (in addition to
+  `> 0`) for `radionuclideHalfLifeSeconds`, `radionuclideTotalDoseBq` and
+  `patientWeightKg`, rejecting `Infinity`/`NaN`.
+- **Asset-level PET validation** (`tests/contracts/validators.ts`):
+  `isImagingAsset` now validates `metadata.pet` through
+  `isPetAcquisitionMetadata` when present, alongside the existing
+  `petQuantitation` check.
+
+## 2. Files Changed / Created
+
+Modified:
+- `python/dicom/quantitation_math.py` (offset validation + docstring)
+- `python/tests/test_dicom_quantitation_conformance.py` (offset boundary
+  accept/reject cases, pipeline-level invalid-offset -> `unparseable-time`
+  test, and an explicit expected-warning assertion for the intentionally
+  non-conformant DT)
+- `tests/contracts/validators.ts` (finite guards; `isImagingAsset` pet check)
+- `tests/contracts/clinical-data-contracts.test.ts` (two new tests)
+- `docs/agentlog/phase-2.md` (this handover)
+
+Not modified: the PET contract (`packages/shared-types/src/asset.ts`), the
+`PetQuantitationResult` guard, and all expected fixtures.
+
+## 3. Architectural Assumptions Made
+
+- DICOM PS3.5 §6.2 is the authority for the DT offset range; the parser fails
+  closed on any non-conformant suffix rather than normalising it.
+- `Infinity`/`NaN` are never valid physical PET inputs, so structural guards
+  must reject them even though JavaScript comparisons like `Infinity > 0` pass.
+- `isImagingAsset` is the platform-level type guard for a persisted asset;
+  a malformed nested `pet` block must not type-guard true.
+
+## 4. Tests Added & Executed
+
+- `npm run test:python` -> **166 passed** (0 failed, 0 skipped), up from 165:
+  expanded offset reject boundaries (`+2300`, `+1401`, `+0560`, `-0000`,
+  `-1300`, `-1230`) and a pipeline-level invalid-offset test asserting
+  `invalid`/`unparseable-time` with no `suvFactor`.
+- `npm test` -> **35 passed** (up from 33): rejects `Infinity`/`NaN` for all
+  three PET numeric fields, and rejects an `ImagingAsset` whose
+  `metadata.pet.patientWeightKg` is non-finite while accepting the valid
+  fixture.
+- `npm run typecheck:python` strict clean (43 files); ruff clean;
+  `npm run typecheck` and `npm run build` clean.
+- File-length gate: all Python source files <=250 lines;
+  `clinical-data-contracts.test.ts` is at 294/300 (watch item).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- The DT offset rule is documented in the `quantitation_math.py` docstring with
+  the DICOM PS3.5 §6.2 citation and in the runbook §C context.
+- No new ADR: these are conformance fixes to existing rules.
+
+## 6. Project Model Impact
+
+- None. No contract, fixture or `.ncp` schema changed; only validation
+  strictness increased.
+
+## 7. Known Limitations & Technical Debt
+
+- `tests/contracts/clinical-data-contracts.test.ts` is at 294 lines; the next
+  added test requires decomposing that suite (Rule 02).
+- Offset-less and offset-aware DTs are still reconciled through the explicit
+  `ambiguous-time-base` rejection rather than inferred local time zones; that
+  convention is unchanged and documented.
+
+## 8. Exact Next Recommended Task
+
+- **P2.5** (owner: `nuclear-engine-engineer` per the runbook, after P2.1–P2.4.2
+  protocol responses are accepted): implement the TypeScript
+  `ScientificWorkerBridge` facade in `@nuclear/medical-engine` — correlation,
+  timeout, restart, typed mapping of the five operations to NuClear contracts,
+  provenance preservation, and a test proving no formula is duplicated in
+  TypeScript. Do not start P2.6 until P2.5 review and QA evidence is recorded
+  here.
+
+---
+
+## Gate Review & QA Evidence (P2.4.2)
+
+- `nuclear-reviewer`: **PASS** — offset range and sign/limit branches verified
+  against PS3.5 §6.2, both TS guards verified, scope bounded to three fixes,
+  no new dependency, fixtures untouched. Two non-blocking evidence gaps
+  (missing `-13xx`/`+05xx` reject cases and no pipeline-level invalid-offset
+  test) were closed by the orchestrator with additive Python-only tests.
+- `nuclear-qa`: **all executable gates PASS** — 166/166 Python tests, strict
+  mypy over 43 files, ruff clean, 35/35 TS tests, typecheck and build clean,
+  file lengths within limits, DT boundaries and TS guards independently
+  reproduced, all expected fixtures unchanged. AgentLog was pending at QA time
+  and is satisfied by this report.

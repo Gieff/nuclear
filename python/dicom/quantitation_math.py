@@ -41,12 +41,18 @@ def parse_dicom_datetime_parts(value: str) -> tuple[float, bool] | None:
     an optional ``+HHMM``/``-HHMM`` offset. An offset-less value is treated as
     UTC so that two offset-less instants compare deterministically.
 
+    Per DICOM PS3.5 §6.2 the offset ``&ZZXX`` is 4 digits in the range
+    ``-1200``..``+1400``: minutes are ``00``-``59``; ``+HH`` is ``00``-``14``
+    with minutes ``00`` when ``HH == 14``; ``-HH`` is ``00``-``12`` with minutes
+    ``00`` when ``HH == 12``; ``-0000`` is not allowed while ``+0000`` is the
+    UTC offset and is allowed.
+
     Args:
         value: Raw DICOM DT string.
 
     Returns:
         The epoch seconds and whether an explicit offset was present, or
-        ``None`` when the value is not a valid DT.
+        ``None`` when the value is not a valid DT (including an invalid offset).
     """
     match = _DT_PATTERN.match(value.strip())
     if match is None:
@@ -58,7 +64,12 @@ def parse_dicom_datetime_parts(value: str) -> tuple[float, bool] | None:
     sign = match.group(8)
     if sign is not None:
         offset_hours, offset_minutes = int(match.group(9)), int(match.group(10))
-        if offset_hours > 23 or offset_minutes > 59:
+        hour_limit = 14 if sign == "+" else 12
+        if offset_minutes > 59 or offset_hours > hour_limit:
+            return None
+        if offset_hours == hour_limit and offset_minutes != 0:
+            return None
+        if sign == "-" and offset_hours == 0 and offset_minutes == 0:
             return None
         offset = timedelta(hours=offset_hours, minutes=offset_minutes)
         tzinfo = timezone(-offset if sign == "-" else offset)

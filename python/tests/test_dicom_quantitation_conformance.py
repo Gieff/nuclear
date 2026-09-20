@@ -150,6 +150,46 @@ def test_parse_dicom_datetime_fractional_and_offset() -> None:
     assert parse_dicom_datetime("20261340100000") is None
 
 
+def test_parse_dicom_datetime_offset_range() -> None:
+    utc = parse_dicom_datetime("20260920100000+0000")
+    assert utc is not None
+    assert utc == parse_dicom_datetime("20260920100000")  # +0000 is the UTC offset
+    positive = parse_dicom_datetime("20260920100000+0530")
+    assert positive is not None
+    assert math.isclose(utc - positive, 5 * 3600 + 30 * 60, abs_tol=ELAPSED_SECONDS_EPSILON)
+    negative = parse_dicom_datetime("20260920100000-0800")
+    assert negative is not None
+    assert math.isclose(negative - utc, 8 * 3600, abs_tol=ELAPSED_SECONDS_EPSILON)
+    for valid in ("20260920100000+1400", "20260920100000-1200", "20260920100000-1159"):
+        assert parse_dicom_datetime(valid) is not None
+    for invalid in (
+        "20260920100000+2300",  # hours beyond +14
+        "20260920100000+1401",  # +14 only permits minutes 00
+        "20260920100000+0560",  # minutes must be 00-59
+        "20260920100000-0000",  # DICOM PS3.5 forbids -0000
+        "20260920100000-1300",  # hours beyond -12
+        "20260920100000-1230",  # -12 only permits minutes 00
+    ):
+        assert parse_dicom_datetime(invalid) is None
+
+
+def test_invalid_offset_surfaces_as_unparseable_time(tmp_path: Path) -> None:
+    # pydicom warns because the DT value is intentionally non-conformant; that is
+    # the exact condition this test proves the worker rejects.
+    with pytest.warns(UserWarning, match="Invalid value for VR DT"):
+        pet.write_pet_series(
+            tmp_path,
+            "bad-offset",
+            block=4102,
+            information_items=[pet.information_item(start_datetime="20260920090000+2300")],
+            acquisition_datetime="20260920100000",
+        )
+    payload = _result(pet.pet_uid(4102, 2), tmp_path)
+    assert payload["status"] == "invalid"
+    assert _reason(payload) == "unparseable-time"
+    assert "suvFactor" not in payload
+
+
 def test_decay_identities_use_acquisition_minus_administration() -> None:
     zero = build_quantitation_result(
         [_instance(acquisition_datetime=pet.START_DATETIME)], "1.2.3.4", []

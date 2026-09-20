@@ -156,6 +156,29 @@ describe('NuClear Phase 1 — Clinical Data Contracts', () => {
         },
       }), false);
     });
+
+    it('should reject non-finite PET numeric fields (Infinity and NaN)', () => {
+      const pet = mockPetAsset.metadata.pet;
+      assert.ok(pet);
+      const numericFields = ['radionuclideHalfLifeSeconds', 'radionuclideTotalDoseBq', 'patientWeightKg'] as const;
+      for (const field of numericFields) {
+        for (const invalid of [Infinity, Number.NaN]) {
+          assert.equal(isPetAcquisitionMetadata({ ...pet, [field]: invalid }), false, `${field}=${invalid}`);
+        }
+      }
+      assert.ok(isPetAcquisitionMetadata(pet));
+    });
+
+    it('should reject an ImagingAsset whose PET acquisition metadata is invalid', () => {
+      const pet = mockPetAsset.metadata.pet;
+      assert.ok(pet);
+      const badPetAsset = {
+        ...mockPetAsset,
+        metadata: { ...mockPetAsset.metadata, pet: { ...pet, patientWeightKg: Infinity } },
+      };
+      assert.equal(isImagingAsset(badPetAsset), false);
+      assert.ok(isImagingAsset(mockPetAsset));
+    });
   });
 
   describe('SourceLocator & SourceFingerprint Discriminated Unions', () => {

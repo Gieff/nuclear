@@ -170,12 +170,15 @@ export function isPetAcquisitionMetadata(value: unknown): value is PetAcquisitio
     typeof value['units'] === 'string' &&
     (value['decayCorrection'] === 'START' || value['decayCorrection'] === 'ADMIN' || value['decayCorrection'] === 'NONE') &&
     typeof value['radionuclideHalfLifeSeconds'] === 'number' &&
+    Number.isFinite(value['radionuclideHalfLifeSeconds']) &&
     value['radionuclideHalfLifeSeconds'] > 0 &&
     typeof value['radionuclideTotalDoseBq'] === 'number' &&
+    Number.isFinite(value['radionuclideTotalDoseBq']) &&
     value['radionuclideTotalDoseBq'] > 0 &&
     typeof value['radiopharmaceuticalStartDateTime'] === 'string' &&
     typeof value['acquisitionDateTime'] === 'string' &&
     typeof value['patientWeightKg'] === 'number' &&
+    Number.isFinite(value['patientWeightKg']) &&
     value['patientWeightKg'] > 0
   );
 }
@@ -210,6 +213,7 @@ export function isImagingAsset(value: unknown): value is ImagingAsset {
     isAssetGeometry(value['geometry']) &&
     typeof value['frameOfReferenceUID'] === 'string' &&
     isObject(metadata) &&
+    (metadata['pet'] === undefined || isPetAcquisitionMetadata(metadata['pet'])) &&
     (metadata['petQuantitation'] === undefined || isPetQuantitationResult(metadata['petQuantitation'])) &&
     isObject(value['valueSemantics'])
   );
