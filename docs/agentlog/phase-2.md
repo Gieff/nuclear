@@ -35,7 +35,10 @@
   to NuClear contracts, and a no-duplicated-formula guard. Independent
   `nuclear-reviewer` PASS (after one CONCERN resolved) and `nuclear-qa` all
   applicable gates PASS.
-- **P2.6 — NOT STARTED.** Phase-level consolidated review/handover remains.
+- **P2.6 — COMPLETE** (2026-09-20). Phase-level independent review and QA
+  audit closed Phase 2: all applicable gates PASS, docs generation executed,
+  and this consolidated phase handover recorded. Changelog promotion and
+  tagging remain a separate, explicit release action.
 - This file is append-only per slice. Each future slice appends its own
   eight-point handover below; do not rewrite completed entries.
 
@@ -1632,3 +1635,172 @@ instead of `acquisitionEvidence`/`acquisition`.
   clean, `npm test` 53/53, `tsc -b --force` clean, Python gates unchanged.
 - Deliberately not staged: the pre-existing unrelated `opencode.json` harness
   change (`"plugin": ["opencode-snip@latest"]`).
+
+---
+
+# Handover Report — P2.6: Phase 2 Closure (Independent Review, Gates & Consolidated Handover)
+
+## 1. What Was Implemented
+
+No new product code was written in this slice. P2.6 closes Phase 2 through
+phase-level verification and documentation:
+
+- **Phase-level independent review** (`nuclear-reviewer`): **PASS**. The
+  consolidated Phase 2 state was re-audited against ADR-002, the Phase 2 plan's
+  In Scope / Excluded / Invariants / Completion Gates, Rules 01–03 and the v3
+  blueprint. No blocking or concern-level finding; four record-only/low
+  findings (F-1…F-4) and four carried Phase 3 risks were recorded below.
+- **Phase-level QA gate audit** (`nuclear-qa`): **all applicable gates PASS**
+  (12/12 command/evidence gates; `npm test` 53/53 in 14 suites, `test:python`
+  166/166, strict mypy 43 files, `typecheck`/`build`/forced rebuild clean,
+  file-length, fixture integrity, dependency boundary, git hygiene). The
+  auditor independently reproduced one positive and one fail-closed negative
+  for each of the five operations against the real spawned Python worker,
+  matching committed fixtures within the declared 1e-9 float tolerance and
+  exactly for enums, digests and ids (12 fixture-matched transactions, 0
+  failures).
+- **Docs generation executed**: `npm run docs:ts` generated TypeDoc HTML under
+  `docs/api/ts` (exit 0); `npm run docs:python` generated the Python
+  specification page and the master portal (exit 0), honestly reporting that
+  `pdoc` is absent and the structured fallback was used.
+- **Consolidated phase handover** (this report), the phase completion-gate
+  table, and the `AGENTS.md` baseline update from "Phase 2 Active" to
+  "Phase 2 Complete".
+
+## 2. Files Changed / Created
+
+Modified:
+- `docs/agentlog/phase-2.md` (P2.5 status/header already present; P2.6 status
+  flipped to COMPLETE and this phase-level handover appended)
+- `AGENTS.md` (baseline heading and Fase 2 bullet updated to Phase 2 complete)
+
+Generated but Git-ignored (not staged): `docs/api/**`.
+
+Not modified: `python/**`, `packages/**`, `apps/**` (none exist yet),
+`tests/**`, `tests/fixtures/**`, `package.json`/`package-lock.json`,
+`CHANGELOG.md`, `opencode.json`, `opencode-rag.json`.
+
+## 3. Architectural Assumptions Made
+
+- **F-2 interpretation (recorded per reviewer requirement):** the plan's DICOM
+  gate wording "declared source fingerprint evidence" is satisfied in Phase 2
+  by fixture provenance declaration (`manifest.json` `generator`/`expectedPath`,
+  reconciliation-tested) plus the geometry `geometricDigest`; Phase 2 does
+  **not** produce a content-hash `SourceFingerprint`. Content hashing, locator
+  persistence and offline fingerprint verification belong to
+  `@nuclear/project-model` and later phases. This gate must not be read as a
+  claim of a `SourceFingerprint` capability that does not yet exist.
+- **Fixture count correction:** the manifest holds **42 established / 0 planned**
+  (10 protocol + 6 classification + 13 geometry + 13 quantitation). Earlier
+  evidence citing "33" was a P2.4-era snapshot; the repository at HEAD is the
+  authority.
+- **Docs fallback is honest:** `docs:python` degrading to the structured
+  specification page because `pdoc` is not installed is reported as such; it is
+  not presented as pdoc output.
+- **Changelog promotion is a release action (ADR-001):** P2.6 leaves
+  `CHANGELOG.md` untouched; `/promote-changelog 2` and any tag are performed
+  only on an explicit release request.
+
+## 4. Tests Added & Executed
+
+No tests were added in P2.6; the full configured suite was re-run at HEAD
+`09c0567` by the orchestrator, reviewer and QA:
+
+- `npm run typecheck` → clean (0 errors).
+- `npm test` → **53 passed** (14 suites, 0 failed/skipped).
+- `npm run build` → clean; `npx tsc -b --force` → clean (full, non-cached).
+- `npm run test:python` → **166 passed**.
+- `npm run typecheck:python` → strict mypy clean over 43 source files.
+- `npm run docs:ts` → exit 0 (`docs/api/ts` generated).
+- `npm run docs:python` → exit 0 (structured fallback; `pdoc` absent).
+- File-length gate: longest source file `packages/shared-types/src/figure.ts`
+  = 266 lines (pre-existing, within the 250–300 band, under the 300 cap);
+  longest Phase 2 file `packages/medical-engine/src/worker/process.ts` = 250.
+- QA independent reproduction: 5 operations × (1 positive + 1 negative)
+  through the real worker, fixture/tolerance 1e-9, 0 failures.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- The AgentLog Gate is satisfied for the phase: P2.6 status + this eight-point
+  report plus the phase gate table and the reviewer/QA evidence below.
+- No new ADR is required. ADR-002 (transport) and ADR-001 (two-tier
+  changelog/agentlog) are unchanged and conformed to.
+- `AGENTS.md` now reflects the Phase 2 baseline truthfully.
+
+## 6. Project Model Impact
+
+None. No `@nuclear/shared-types` contract, `.ncp` schema, fixture or protocol
+version changed in this slice. The Phase 2 `.ncp` surface remains a future
+`project-model` concern; the `ScientificWorkerBridge` is the sanctioned bridge
+for Phase 3.
+
+## 7. Known Limitations & Technical Debt
+
+- **F-1 (MINOR):** public `request<TResult>` performs an unchecked cast; Phase 3
+  must consume only the typed queries (`inspect`/`geometry`/`compatibility`/
+  `quantitation`).
+- **F-4 (LOW, carried from P2.5 §7):** no runtime negative test for
+  `requireModality`'s fail-closed branch; an uncorrelatable well-formed
+  response is silently discarded; the stdout line buffer is unbounded; a
+  concurrent second `stop()` returns early; `DEFAULT_WORKER_COMMAND` resolves
+  against `process.cwd()`.
+- **Evidence asymmetry:** no committed positive `nuclear.dicom.compatibility`
+  fixture; the positive path is covered by pytest and the QA reproduction, not
+  by a committed fixture file. Adding one is an optional evidence-hygiene task.
+- **`figure.ts` = 266 lines:** pre-existing, within the 250–300 band; decompose
+  on next touch per Rule 02.
+- **`docs:python`:** runs without `pdoc`; publication-grade Python API docs
+  require installing `pdoc` in the docs environment.
+- **Test typechecking:** `tsc -b` covers `packages/**` only; `tests/**` runs via
+  Node type stripping, so test type errors surface at runtime.
+
+## 8. Exact Next Recommended Task
+
+- **Phase 3** (owner `nuclear-engine-engineer`): headless medical engine —
+  Cornerstone adapter, volume loading, residency manager and offscreen
+  `RenderTarget`, consuming the bridge through its typed queries only. Before
+  Phase 3 begins, evaluate the carried risks: the worker provisioning contract
+  (`command`/`cwd` for `apps/desktop`), timeout/restart policy under concurrent
+  volume requests, whether compatibility evidence must become a persisted
+  contract, and adding `tests/**` to typechecking.
+- **Release (separate, explicit user action):** run `/promote-changelog 2` and
+  tag only when a release is requested; P2.6 did not touch `CHANGELOG.md`.
+
+---
+
+## Phase 2 Completion Gate Table (final)
+
+| Gate | Phase 2 evidence | Verdict |
+| --- | --- | --- |
+| AgentLog | Eight-point handovers per slice (P2.0–P2.5) plus this consolidated P2.6 report and the reviewer/QA phase evidence | PASS |
+| Protocol | `-32700`/`-32600`/`-32601`/`-32602`/`-32603` + reserved `-32001`/`-32010`; mandatory `data.diagnostic`; normative fixtures replayed byte-identically; bridge verifies envelope `protocolVersion` and handshake compatibility | PASS |
+| DICOM | Explicit CT/PT/localizer/secondary-capture/unsupported classification with reasons; `-32010` source failure; 6 committed classification fixtures; positive + fail-closed negative reproduced by QA through the real worker | PASS |
+| Geometry | Axial and oblique positives with exact `geometricDigest`; irregular spacing, gantry tilt, duplicate slice, inconsistent identity/orientation, non-finite/non-positive rejected; 13 committed geometry fixtures; QA reproduced positive and rejected through the real worker | PASS |
+| Quantitation | Python-only SUVbw with provenance; `suvFactor` only when `computed`; DICOM PS3.3/PS3.5-conformant extraction and DT offsets; 13 committed quantitation fixtures; QA reproduced `computed` to 1e-9 and `invalid` fail-closed | PASS |
+| Bridge | Correlation, timeout, bounded restart/backoff, typed mapping, provenance preservation, no duplicated formula, no UI dependency; tested against the real spawned worker; `nuclear-reviewer` PASS | PASS |
+| Quality | `typecheck`/`build`/forced build clean; 53/53 TS; 166/166 Python; strict mypy 43 files; docs generation exit 0; file lengths within the 250–300 band; no new runtime dependency | PASS |
+| Review | Per-slice reviewer + QA evidence P2.0–P2.5; phase-level `nuclear-reviewer` PASS and `nuclear-qa` PASS recorded below | PASS |
+
+## Gate Review & QA Evidence (P2.6)
+
+- `nuclear-reviewer` phase-level review: **PASS**. Re-ran the gates at HEAD and
+  inspected the consolidated code against ADR-002, the plan invariants and Rule
+  02 boundaries; confirmed protocol conformance end-to-end, Python-only science
+  authority, no duplicated formula, fail-closed dispositions, fixture policy
+  (42 established / 0 planned, no silent change), excluded scope untouched, and
+  no `any`/`@ts-ignore` in the engine. Required only documentation-level
+  closure actions (this handover, the F-2 interpretation, the 42-count note),
+  all executed above. Carried findings F-1…F-4 and four Phase 3 risks.
+- `nuclear-qa` phase audit: **all applicable gates PASS** (12/12) — typecheck,
+  53/53 tests, build + forced rebuild, 166/166 Python, strict mypy, file
+  length, fixture integrity, dependency boundary, git hygiene, and independent
+  real-worker reproduction of one positive and one fail-closed negative per
+  operation (12 fixture-matched transactions, 0 failures). Declared caveats:
+  `docs:python` uses the structured fallback because `pdoc` is absent; the
+  manifest is 42/0; `figure.ts` is 266 lines; no committed positive
+  compatibility fixture; desktop/Electron gates are `NOT YET APPLICABLE`
+  because `apps/` does not exist.
+- **Changelog Gate:** `NOT YET APPLICABLE` — no `CHANGELOG.md` change in P2.6;
+  promotion is a separate release action.
+- Deliberately not staged: the pre-existing unrelated harness changes
+  `opencode.json` and `opencode-rag.json`.
