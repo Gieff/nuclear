@@ -1,13 +1,13 @@
 {
   "name": "@nuclear/medical-engine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Headless Cornerstone3D rendering engine and Python bridge for NuClear",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "dependencies": {
-    "@nuclear/shared-types": "0.1.0",
-    "@nuclear/rendering-presets": "0.1.0"
+    "@nuclear/shared-types": "0.1.1",
+    "@nuclear/rendering-presets": "0.1.1"
   },
   "files": ["dist", "src"]
 }

@@ -24,4 +24,4 @@ Modules:
     quantitation_operations: ``nuclear.quantitation.suvbw`` handler.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
