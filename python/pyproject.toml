@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nuclear-scientific"
+version = "0.1.0"
+description = "NuClear scientific worker: DICOM parsing, physical geometry verification, and quantitative SUVbw determination"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "NuClear Project Team" }
+]
+dependencies = [
+    "pydicom>=2.4.0",
+    "numpy>=1.24.0",
+    "SimpleITK>=2.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "mypy>=1.9.0",
+    "ruff>=0.3.0",
+]
+docs = [
+    "pdoc>=14.4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dicom*", "worker*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+disallow_untyped_defs = true

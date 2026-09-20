@@ -129,8 +129,10 @@ export type {
 export type {
   LinkableState,
   IntraStudyLink,
+  GeometryVerificationSnapshot,
   InterStudyLinkMode,
   InterStudyLink,
+  RegisteredSpatialTransformReference,
   ViewLink,
   LockableState,
   StateLock,

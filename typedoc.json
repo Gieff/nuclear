@@ -1,0 +1,15 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "NuClear — TypeScript Contracts & API Documentation",
+  "entryPoints": [
+    "packages/shared-types/src/index.ts"
+  ],
+  "out": "docs/api/ts",
+  "readme": "README.md",
+  "includeVersion": true,
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "skipErrorChecking": false,
+  "cleanOutputDir": true,
+  "commentStyle": "all"
+}

@@ -6,7 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+- **Documentation Tooling (TSDoc / TypeDoc & Python PEP 621 Scaffolding)**:
+  - Configured TypeDoc (`typedoc.json`) and scripts (`npm run docs:ts`, `npm run docs`) generating static HTML API documentation in `docs/api/ts`.
+  - Added PEP 621 `python/pyproject.toml` declaring scientific worker dependencies (`pydicom`, `numpy`, `SimpleITK`), Google-style docstring standards, and `pdoc` documentation toolchain.
+  - Implemented `scripts/build_python_docs.py` and master multi-language portal at `docs/api/index.html` bridging TypeScript and Python documentation.
 - **Phase 1.3 (Figure Contracts)**:
   - Added serializable Composer view instances, medical bindings, panel framing/layout/decoration and Figure Sheet contracts with explicit millimetre spaces.
   - Added renderable discriminated annotations (patient LPS, panel-content and sheet anchors; lines/arrows, ROI, text, measurements and scalebars); screen pixels cannot be persisted as clinical anchors.
