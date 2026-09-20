@@ -17,7 +17,11 @@ Modules:
     geometry: Regular-grid extraction and fail-closed dispositions.
     compatibility: Frame-of-reference and orientation compatibility evidence.
     geometry_operations: ``nuclear.dicom.geometry``/``compatibility`` handlers.
-    quantitation: Quantitative SUVbw calibration and decay factor (P2.4).
+    pet_metadata: PET acquisition tag reader and disposition vocabulary.
+    quantitation_math: SUVbw formula, DICOM TM parsing and named tolerances.
+    quantitation_validation: Per-instance PET validation helpers.
+    quantitation: Fail-closed SUVbw validation and result assembly.
+    quantitation_operations: ``nuclear.quantitation.suvbw`` handler.
 """
 
 __version__ = "0.1.0"

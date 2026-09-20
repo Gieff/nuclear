@@ -107,6 +107,14 @@ def numbers_from_dataset(dataset: Dataset, keyword: str) -> tuple[float, ...] | 
     return tuple(numbers)
 
 
+def number_from_dataset(dataset: Dataset, keyword: str) -> float | None:
+    """Return a single-valued numeric tag as a float, or ``None`` when invalid."""
+    values = numbers_from_dataset(dataset, keyword)
+    if values is None or len(values) != 1:
+        return None
+    return values[0]
+
+
 def _tokens(dataset: Dataset, keyword: str) -> tuple[str, ...]:
     value = dataset.get(keyword)
     if value is None:

@@ -27,6 +27,7 @@ from .protocol import (
     HANDSHAKE_METHOD,
     METHOD_NOT_FOUND,
     PROTOCOL_VERSION,
+    QUANTITATION_SUVBW_METHOD,
     ProtocolError,
     iso8601_utc,
 )
@@ -132,6 +133,7 @@ def build_dispatcher(now: Clock | None = None) -> Dispatcher:
         worker implements.
     """
     from dicom.geometry_operations import compatibility_operation, geometry_operation
+    from dicom.quantitation_operations import suvbw_operation
     from dicom.scanner import inspect_source
 
     dispatcher = Dispatcher(now=now)
@@ -145,8 +147,12 @@ def build_dispatcher(now: Clock | None = None) -> Dispatcher:
     def compatibility(params: Mapping[str, Any]) -> dict[str, Any]:
         return compatibility_operation(params, clock=dispatcher.clock)
 
+    def quantitation(params: Mapping[str, Any]) -> dict[str, Any]:
+        return suvbw_operation(params, clock=dispatcher.clock)
+
     dispatcher.register(HANDSHAKE_METHOD, dispatcher._handshake)
     dispatcher.register(DICOM_INSPECT_METHOD, inspect)
     dispatcher.register(DICOM_GEOMETRY_METHOD, geometry)
     dispatcher.register(DICOM_COMPATIBILITY_METHOD, compatibility)
+    dispatcher.register(QUANTITATION_SUVBW_METHOD, quantitation)
     return dispatcher

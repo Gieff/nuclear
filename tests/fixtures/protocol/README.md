@@ -48,8 +48,8 @@ Standard JSON-RPC 2.0 codes are used where they apply: `-32700` parse error,
 range `-32000`..`-32099`; `-32001` (protocol version mismatch) was ratified by
 P2.1 and `-32010` (`SOURCE_UNAVAILABLE`, an unresolvable or unreadable source)
 by P2.2. No protocol fixture above encodes a DICOM result; the P2.2
-classification and P2.3 geometry fixtures are generated under
-`tests/fixtures/dicom/`.
+classification, P2.3 geometry and P2.4 quantitation fixtures are generated
+under `tests/fixtures/dicom/`.
 
 Every failure carries a structured `data.diagnostic`. Missing tags,
 unsupported representations, incompatible geometry, and invalid quantitation

@@ -22,6 +22,7 @@ HANDSHAKE_METHOD = "nuclear.protocol.handshake"
 DICOM_INSPECT_METHOD = "nuclear.dicom.inspect"
 DICOM_GEOMETRY_METHOD = "nuclear.dicom.geometry"
 DICOM_COMPATIBILITY_METHOD = "nuclear.dicom.compatibility"
+QUANTITATION_SUVBW_METHOD = "nuclear.quantitation.suvbw"
 SUPPORTED_PROTOCOL_VERSIONS: tuple[str, ...] = (PROTOCOL_VERSION,)
 
 PARSE_ERROR = -32700

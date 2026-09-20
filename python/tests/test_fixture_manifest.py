@@ -63,9 +63,11 @@ def test_established_fixtures_exist_on_disk(
 
 
 def test_planned_fixtures_claim_no_evidence(manifest: dict[str, Any]) -> None:
-    planned = [f for f in _fixtures(manifest) if f["status"] == "planned"]
-    assert planned
-    for fixture in planned:
+    # After P2.4 every scientific fixture is established; if any fixture is still
+    # planned it must never claim a path or an expected output.
+    for fixture in _fixtures(manifest):
+        if fixture["status"] != "planned":
+            continue
         assert not fixture.get("path"), fixture["id"]
         assert fixture.get("expectedPath") is None, fixture["id"]
         assert fixture["ownerSlice"] != "P2.0", fixture["id"]
@@ -79,23 +81,21 @@ def test_established_synthetic_dicom_requires_expected_output(
             assert fixture.get("expectedPath"), fixture["id"]
 
 
-def test_planned_slices_cover_dicom_geometry_and_quantitation(
-    manifest: dict[str, Any]
-) -> None:
+def test_scientific_fixture_slices_are_established(manifest: dict[str, Any]) -> None:
     established_slices = {
         fixture["ownerSlice"]
         for fixture in _fixtures(manifest)
         if fixture["status"] == "established"
     }
+    # Classification (P2.2), geometry (P2.3) and quantitation (P2.4) are all
+    # established evidence; no scientific slice is left as planned.
+    assert {"P2.2", "P2.3", "P2.4"} <= established_slices
     planned_slices = {
         fixture["ownerSlice"]
         for fixture in _fixtures(manifest)
         if fixture["status"] == "planned"
     }
-    # P2.2 classification and P2.3 geometry are established; quantitation
-    # (P2.4) remains explicitly planned and is never evidence for PASS.
-    assert {"P2.2", "P2.3"} <= established_slices
-    assert "P2.4" in planned_slices
+    assert not (planned_slices & {"P2.2", "P2.3", "P2.4"})
 
 
 def test_negative_request_shaped_fixtures_are_envelope_shaped(

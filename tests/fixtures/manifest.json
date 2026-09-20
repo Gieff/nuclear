@@ -303,40 +303,40 @@
       "id": "quantitation.suvbw-bqml",
       "kind": "synthetic-dicom",
       "role": "positive",
-      "status": "planned",
+      "status": "established",
       "ownerSlice": "P2.4",
-      "generator": null,
-      "expectedPath": null,
+      "generator": "python/tests/synthetic_pet.py::write_pet_bqml",
+      "expectedPath": "tests/fixtures/dicom/quantitation/suvbw-bqml.expected.json",
       "description": "BQML PET series producing a computed SUVbw factor with Python provenance."
     },
     {
       "id": "quantitation.missing-metadata",
       "kind": "synthetic-dicom",
       "role": "negative",
-      "status": "planned",
+      "status": "established",
       "ownerSlice": "P2.4",
-      "generator": null,
-      "expectedPath": null,
+      "generator": "python/tests/synthetic_pet.py::write_pet_missing_weight",
+      "expectedPath": "tests/fixtures/dicom/quantitation/missing-metadata.expected.json",
       "description": "Missing weight, dose, or time producing an explicit unavailable result."
     },
     {
       "id": "quantitation.unsupported-units",
       "kind": "synthetic-dicom",
       "role": "negative",
-      "status": "planned",
+      "status": "established",
       "ownerSlice": "P2.4",
-      "generator": null,
-      "expectedPath": null,
+      "generator": "python/tests/synthetic_pet.py::write_pet_unsupported_units",
+      "expectedPath": "tests/fixtures/dicom/quantitation/unsupported-units.expected.json",
       "description": "Non-BQML activity units rejected rather than converted implicitly."
     },
     {
       "id": "quantitation.invalid-decay-correction",
       "kind": "synthetic-dicom",
       "role": "negative",
-      "status": "planned",
+      "status": "established",
       "ownerSlice": "P2.4",
-      "generator": null,
-      "expectedPath": null,
+      "generator": "python/tests/synthetic_pet.py::write_pet_invalid_decay",
+      "expectedPath": "tests/fixtures/dicom/quantitation/invalid-decay-correction.expected.json",
       "description": "Unsupported DecayCorrection value failing closed."
     }
   ]

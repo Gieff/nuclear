@@ -7,7 +7,7 @@
     "message": "Method not found",
     "data": {
       "requestedMethod": "nuclear.unknown.operation",
-      "supportedMethods": ["nuclear.dicom.compatibility", "nuclear.dicom.geometry", "nuclear.dicom.inspect", "nuclear.protocol.handshake"],
+      "supportedMethods": ["nuclear.dicom.compatibility", "nuclear.dicom.geometry", "nuclear.dicom.inspect", "nuclear.protocol.handshake", "nuclear.quantitation.suvbw"],
       "diagnostic": "Method 'nuclear.unknown.operation' is not registered by this worker."
     }
   }

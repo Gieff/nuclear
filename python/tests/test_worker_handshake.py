@@ -22,6 +22,7 @@ from worker.protocol import (
     DICOM_INSPECT_METHOD,
     HANDSHAKE_METHOD,
     PROTOCOL_VERSION,
+    QUANTITATION_SUVBW_METHOD,
 )
 
 FROZEN_NOW = datetime(2026, 9, 20, 0, 0, 0, tzinfo=timezone.utc)
@@ -58,6 +59,7 @@ def test_handshake_success_carries_worker_provenance(
         DICOM_GEOMETRY_METHOD,
         DICOM_INSPECT_METHOD,
         HANDSHAKE_METHOD,
+        QUANTITATION_SUVBW_METHOD,
     ]
 
     metadata = result["workerMetadata"]

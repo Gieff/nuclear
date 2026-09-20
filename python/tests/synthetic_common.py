@@ -32,6 +32,13 @@ def write_metadata_dataset(
     pixel_spacing: Sequence[float] | None = None,
     rows: int | None = None,
     columns: int | None = None,
+    units: str | None = None,
+    decay_correction: str | None = None,
+    radionuclide_half_life: float | None = None,
+    radionuclide_total_dose: float | None = None,
+    radiopharmaceutical_start_time: str | None = None,
+    series_time: str | None = None,
+    patient_weight: float | None = None,
 ) -> Path:
     """Write one minimal metadata-only DICOM instance and return its path."""
     meta = FileMetaDataset()
@@ -64,5 +71,19 @@ def write_metadata_dataset(
         dataset.Rows = rows
     if columns is not None:
         dataset.Columns = columns
+    if units is not None:
+        dataset.Units = units
+    if decay_correction is not None:
+        dataset.DecayCorrection = decay_correction
+    if radionuclide_half_life is not None:
+        dataset.RadionuclideHalfLife = float(radionuclide_half_life)
+    if radionuclide_total_dose is not None:
+        dataset.RadionuclideTotalDose = float(radionuclide_total_dose)
+    if radiopharmaceutical_start_time is not None:
+        dataset.RadiopharmaceuticalStartTime = radiopharmaceutical_start_time
+    if series_time is not None:
+        dataset.SeriesTime = series_time
+    if patient_weight is not None:
+        dataset.PatientWeight = float(patient_weight)
     dataset.save_as(str(path), enforce_file_format=True)
     return path

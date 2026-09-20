@@ -14,7 +14,9 @@
 - **P2.3.1 — COMPLETE** (2026-09-20). Fail-closed hardening: non-finite and
   non-positive geometry rejection, intra-series identity invariants, strict
   JSON boundary, and derived-finiteness guards.
-- **P2.4–P2.6 — NOT STARTED.** No quantitation or TypeScript bridge code
+- **P2.4 — COMPLETE** (2026-09-20). PET raw metadata extraction and
+  `PetQuantitationResult` SUVbw factor production implemented and ratified.
+- **P2.5–P2.6 — NOT STARTED.** No TypeScript `ScientificWorkerBridge` code
   exists.
 - This file is append-only per slice. Each future slice appends its own
   eight-point handover below; do not rewrite completed entries.
@@ -812,3 +814,151 @@ byte-identical.
   `quantitation.*` still planned, live transport checks (NaN -> `-32700`,
   process survives, stdout token-free). AgentLog was pending at QA time and is
   satisfied by this report.
+
+---
+
+# Handover Report — P2.4: PET Raw Metadata & `PetQuantitationResult`
+
+## 1. What Was Implemented
+
+- **`nuclear.quantitation.suvbw` operation**: resolves a `SourceLocator` plus
+  `seriesInstanceUID`, reads PET acquisition tags metadata-only, and produces a
+  Python `PetQuantitationResult` whose core fields match the Phase 1 TypeScript
+  contract: `method:"suv-bw"`, `status` in `computed|invalid|unavailable`,
+  `suvFactor` (g/Bq) present only when computed, `diagnostic` only when not,
+  plus `workerMetadata`.
+- **Authoritative formula** (nuclear-dicom runbook §C, implemented verbatim,
+  no SUV value and no pixels):
+  `elapsedSeconds = SeriesTime - RadiopharmaceuticalStartTime` (same day);
+  `decayedDoseBq = RadionuclideTotalDose * exp(-ln2 * elapsed / RadionuclideHalfLife)`;
+  `suvFactor = PatientWeightKg * 1000 / decayedDoseBq`.
+- **Fail-closed dispositions**: absent required tags
+  (`PatientWeight`, `RadionuclideTotalDose`, `RadionuclideHalfLife`,
+  `RadiopharmaceuticalStartTime`, `SeriesTime`, `Units`, `DecayCorrection`)
+  -> `unavailable`/`missing-required-tag:<Tag>`; present-but-unusable ->
+  `invalid` (`unsupported-units`, `invalid-decay-correction`,
+  `non-positive-patient-weight`, `non-positive-total-dose`,
+  `non-positive-half-life`, `unparseable-time`, `negative-elapsed-time`,
+  `inconsistent-pet-metadata`, `non-finite-pet-metadata`,
+  `non-positive-decayed-dose`, `non-finite-suv-factor`); `series-not-found`
+  and `not-a-pet-series` -> `unavailable`. No plausible fallback and no
+  non-finite `suvFactor` is ever emitted.
+- **Deterministic modality handling**: uniformly non-PT -> `not-a-pet-series`;
+  disagreeing modalities within one series -> `inconsistent-pet-metadata`,
+  independent of on-disk scan order.
+- **Named, non-clinical tolerances**: `SUV_FACTOR_RELATIVE_TOLERANCE`,
+  `ELAPSED_SECONDS_EPSILON`, `PET_METADATA_RELATIVE_TOLERANCE`.
+
+## 2. Files Changed / Created
+
+Created:
+- `python/dicom/pet_metadata.py`, `quantitation_math.py`,
+  `quantitation_validation.py`, `quantitation.py`,
+  `quantitation_operations.py`
+- `python/tests/synthetic_pet.py`, `test_dicom_quantitation.py`
+- `tests/fixtures/dicom/quantitation/{suvbw-bqml, missing-metadata,
+  unsupported-units, invalid-decay-correction}.expected.json`
+
+Modified:
+- `python/dicom/{metadata,__init__}.py`; `python/worker/{protocol,dispatch}.py`
+- `python/tests/{synthetic_common,test_fixture_manifest,test_worker_envelope,
+  test_worker_handshake}.py`
+- `python/README.md`; `tests/fixtures/manifest.json`;
+  `tests/fixtures/protocol/{response.handshake.json,
+  error.unknown-method.json, README.md}`
+- `docs/agentlog/phase-2.md` (this handover)
+
+Not modified: `packages/**`, `apps/**`, any TypeScript; the 19 pre-existing
+expected fixtures (6 classification + 13 geometry) are byte-identical.
+
+## 3. Architectural Assumptions Made
+
+- Python is authoritative for SUVbw; TypeScript performs envelope and contract
+  validation only and does not duplicate the formula.
+- Absent metadata is `unavailable`; present-but-unusable metadata is `invalid`.
+  Both are explicit results, never a fallback.
+- Elapsed time uses `SeriesTime - RadiopharmaceuticalStartTime` on a same-day
+  assumption; a negative elapsed time fails closed as `invalid` and
+  cross-midnight handling is explicitly deferred rather than invented.
+- A decayed dose that underflows to `<= 0` is rejected with the named
+  `non-positive-decayed-dose` disposition before the division, so no
+  `ZeroDivisionError` can escape as a generic internal error.
+- `suvFactor` is a scaling factor in g/Bq; the activity-concentration
+  multiplication requires pixels and belongs outside this phase.
+
+## 4. Tests Added & Executed
+
+- `npm run test:python` -> **133 passed** (0 failed, 0 skipped), from 105 at
+  P2.3.1. Adds 28 tests: four committed-expectation cases, decay/factor
+  identities at Δt=0 (`suvFactor == weight_g/totalDose`) and Δt=T½
+  (`decayed == totalDose/2`), per-tag missing cases, non-positive
+  weight/dose/half-life, unparseable and negative time, unsupported units,
+  invalid decay correction, inconsistent and mixed-modality series,
+  non-finite input, decay underflow, denormal factor, series-not-found
+  (`studyInstanceUID: null`), not-a-pet-series, `-32602` params, no absolute
+  paths/PHI, strict-JSON round-trip, manifest reconciliation.
+- `npm run typecheck:python` -> strict mypy clean over 41 source files.
+- Ruff clean; `npm run typecheck`, `npm test` (33/33), `npm run build` green.
+- File-length gate: every source file <=250 lines (`quantitation.py` reduced
+  from 248 to 208 by extracting `quantitation_validation.py`).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- `python/README.md` documents the operation, the formula with explicit g/Bq
+  units, the status/reason vocabulary, the same-day deferral, the underflow
+  guard, modality determinism and the named tolerances.
+- No new ADR: the formula is already NuClear-owned in the `nuclear-dicom`
+  runbook and the result contract exists in `@nuclear/shared-types`.
+
+## 6. Project Model Impact
+
+- No contract or `.ncp` schema change. The Python result is shaped so the P2.5
+  `ScientificWorkerBridge` can map `method`/`status`/`suvFactor`/`diagnostic`
+  and `petAcquisition` directly onto `PetQuantitationResult` and
+  `PetAcquisitionMetadata`.
+
+## 7. Known Limitations & Technical Debt
+
+- Cross-midnight / date-aware decay correction is not implemented; negative
+  elapsed time fails closed and the deferral is documented.
+- Only `Units == BQML` is supported; `CNTS`/`GML` are explicit
+  `unsupported-units` failures, not converted.
+- `python/tests/test_worker_envelope.py` remains at 249 lines and
+  `test_dicom_quantitation.py` at 247; further growth requires decomposition.
+- `quantitation.py` docstring summarises the order as "modality" before the
+  modality-consistency predicate; cosmetically imprecise (no behavioural
+  impact), noted by the reviewer.
+
+## 8. Exact Next Recommended Task
+
+- **P2.5** (owner: `nuclear-engine-engineer` per the runbook, after P2.1–P2.4
+  protocol responses are accepted): implement the TypeScript
+  `ScientificWorkerBridge` facade in `@nuclear/medical-engine` — correlation,
+  timeout, restart, typed mapping of the four operations to NuClear contracts,
+  provenance preservation, and a test proving no formula is duplicated in
+  TypeScript. Do not start P2.6 until P2.5 review and QA evidence is recorded
+  here.
+
+---
+
+## Gate Review & QA Evidence (P2.4)
+
+- `nuclear-reviewer` first pass: **CONCERNS** — (1) HIGH: decay underflow to
+  zero divided by zero and surfaced as a generic `-32603` instead of the named
+  `invalid` disposition; (2) LOW: mixed-modality series was scan-order
+  dependent; (3) INFO: `series-not-found` emitted `studyInstanceUID: ""`.
+  All corrected.
+- `nuclear-reviewer` final pass: **PASS** — underflow guard precedes division
+  with the named `non-positive-decayed-dose` reason, the denormal
+  `non-finite-suv-factor` path is reachable and tested, modality resolution is
+  order-independent, formula fidelity and the `suvFactor`-only-when-computed
+  contract are unaffected.
+- `nuclear-qa` first pass: **7/8 PASS**, AgentLog pending.
+- `nuclear-qa` final pass: **all gates PASS** — 133/133 Python tests,
+  config-aware strict mypy over 41 files, ruff clean, 33/33 TS tests, build
+  clean, file lengths <=250, 33 established / 0 planned fixtures with the 19
+  pre-existing expected fixtures byte-identical, protocol 5-operation list, and
+  live reproduction of the BQML positive (independently recomputed within
+  1e-12), missing-metadata, unsupported-units, invalid-decay, underflow,
+  mixed-modality and series-not-found cases. AgentLog was pending at QA time
+  and is satisfied by this report.
