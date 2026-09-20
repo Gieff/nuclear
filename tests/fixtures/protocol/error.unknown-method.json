@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": "req-0002",
+  "protocolVersion": "1.0",
+  "error": {
+    "code": -32601,
+    "message": "Method not found",
+    "data": {
+      "requestedMethod": "nuclear.unknown.operation",
+      "supportedMethods": ["nuclear.protocol.handshake"],
+      "diagnostic": "No such worker operation is registered."
+    }
+  }
+}

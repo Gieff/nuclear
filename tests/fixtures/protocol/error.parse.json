@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": null,
+  "protocolVersion": "1.0",
+  "error": {
+    "code": -32700,
+    "message": "Parse error",
+    "data": {
+      "recordIndex": 0,
+      "diagnostic": "Record is not valid JSON."
+    }
+  }
+}

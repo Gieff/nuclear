@@ -1,0 +1,233 @@
+{
+  "schemaVersion": "1.0",
+  "phase": 2,
+  "protocolVersion": "1.0",
+  "authority": "docs/decisions/ADR-002-scientific-worker-stdio-json-rpc.md",
+  "plan": "docs/plans/PHASE_2_SCIENTIFIC_INGESTION_PLAN.md",
+  "statusLegend": {
+    "established": "Artifact exists in the repository and is exercised by a test.",
+    "planned": "Required by the Phase 2 plan but not yet produced. Never evidence for PASS."
+  },
+  "fixtures": [
+    {
+      "id": "protocol.request.handshake",
+      "kind": "protocol-example",
+      "role": "request",
+      "status": "established",
+      "normative": false,
+      "ownerSlice": "P2.0",
+      "path": "tests/fixtures/protocol/request.handshake.json",
+      "description": "Correlated JSON-RPC request envelope carrying protocolVersion 1.0."
+    },
+    {
+      "id": "protocol.response.handshake",
+      "kind": "protocol-example",
+      "role": "response",
+      "status": "established",
+      "normative": false,
+      "ownerSlice": "P2.0",
+      "path": "tests/fixtures/protocol/response.handshake.json",
+      "description": "Success envelope carrying workerMetadata provenance for the request id."
+    },
+    {
+      "id": "protocol.error.unknown-method",
+      "kind": "protocol-example",
+      "role": "error",
+      "status": "established",
+      "normative": false,
+      "ownerSlice": "P2.0",
+      "path": "tests/fixtures/protocol/error.unknown-method.json",
+      "description": "Structured -32601 Method not found failure without a result."
+    },
+    {
+      "id": "protocol.error.protocol-mismatch",
+      "kind": "protocol-example",
+      "role": "error",
+      "status": "established",
+      "normative": false,
+      "ownerSlice": "P2.0",
+      "path": "tests/fixtures/protocol/error.protocol-mismatch.json",
+      "description": "Reserved -32001 failure reporting requested versus supported protocol versions."
+    },
+    {
+      "id": "protocol.error.invalid-params",
+      "kind": "protocol-example",
+      "role": "error",
+      "status": "established",
+      "normative": false,
+      "ownerSlice": "P2.0",
+      "path": "tests/fixtures/protocol/error.invalid-params.json",
+      "description": "Structured -32602 Invalid params failure with actionable violations."
+    },
+    {
+      "id": "protocol.error.parse",
+      "kind": "protocol-example",
+      "role": "error",
+      "status": "established",
+      "normative": false,
+      "ownerSlice": "P2.0",
+      "path": "tests/fixtures/protocol/error.parse.json",
+      "description": "Structured -32700 Parse error with a null id, as required by JSON-RPC 2.0."
+    },
+    {
+      "id": "protocol.malformed.record",
+      "kind": "protocol-example",
+      "role": "malformed-record",
+      "status": "established",
+      "normative": false,
+      "ownerSlice": "P2.0",
+      "path": "tests/fixtures/protocol/malformed.request.txt",
+      "description": "Non-JSON record that must fail closed with a parse error."
+    },
+    {
+      "id": "dicom.classification.ct-primary",
+      "kind": "synthetic-dicom",
+      "role": "input",
+      "status": "planned",
+      "ownerSlice": "P2.2",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Synthetic primary axial CT series classified as a supported volume."
+    },
+    {
+      "id": "dicom.classification.pt-attenuation-corrected",
+      "kind": "synthetic-dicom",
+      "role": "input",
+      "status": "planned",
+      "ownerSlice": "P2.2",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Synthetic attenuation-corrected PET series classified as a supported volume."
+    },
+    {
+      "id": "dicom.classification.unsupported-modality",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "planned",
+      "ownerSlice": "P2.2",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Synthetic non-CT/PT series classified explicitly as unsupported."
+    },
+    {
+      "id": "dicom.classification.localizer",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "planned",
+      "ownerSlice": "P2.2",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Synthetic scout/localizer excluded from the primary series set."
+    },
+    {
+      "id": "dicom.classification.secondary-capture",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "planned",
+      "ownerSlice": "P2.2",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Synthetic secondary capture excluded with a structured reason."
+    },
+    {
+      "id": "dicom.classification.missing-required-tag",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "planned",
+      "ownerSlice": "P2.2",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Synthetic instance missing a required tag failing closed with diagnostics."
+    },
+    {
+      "id": "geometry.axial-exact",
+      "kind": "synthetic-dicom",
+      "role": "positive",
+      "status": "planned",
+      "ownerSlice": "P2.3",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Axial regular grid with exact expected LPS geometry and declared tolerance."
+    },
+    {
+      "id": "geometry.oblique-exact",
+      "kind": "synthetic-dicom",
+      "role": "positive",
+      "status": "planned",
+      "ownerSlice": "P2.3",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Oblique regular grid with exact expected direction cosines and declared tolerance."
+    },
+    {
+      "id": "geometry.irregular-spacing",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "planned",
+      "ownerSlice": "P2.3",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Non-uniform slice spacing rejected instead of silently repaired."
+    },
+    {
+      "id": "geometry.frame-of-reference-mismatch",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "planned",
+      "ownerSlice": "P2.3",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Differing FrameOfReferenceUID failing co-reference verification."
+    },
+    {
+      "id": "geometry.orientation-inconsistent",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "planned",
+      "ownerSlice": "P2.3",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Inconsistent ImageOrientationPatient rejected with diagnostics."
+    },
+    {
+      "id": "quantitation.suvbw-bqml",
+      "kind": "synthetic-dicom",
+      "role": "positive",
+      "status": "planned",
+      "ownerSlice": "P2.4",
+      "generator": null,
+      "expectedPath": null,
+      "description": "BQML PET series producing a computed SUVbw factor with Python provenance."
+    },
+    {
+      "id": "quantitation.missing-metadata",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "planned",
+      "ownerSlice": "P2.4",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Missing weight, dose, or time producing an explicit unavailable result."
+    },
+    {
+      "id": "quantitation.unsupported-units",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "planned",
+      "ownerSlice": "P2.4",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Non-BQML activity units rejected rather than converted implicitly."
+    },
+    {
+      "id": "quantitation.invalid-decay-correction",
+      "kind": "synthetic-dicom",
+      "role": "negative",
+      "status": "planned",
+      "ownerSlice": "P2.4",
+      "generator": null,
+      "expectedPath": null,
+      "description": "Unsupported DecayCorrection value failing closed."
+    }
+  ]
+}

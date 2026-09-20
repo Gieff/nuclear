@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": "req-0004",
+  "protocolVersion": "1.0",
+  "error": {
+    "code": -32602,
+    "message": "Invalid params",
+    "data": {
+      "diagnostic": "Expected an object for params.",
+      "violations": ["params must be a JSON object for nuclear.protocol.handshake"]
+    }
+  }
+}

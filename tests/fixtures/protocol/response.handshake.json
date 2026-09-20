@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": "req-0001",
+  "protocolVersion": "1.0",
+  "result": {
+    "protocolVersions": ["1.0"],
+    "operations": [],
+    "workerMetadata": {
+      "workerVersion": "0.1.0",
+      "operation": "nuclear.protocol.handshake",
+      "timestamp": "2026-09-20T00:00:00Z",
+      "parameters": {}
+    }
+  }
+}

@@ -1,0 +1,87 @@
+"""P2.0 evidence that the versioned fixture manifest is complete and honest.
+
+A ``planned`` fixture is never evidence. An ``established`` fixture must exist
+on disk and be indexed. This suite fails if the manifest drifts from the
+repository.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+VALID_STATUSES = frozenset({"established", "planned"})
+VALID_ROLES = frozenset(
+    {"request", "response", "error", "malformed-record", "input", "positive", "negative"}
+)
+VALID_SLICES = frozenset({"P2.0", "P2.1", "P2.2", "P2.3", "P2.4", "P2.5", "P2.6"})
+
+
+def _fixtures(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    fixtures = manifest["fixtures"]
+    assert isinstance(fixtures, list) and fixtures
+    return fixtures
+
+
+def test_manifest_is_versioned_and_phase_scoped(
+    manifest: dict[str, Any], repo_root: Path
+) -> None:
+    assert manifest["schemaVersion"] == "1.0"
+    assert manifest["phase"] == 2
+    assert manifest["protocolVersion"] == "1.0"
+    assert (repo_root / manifest["authority"]).is_file()
+    assert (repo_root / manifest["plan"]).is_file()
+
+
+def test_fixture_ids_are_unique(manifest: dict[str, Any]) -> None:
+    ids = [fixture["id"] for fixture in _fixtures(manifest)]
+    assert len(ids) == len(set(ids))
+
+
+def test_every_fixture_declares_status_role_and_owner_slice(
+    manifest: dict[str, Any]
+) -> None:
+    for fixture in _fixtures(manifest):
+        assert fixture["status"] in VALID_STATUSES, fixture["id"]
+        assert fixture["role"] in VALID_ROLES, fixture["id"]
+        assert fixture["ownerSlice"] in VALID_SLICES, fixture["id"]
+        assert fixture["kind"], fixture["id"]
+
+
+def test_established_fixtures_exist_on_disk(
+    manifest: dict[str, Any], repo_root: Path
+) -> None:
+    established = [f for f in _fixtures(manifest) if f["status"] == "established"]
+    assert established
+    for fixture in established:
+        path = fixture.get("path")
+        assert isinstance(path, str) and path, fixture["id"]
+        assert (repo_root / path).is_file(), f"{fixture['id']} missing {path}"
+
+
+def test_planned_fixtures_claim_no_evidence(manifest: dict[str, Any]) -> None:
+    planned = [f for f in _fixtures(manifest) if f["status"] == "planned"]
+    assert planned
+    for fixture in planned:
+        assert not fixture.get("path"), fixture["id"]
+        assert fixture.get("expectedPath") is None, fixture["id"]
+        assert fixture["ownerSlice"] != "P2.0", fixture["id"]
+
+
+def test_established_synthetic_dicom_requires_expected_output(
+    manifest: dict[str, Any]
+) -> None:
+    for fixture in _fixtures(manifest):
+        if fixture["status"] == "established" and fixture["kind"] == "synthetic-dicom":
+            assert fixture.get("expectedPath"), fixture["id"]
+
+
+def test_planned_slices_cover_dicom_geometry_and_quantitation(
+    manifest: dict[str, Any]
+) -> None:
+    planned_slices = {
+        fixture["ownerSlice"]
+        for fixture in _fixtures(manifest)
+        if fixture["status"] == "planned"
+    }
+    assert {"P2.2", "P2.3", "P2.4"} <= planned_slices

@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": "req-0003",
+  "protocolVersion": "1.0",
+  "error": {
+    "code": -32001,
+    "message": "Protocol version mismatch",
+    "data": {
+      "requestedProtocolVersion": "2.0",
+      "supportedProtocolVersions": ["1.0"],
+      "diagnostic": "Worker speaks NuClear protocol 1.0 only."
+    }
+  }
+}
