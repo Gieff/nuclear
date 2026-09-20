@@ -68,12 +68,43 @@ class Diagnostic:
         }
 
 
-def _text(dataset: Dataset, keyword: str) -> str | None:
+def text_from_dataset(dataset: Dataset, keyword: str) -> str | None:
+    """Return a stripped string tag value, or ``None`` when absent/empty."""
     value = dataset.get(keyword)
     if value is None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def integer_from_dataset(dataset: Dataset, keyword: str) -> int | None:
+    """Return an integer tag value, or ``None`` when absent/unparseable."""
+    value = dataset.get(keyword)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def numbers_from_dataset(dataset: Dataset, keyword: str) -> tuple[float, ...] | None:
+    """Return a multi-valued numeric tag as floats, or ``None`` when invalid."""
+    value = dataset.get(keyword)
+    if value is None:
+        return None
+    items = (
+        list(value)
+        if hasattr(value, "__iter__") and not isinstance(value, (str, bytes))
+        else [value]
+    )
+    numbers: list[float] = []
+    for item in items:
+        try:
+            numbers.append(float(item))
+        except (TypeError, ValueError):
+            return None
+    return tuple(numbers)
 
 
 def _tokens(dataset: Dataset, keyword: str) -> tuple[str, ...]:
@@ -94,20 +125,14 @@ def instance_from_dataset(dataset: Dataset, file_name: str) -> InstanceMetadata:
     Returns:
         The metadata-only instance record.
     """
-    number = dataset.get("SeriesNumber")
-    series_number: int | None
-    try:
-        series_number = int(number) if number is not None else None
-    except (TypeError, ValueError):
-        series_number = None
     return InstanceMetadata(
-        study_instance_uid=_text(dataset, "StudyInstanceUID"),
-        series_instance_uid=_text(dataset, "SeriesInstanceUID"),
-        sop_instance_uid=_text(dataset, "SOPInstanceUID"),
-        sop_class_uid=_text(dataset, "SOPClassUID"),
-        modality=_text(dataset, "Modality"),
+        study_instance_uid=text_from_dataset(dataset, "StudyInstanceUID"),
+        series_instance_uid=text_from_dataset(dataset, "SeriesInstanceUID"),
+        sop_instance_uid=text_from_dataset(dataset, "SOPInstanceUID"),
+        sop_class_uid=text_from_dataset(dataset, "SOPClassUID"),
+        modality=text_from_dataset(dataset, "Modality"),
+        series_number=integer_from_dataset(dataset, "SeriesNumber"),
         image_type=_tokens(dataset, "ImageType"),
         corrected_image=_tokens(dataset, "CorrectedImage"),
-        series_number=series_number,
         file=file_name,
     )

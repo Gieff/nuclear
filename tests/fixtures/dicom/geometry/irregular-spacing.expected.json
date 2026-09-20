@@ -1,0 +1,14 @@
+{
+  "status": "rejected",
+  "seriesInstanceUID": "1.2.826.0.1.3680043.10.3003.2",
+  "studyInstanceUID": "1.2.826.0.1.3680043.10.3003.1",
+  "reason": "irregular-slice-spacing",
+  "diagnostics": [
+    {
+      "code": "dicom.geometry.irregular-slice-spacing",
+      "severity": "error",
+      "message": "Slice spacing is not regular.",
+      "file": "geometry-irregular-1.dcm"
+    }
+  ]
+}

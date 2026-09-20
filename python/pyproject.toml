@@ -7,7 +7,7 @@ name = "nuclear-scientific"
 version = "0.1.0"
 description = "NuClear scientific worker: DICOM parsing, physical geometry verification, and quantitative SUVbw determination"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 authors = [
     { name = "NuClear Project Team" }
 ]
@@ -39,10 +39,16 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 
 [tool.ruff]
+# Lint target kept conservative (below the runtime floor) so pyupgrade does not
+# rewrite third-party-compatible code; this is not the type-check gate.
 line-length = 100
 target-version = "py310"
 
 [tool.mypy]
-python_version = "3.10"
+# The declared runtime floor is ``requires-python = ">=3.12"``. mypy targets the
+# same version: the installed numpy 2.5.x / SimpleITK 2.5.x stubs use PEP 695
+# ``type`` statements that cannot be parsed at a 3.10 target. Strictness is
+# unchanged; no project module is exempted.
+python_version = "3.12"
 strict = true
 disallow_untyped_defs = true

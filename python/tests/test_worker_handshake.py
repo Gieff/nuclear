@@ -16,7 +16,13 @@ import pytest
 import worker
 from worker.dispatch import Dispatcher, build_dispatcher
 from worker.envelope import process_record
-from worker.protocol import DICOM_INSPECT_METHOD, HANDSHAKE_METHOD, PROTOCOL_VERSION
+from worker.protocol import (
+    DICOM_COMPATIBILITY_METHOD,
+    DICOM_GEOMETRY_METHOD,
+    DICOM_INSPECT_METHOD,
+    HANDSHAKE_METHOD,
+    PROTOCOL_VERSION,
+)
 
 FROZEN_NOW = datetime(2026, 9, 20, 0, 0, 0, tzinfo=timezone.utc)
 FROZEN_TIMESTAMP = "2026-09-20T00:00:00Z"
@@ -47,7 +53,12 @@ def test_handshake_success_carries_worker_provenance(
 
     result = response["result"]
     assert result["protocolVersions"] == [PROTOCOL_VERSION]
-    assert result["operations"] == [DICOM_INSPECT_METHOD, HANDSHAKE_METHOD]
+    assert result["operations"] == [
+        DICOM_COMPATIBILITY_METHOD,
+        DICOM_GEOMETRY_METHOD,
+        DICOM_INSPECT_METHOD,
+        HANDSHAKE_METHOD,
+    ]
 
     metadata = result["workerMetadata"]
     assert metadata["workerVersion"] == worker.__version__

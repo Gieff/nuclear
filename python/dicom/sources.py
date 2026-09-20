@@ -1,163 +1,75 @@
 """Source-locator resolution and metadata-only DICOM reading.
 
-Resolves a shared-types ``SourceLocator`` (``local-folder``,
+Resolves a validated :class:`~dicom.locators.SourceLocator` (``local-folder``,
 ``local-file-list`` or ``archive-entry``) and reads DICOM metadata only
 (``pydicom.dcmread(..., stop_before_pixels=True)``).
 
-Fail-closed rules: malformed locators raise ``INVALID_PARAMS`` (-32602) with
-``violations``; unreadable sources raise ``SOURCE_UNAVAILABLE`` (-32010) with a
-basename-only diagnostic; non-DICOM/unparseable files are skipped, counted and
-reported as warnings and never abort the inspection.
+The reader is injectable and generic over the record type: P2.2 passes the
+classification instance reader, while geometry/compatibility pass their own
+metadata mapper. Malformed locators raise ``INVALID_PARAMS`` (-32602);
+unreadable sources raise ``SOURCE_UNAVAILABLE`` (-32010) with a basename-only
+diagnostic; non-DICOM/unparseable files are skipped, counted and reported as
+warnings and never abort the scan.
 """
 
 from __future__ import annotations
 
 import zipfile
-from collections.abc import Mapping
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Generic, TypeVar, cast
 
 import pydicom
+from pydicom.dataset import Dataset
 
-from worker.protocol import (
-    ERROR_MESSAGES,
-    INVALID_PARAMS,
-    SOURCE_UNAVAILABLE,
-    ProtocolError,
-)
+from .locators import SourceLocator, source_unavailable_error
+from .metadata import DIAGNOSTIC_SKIPPED_FILE, Diagnostic, instance_from_dataset
 
-from .metadata import (
-    DIAGNOSTIC_SKIPPED_FILE,
-    Diagnostic,
-    InstanceMetadata,
-    instance_from_dataset,
-)
-
-
-class SourceLocator(NamedTuple):
-    """A validated shared-types locator; exactly the fields of its ``kind``."""
-
-    kind: str
-    path: str = ""
-    files: tuple[str, ...] = ()
-    base_path: str = ""
-    archive_path: str = ""
-    inner_entry_prefix: str = ""
+T = TypeVar("T")
+Reader = Callable[[Dataset, str], T]
 
 
 @dataclass
-class Loaded:
-    """Instances and diagnostics read from one source."""
+class Loaded(Generic[T]):
+    """Records and diagnostics read from one source."""
 
-    instances: list[InstanceMetadata] = field(default_factory=list)
+    instances: list[T] = field(default_factory=list)
     diagnostics: list[Diagnostic] = field(default_factory=list)
     skipped: int = 0
     scanned: int = 0
 
 
-def _invalid_locator(violations: list[str]) -> ProtocolError:
-    return ProtocolError(
-        INVALID_PARAMS,
-        ERROR_MESSAGES[INVALID_PARAMS],
-        {"diagnostic": "Invalid locator for nuclear.dicom.inspect.", "violations": violations},
+def _skipped(file_name: str) -> Diagnostic:
+    return Diagnostic(
+        code=DIAGNOSTIC_SKIPPED_FILE,
+        severity="warning",
+        message="File is not a readable DICOM instance.",
+        file=file_name,
     )
 
 
-def _unavailable(kind: str, detail: str, name: str) -> ProtocolError:
-    return ProtocolError(
-        SOURCE_UNAVAILABLE,
-        ERROR_MESSAGES[SOURCE_UNAVAILABLE],
-        {"diagnostic": detail, "sourceKind": kind, "sourceName": name},
-    )
+def _read(stream: Any, file_name: str, reader: Reader[T]) -> T:
+    return reader(pydicom.dcmread(stream, stop_before_pixels=True), file_name)
 
 
-def parse_locator(params: Mapping[str, Any]) -> SourceLocator:
-    """Validate and parse the ``params.locator`` shared-types shape.
-
-    Args:
-        params: Request parameters mapping.
-
-    Returns:
-        The parsed locator.
-
-    Raises:
-        ProtocolError: ``INVALID_PARAMS`` (-32602) with a ``violations`` list.
-    """
-    locator = params.get("locator")
-    if not isinstance(locator, Mapping):
-        raise _invalid_locator(["params.locator must be an object."])
-    kind = locator.get("kind")
-    if not isinstance(kind, str) or not kind:
-        raise _invalid_locator(["params.locator.kind must be a non-empty string."])
-    if kind not in ("local-folder", "local-file-list", "archive-entry"):
-        raise _invalid_locator([f"Unsupported locator kind '{kind}'."])
-    violations: list[str] = []
-    path = locator.get("path")
-    files = locator.get("files")
-    base_path = locator.get("basePath")
-    archive_path = locator.get("archivePath")
-    prefix = locator.get("innerEntryPrefix")
-    if kind == "local-folder" and (not isinstance(path, str) or not path):
-        violations.append("params.locator.path must be a non-empty string.")
-    if kind == "local-file-list":
-        if not isinstance(files, list) or not files:
-            violations.append("params.locator.files must be a non-empty array of paths.")
-        elif any(not isinstance(item, str) or not item for item in files):
-            violations.append("params.locator.files entries must be non-empty strings.")
-        if base_path is not None and (not isinstance(base_path, str) or not base_path):
-            violations.append("params.locator.basePath must be a non-empty string when present.")
-    if kind == "archive-entry":
-        if not isinstance(archive_path, str) or not archive_path:
-            violations.append("params.locator.archivePath must be a non-empty string.")
-        if prefix is not None and (not isinstance(prefix, str) or not prefix):
-            violations.append(
-                "params.locator.innerEntryPrefix must be a non-empty string when present."
-            )
-    if violations:
-        raise _invalid_locator(violations)
-    return SourceLocator(
-        kind=kind,
-        path=path if isinstance(path, str) else "",
-        files=tuple(files) if isinstance(files, list) else (),
-        base_path=base_path if isinstance(base_path, str) else "",
-        archive_path=archive_path if isinstance(archive_path, str) else "",
-        inner_entry_prefix=prefix if isinstance(prefix, str) else "",
-    )
-
-
-def _read(stream: Any, file_name: str) -> InstanceMetadata:
-    return instance_from_dataset(pydicom.dcmread(stream, stop_before_pixels=True), file_name)
-
-
-def _skip(loaded: Loaded, file_name: str) -> None:
-    loaded.diagnostics.append(
-        Diagnostic(
-            code=DIAGNOSTIC_SKIPPED_FILE,
-            severity="warning",
-            message="File is not a readable DICOM instance.",
-            file=file_name,
-        )
-    )
-    loaded.skipped += 1
-
-
-def _load(paths: list[Path]) -> Loaded:
-    loaded = Loaded(scanned=len(paths))
+def _load(paths: list[Path], reader: Reader[T]) -> Loaded[T]:
+    loaded: Loaded[T] = Loaded(scanned=len(paths))
     for path in paths:
         try:
-            instance = _read(str(path), path.name)
+            instance = _read(str(path), path.name, reader)
         except Exception:  # noqa: BLE001 - skip and record, never abort
-            _skip(loaded, path.name)
+            loaded.diagnostics.append(_skipped(path.name))
+            loaded.skipped += 1
         else:
             loaded.instances.append(instance)
     return loaded
 
 
-def _folder(locator: SourceLocator) -> Loaded:
+def _folder(locator: SourceLocator, reader: Reader[T]) -> Loaded[T]:
     root = Path(locator.path)
     if not root.is_dir():
-        raise _unavailable(
+        raise source_unavailable_error(
             locator.kind,
             f"Local folder source '{root.name}' is not a readable directory.",
             root.name,
@@ -165,13 +77,13 @@ def _folder(locator: SourceLocator) -> Loaded:
     try:
         paths = sorted(path for path in root.rglob("*") if path.is_file())
     except OSError as exc:  # pragma: no cover - platform-dependent I/O failure
-        raise _unavailable(
+        raise source_unavailable_error(
             locator.kind, f"Local folder source '{root.name}' could not be read.", root.name
         ) from exc
-    return _load(paths)
+    return _load(paths, reader)
 
 
-def _file_list(locator: SourceLocator) -> Loaded:
+def _file_list(locator: SourceLocator, reader: Reader[T]) -> Loaded[T]:
     base = Path(locator.base_path) if locator.base_path else None
     paths: list[Path] = []
     for entry in locator.files:
@@ -179,22 +91,22 @@ def _file_list(locator: SourceLocator) -> Loaded:
         if base is not None and not candidate.is_absolute():
             candidate = base / candidate
         if not candidate.is_file():
-            raise _unavailable(
+            raise source_unavailable_error(
                 locator.kind,
                 f"Listed source file '{candidate.name}' cannot be read.",
                 candidate.name,
             )
         paths.append(candidate)
-    return _load(sorted(paths))
+    return _load(sorted(paths), reader)
 
 
-def _archive(locator: SourceLocator) -> Loaded:
+def _archive(locator: SourceLocator, reader: Reader[T]) -> Loaded[T]:
     archive = Path(locator.archive_path)
     if not archive.is_file():
-        raise _unavailable(
+        raise source_unavailable_error(
             locator.kind, f"Archive source '{archive.name}' cannot be read.", archive.name
         )
-    loaded = Loaded()
+    loaded: Loaded[T] = Loaded()
     try:
         with zipfile.ZipFile(archive) as bundle:
             names = sorted(name for name in bundle.namelist() if not name.endswith("/"))
@@ -204,13 +116,14 @@ def _archive(locator: SourceLocator) -> Loaded:
             for name in names:
                 try:
                     with bundle.open(name) as handle:
-                        instance = _read(handle, Path(name).name)
+                        instance = _read(handle, Path(name).name, reader)
                 except Exception:  # noqa: BLE001 - skip and record, never abort
-                    _skip(loaded, Path(name).name)
+                    loaded.diagnostics.append(_skipped(Path(name).name))
+                    loaded.skipped += 1
                 else:
                     loaded.instances.append(instance)
     except (zipfile.BadZipFile, OSError) as exc:
-        raise _unavailable(
+        raise source_unavailable_error(
             locator.kind,
             f"Archive source '{archive.name}' is not a readable ZIP archive.",
             archive.name,
@@ -218,21 +131,24 @@ def _archive(locator: SourceLocator) -> Loaded:
     return loaded
 
 
-def load_source(locator: SourceLocator) -> Loaded:
-    """Read DICOM metadata for a parsed locator.
+def load_source(locator: SourceLocator, reader: Reader[T] | None = None) -> Loaded[T]:
+    """Read DICOM metadata for a validated locator.
 
     Args:
         locator: A validated shared-types locator.
+        reader: Optional ``(dataset, basename) -> record`` mapper. Defaults to
+            the P2.2 classification instance reader.
 
     Returns:
-        Parsed instances plus skip diagnostics and counters.
+        Parsed records plus skip diagnostics and counters.
 
     Raises:
         ProtocolError: ``SOURCE_UNAVAILABLE`` (-32010) when the source cannot
             be resolved or read.
     """
+    resolved = reader if reader is not None else cast(Reader[T], instance_from_dataset)
     if locator.kind == "local-folder":
-        return _folder(locator)
+        return _folder(locator, resolved)
     if locator.kind == "local-file-list":
-        return _file_list(locator)
-    return _archive(locator)
+        return _file_list(locator, resolved)
+    return _archive(locator, resolved)

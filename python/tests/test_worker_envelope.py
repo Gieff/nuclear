@@ -16,7 +16,6 @@ import pytest
 from worker.dispatch import Dispatcher, build_dispatcher
 from worker.envelope import process_record
 from worker.protocol import (
-    DICOM_INSPECT_METHOD,
     HANDSHAKE_METHOD,
     INVALID_PARAMS,
     INVALID_REQUEST,
@@ -58,7 +57,7 @@ def _assert_error(response: dict[str, Any], code: int) -> dict[str, Any]:
     assert response["jsonrpc"] == "2.0"
     assert response["protocolVersion"] == PROTOCOL_VERSION
     assert "result" not in response, "Fail-closed responses must never carry a result"
-    error = response["error"]
+    error: dict[str, Any] = response["error"]
     assert error["code"] == code
     assert isinstance(error["message"], str) and error["message"]
     assert isinstance(error["data"], dict)
@@ -136,7 +135,7 @@ def test_unknown_method_is_method_not_found_without_result(dispatcher: Dispatche
     assert response["id"] == "req-test"
     error = _assert_error(response, METHOD_NOT_FOUND)
     assert error["data"]["requestedMethod"] == "nuclear.unknown.operation"
-    assert error["data"]["supportedMethods"] == [DICOM_INSPECT_METHOD, HANDSHAKE_METHOD]
+    assert error["data"]["supportedMethods"] == ["nuclear.dicom.compatibility", "nuclear.dicom.geometry", "nuclear.dicom.inspect", "nuclear.protocol.handshake"]
 
 
 def test_every_failure_has_diagnostic_and_no_result(dispatcher: Dispatcher) -> None:
@@ -173,7 +172,7 @@ def _protocol_examples(manifest: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _read_text(fixture: dict[str, Any]) -> str:
-    return (REPO_ROOT / fixture["path"]).read_text(encoding="utf-8")
+    return (REPO_ROOT / str(fixture["path"])).read_text(encoding="utf-8")
 
 
 def _read_record(fixture: dict[str, Any]) -> dict[str, Any]:

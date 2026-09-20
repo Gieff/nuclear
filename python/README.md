@@ -127,12 +127,88 @@ instances of the series. Emitted `modality` values always come from the
 `@nuclear/shared-types` vocabulary (`CT`, `PT`, `MR`, `NM`, `CR`, `DX`, `SC`,
 `OT`); a missing or unrecognised value becomes `OT`.
 
+### `nuclear.dicom.geometry`
+
+Request params are `{ "locator": <SourceLocator>, "seriesInstanceUID": str }`.
+A series with no matching instance returns
+`{"status":"unavailable","reason":"series-not-found"}`. A geometrically invalid
+grid returns `{"status":"rejected","reason":<reason>,"diagnostics":[...]}` and
+**never** emits a `geometry` object. The reasons are
+`missing-required-tag:<name>`, `irregular-slice-spacing`,
+`inconsistent-orientation`, `gantry-tilt`, `duplicate-slice-position`,
+`insufficient-slices` and `inconsistent-pixel-spacing`.
+
+A required geometry tag that is present but is not a usable numeric vector of
+the required arity (for example a wrong-length `PixelSpacing`) is reported under
+the same `missing-required-tag:<Tag>` disposition as an absent tag; no separate
+disposition is invented. `insufficient-slices` is structural: verifying a
+*regular* grid needs at least two consecutive spacing intervals, hence at least
+three slices. Single- and two-slice stacks are structurally unverifiable and
+fail closed; real-world handling of single/double-slice acquisitions (for
+example localizers or scouts) is explicitly deferred, not silently accepted.
+
+A valid grid returns `{"status":"computed", ...}` with:
+
+- `dimensions = [columns, rows, slices]`;
+- `spacing = [colSpacing, rowSpacing, sliceSpacing]` mm, where
+  `colSpacing = PixelSpacing[1]` and `rowSpacing = PixelSpacing[0]`;
+- `origin` = `ImagePositionPatient` of normalized slice 0 (centre of voxel
+  `[0,0,0]`);
+- `direction` = `ImageOrientationPatient = [rx,ry,rz,cx,cy,cz]` and
+  `sliceNormal = row x column`;
+- `slicePositionsLpsMm` ordered so increasing index follows `+sliceNormal`;
+- `bounds` = the AABB over the eight outer half-voxel corners using the Phase 1
+  `calculatePhysicalBounds` formula verbatim.
+
+Slices are normalized by sorting instances by `dot(IPP, sliceNormal)`. No
+irregular grid is averaged, reordered or repaired; irregular spacing, gantry
+tilt, inconsistent orientation, duplicate positions, insufficient slices and
+inconsistent pixel spacing all fail closed. `spacing[2]` (slice spacing) is the
+arithmetic mean of the consecutive slice-position differences, computed only
+**after** the `max - min <= SPACING_EPSILON_MM` regularity check, so it is not a
+silent repair: any deviation is bounded by the named tolerance.
+
+#### `geometricDigest` v1 convention
+
+`geometricDigest = "sha256:" + sha256(canonical_json)` over
+`{frameOfReferenceUID, dimensions, spacing, origin, direction, bounds}`, where
+`canonical_json` uses sorted keys and `(",", ":")` separators and every float is
+rendered as a fixed six-decimal string.
+
+#### Named comparison tolerances
+
+These are floating-point comparison tolerances for deterministic synthetic
+fixtures, **not clinical acceptance thresholds**; real-world tolerance policy is
+explicitly deferred.
+
+| Constant | Value | Role |
+| --- | --- | --- |
+| `DIRECTION_COSINE_EPSILON` | `1e-4` | Aligns with TS `isDirectionCosinesValid` |
+| `BOUNDS_EPSILON` | `1e-5` | Aligns with TS `isAssetGeometry` |
+| `SPACING_EPSILON_MM` | `1e-4` | Regular slice/pixel spacing comparison |
+| `COLLINEARITY_EPSILON_MM` | `1e-4` | Slice centres on the slice-normal axis |
+| `COPLANARITY_COSINE_EPSILON` | `1e-6` | `1 - abs(dot(n_left, n_right))` |
+
+### `nuclear.dicom.compatibility`
+
+Request params are `{ "left": { "locator": ..., "seriesInstanceUID": ... },
+"right": { ... } }`. `compatible = frameOfReference.equal AND
+orientation.coplanar`. Spacing, origin and extent are **evidence only**: PET and
+CT legitimately differ in grid, so a spacing difference never sets
+`compatible` to `false`. `incompatibilities` contains
+`frame-of-reference-mismatch` and/or `orientation-not-coplanar`. If either side
+is rejected or unavailable, the result is `{"status":"rejected"|"unavailable",
+"side":"left"|"right","reason":<reason>}`.
+
 
 ## Environment provisioning
 
-The worker is an isolated Python environment. Python `>=3.10` is required by
-`pyproject.toml`; the repository's reproducible local runner is pinned to the
-native arm64 Homebrew CPython 3.14 interpreter on macOS.
+The worker is an isolated Python environment. Python `>=3.12` is required by
+`pyproject.toml` and is also the mypy analysis target (`[tool.mypy]
+python_version = "3.12"`): the installed numpy/SimpleITK stubs use PEP 695
+syntax that cannot be parsed at a 3.10 target. The repository's reproducible
+local runner is pinned to the native arm64 Homebrew CPython 3.14 interpreter on
+macOS.
 
 ```bash
 # from the repository root
@@ -142,13 +218,20 @@ python/worker/.venv/bin/python -m pip install -e "python[dev]"
 
 `python/worker/.venv/` is ignored by Git and must never be committed.
 
-## Test command
+## Test and type-check commands
 
 ```bash
 # from the repository root
 npm run test:python
 # equivalent
 python/worker/.venv/bin/python -m pytest python/tests -q
+
+# configured strict mypy (must always pass --config-file; the bare
+# `python -m mypy` command does not discover python/pyproject.toml from the
+# repository root and would silently fall back to non-strict defaults)
+npm run typecheck:python
+# equivalent
+python/worker/.venv/bin/python -m mypy --config-file python/pyproject.toml python/dicom python/worker python/tests
 ```
 
 A missing virtual environment or an unprovisioned dependency is reported as
@@ -161,7 +244,7 @@ Recorded when the P2.0 runner was provisioned (2026-09-20). Re-run
 
 | Dependency | Constraint (`pyproject.toml`) | Installed |
 | --- | --- | --- |
-| CPython | `>=3.10` | 3.14.6 (native arm64) |
+| CPython | `>=3.12` | 3.14.6 (native arm64) |
 | pydicom | `>=2.4.0` | 3.0.2 |
 | numpy | `>=1.24.0` | 2.5.3 |
 | SimpleITK | `>=2.3.0` | 2.5.6 |

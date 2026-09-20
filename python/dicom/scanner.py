@@ -15,7 +15,9 @@ from typing import Any
 from worker.protocol import DICOM_INSPECT_METHOD, iso8601_utc
 
 from .aggregation import build_inspection_result
-from .sources import load_source, parse_locator
+from .locators import parse_locator
+from .metadata import instance_from_dataset
+from .sources import load_source
 
 Clock = Callable[[], datetime]
 
@@ -37,7 +39,7 @@ def inspect_source(params: Mapping[str, Any], *, clock: Clock) -> dict[str, Any]
     import worker  # local import avoids a package import cycle at module load
 
     locator = parse_locator(params)
-    loaded = load_source(locator)
+    loaded = load_source(locator, instance_from_dataset)
     payload = build_inspection_result(loaded.instances, loaded.skipped, loaded.diagnostics)
     payload["workerMetadata"] = {
         "workerVersion": worker.__version__,

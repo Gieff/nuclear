@@ -40,4 +40,4 @@ def test_runtime_scientific_dependencies_are_importable() -> None:
 
     assert pydicom.__version__
     assert numpy.__version__
-    assert SimpleITK.Version_VersionString()
+    assert SimpleITK.Version_VersionString()  # type: ignore[no-untyped-call]

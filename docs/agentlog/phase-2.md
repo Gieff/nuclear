@@ -9,8 +9,10 @@
   error schema and stdio supervisor contract implemented and ratified.
 - **P2.2 — COMPLETE** (2026-09-20). `nuclear.dicom.inspect` study/series
   discovery and explicit classification implemented and ratified.
-- **P2.3–P2.6 — NOT STARTED.** No geometry extraction, quantitation or
-  TypeScript bridge code exists.
+- **P2.3 — COMPLETE** (2026-09-20). Regular-grid geometry extraction and
+  compatibility evidence implemented and ratified.
+- **P2.4–P2.6 — NOT STARTED.** No quantitation or TypeScript bridge code
+  exists.
 - This file is append-only per slice. Each future slice appends its own
   eight-point handover below; do not rewrite completed entries.
 
@@ -513,3 +515,161 @@ Not modified: `packages/**`, `apps/**`, any TypeScript, `python/pyproject.toml`
   and a live stdio check of both axial (`ct-primary`) and non-axial
   (`unsupported`/`non-primary-image-type`) CT. The AgentLog gate was pending at
   QA time and is satisfied by this report.
+
+---
+
+# Handover Report — P2.3: Regular-Grid Geometry & Compatibility Evidence
+
+## 1. What Was Implemented
+
+- **`nuclear.dicom.geometry`**: resolves a `SourceLocator` plus
+  `seriesInstanceUID`, reads geometry tags metadata-only, and returns a
+  deterministic regular-grid result: `dimensions=[columns,rows,slices]`,
+  `spacing=[colSpacing,rowSpacing,sliceSpacing]` (DICOM `PixelSpacing [row,col]`
+  swapped correctly), `origin` = `ImagePositionPatient` of the normalized
+  slice 0, `direction` = `ImageOrientationPatient`, `sliceNormal = row x column`,
+  `slicePositionsLpsMm`, and `bounds` as the axis-aligned envelope of the eight
+  oriented outer corners using the Phase 1 `calculatePhysicalBounds` formula
+  verbatim. Slice ordering is normalized so increasing index follows
+  `+sliceNormal`, even when instances are stored unordered.
+- **Dispositions are fail-closed**: `computed` (valid grid) or `rejected`
+  (`missing-required-tag:<tag>`, `irregular-slice-spacing`,
+  `inconsistent-orientation`, `gantry-tilt`, `duplicate-slice-position`,
+  `insufficient-slices`, `inconsistent-pixel-spacing`) or `unavailable`
+  (`series-not-found`). A geometry object is never emitted for an invalid grid;
+  no averaging or reordering silently repairs data.
+- **`nuclear.dicom.compatibility`**: pairwise evidence where
+  `compatible = frameOfReference.equal AND orientation.coplanar`; spacing,
+  origin and extent are reported as evidence only (PET and CT legitimately have
+  different grids). Different Frame of Reference and non-coplanar orientation
+  produce named incompatibilities; a rejected side propagates `status`/`side`/
+  `reason`.
+- **`geometricDigest`**: a documented NuClear v1 convention (`"sha256:"` over a
+  sorted-key canonical JSON with fixed six-decimal floats), deterministic and
+  geometry-sensitive.
+- **Named, non-clinical tolerances**: `DIRECTION_COSINE_EPSILON = 1e-4` and
+  `BOUNDS_EPSILON = 1e-5` align with the Phase 1 TS validators; the remaining
+  spacing/collinearity/coplanarity epsilons are explicit floating-point
+  comparison tolerances for deterministic synthetic fixtures. Real-world
+  tolerance policy is explicitly deferred. `MIN_SLICES = 3` is documented as a
+  structural requirement (a regular grid needs >=2 spacing intervals), not a
+  clinical threshold; single/two-slice handling is deferred.
+- **Verification-integrity correction**: the recorded mypy gate had been
+  silently bypassing `python/pyproject.toml` from the repository root. The
+  config is now executable and enforced: `requires-python`/mypy target
+  reconciled to `>=3.12` (numpy/SimpleITK stubs use PEP 695 syntax unparseable
+  at a 3.10 target), five strict test errors fixed, and a reproducible
+  `npm run typecheck:python` added that pins `--config-file`.
+
+## 2. Files Changed / Created
+
+Created:
+- `python/dicom/locators.py`, `geometry_math.py`, `geometry_metadata.py`,
+  `geometry_validation.py`, `geometry.py`, `compatibility.py`,
+  `geometry_operations.py`
+- `python/tests/synthetic_common.py`, `synthetic_geometry.py`,
+  `synthetic_geometry_invalid.py`, `test_dicom_geometry.py`
+- `tests/fixtures/dicom/geometry/{axial-exact, oblique-exact,
+  irregular-spacing, frame-of-reference-mismatch,
+  orientation-inconsistent}.expected.json`
+
+Modified:
+- `python/dicom/{sources,metadata,scanner,__init__}.py` (generic source reader;
+  locator parsing extracted)
+- `python/tests/{synthetic_dicom,test_dicom_classification,
+  test_fixture_manifest,test_package_baseline,test_worker_envelope,
+  test_worker_handshake}.py`
+- `python/worker/{protocol,dispatch}.py`; `python/README.md`;
+  `python/pyproject.toml`; root `package.json`
+- `tests/fixtures/manifest.json`;
+  `tests/fixtures/protocol/{response.handshake.json,
+  error.unknown-method.json, README.md}`
+- `docs/agentlog/phase-2.md` (this handover)
+
+Not modified: `packages/**`, `apps/**`, any TypeScript, `tests/contracts/**`.
+Unrelated harness artifacts present in the working tree (`AGENTS.md` RAG block,
+`.opencode/*`, `opencode-rag.json`) were deliberately not staged.
+
+## 3. Architectural Assumptions Made
+
+- Geometry conventions are owned by the Phase 1 NuClear contracts; Python
+  reproduces them rather than redefining them, and the bounds function is
+  cross-validated against the hand-authored Phase 1 `mockObliqueGeometry` and
+  `mockCtGeometry` literals within a named `1e-9` epsilon.
+- Rejections are explicit domain dispositions in the result, not transport
+  errors; malformed params remain `-32602` and unreadable sources `-32010`.
+- The `geometricDigest` is a NuClear v1 reproducibility convention, not a
+  clinical claim.
+- `python/dicom/sources.py` now takes an injectable reader so P2.2 and P2.3
+  share folder/file-list/archive resolution without duplication.
+
+## 4. Tests Added & Executed
+
+- `npm run test:python` -> **90 passed** (0 failed, 0 skipped), up from 70 at
+  P2.2. P2.3 adds 20: five committed-expectation cases, Phase 1 bounds
+  cross-validation, slice-ordering normalization, six rejection reasons,
+  unavailable series, `-32602` params, digest determinism/sensitivity,
+  compatibility true/false/spacing-evidence, compatibility unavailable side,
+  and no-absolute-paths/PHI.
+- `npm run typecheck:python` -> config-aware strict mypy clean over 32 source
+  files (enforcement independently probed by QA/reviewer).
+- Ruff clean; `npm run typecheck`, `npm test` (33/33), `npm run build` green.
+- File-length gate: every source file <=250 lines (largest exactly 250).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- `python/README.md` documents both operations, the geometry convention, the
+  digest, disposition statuses, the reason list, the named tolerances,
+  `MIN_SLICES`, the `sliceSpacing` mean reduction, and the config-aware
+  `typecheck:python` command.
+- No new ADR was required; the conventions are already fixed by the Phase 1
+  contracts and the `nuclear-dicom` runbook.
+
+## 6. Project Model Impact
+
+- No `@nuclear/shared-types` contract or `.ncp` schema changed. The geometry
+  result field names and semantics match `AssetGeometry` so the P2.5 bridge can
+  map it directly, and the new pairwise compatibility evidence can populate
+  `GeometryVerificationSnapshot` later.
+
+## 7. Known Limitations & Technical Debt
+
+- `python/tests/test_dicom_geometry.py` is exactly 250 lines and
+  `test_worker_envelope.py` is 249; further growth requires decomposition.
+- `requires-python` was raised to `>=3.12` in this pre-release worker because
+  dependency stubs forced the mypy target; the ruff lint target remains `py310`
+  and is documented as a style target only.
+- Compatibility compares slice-normal orientation only; full direction-cosine
+  agreement and in-plane axis ordering are deferred and will be revisited with
+  registration work.
+- `quantitation.py` remains unimplemented (P2.4).
+
+## 8. Exact Next Recommended Task
+
+- **P2.4** (owner: `nuclear-scientific-engineer`): PET raw metadata extraction
+  and `PetQuantitationResult` production — BQML positive result; missing
+  weight/dose/time, unsupported units and invalid decay correction failures,
+  with Python-only SUVbw provenance. Do not start P2.5 until P2.4 review and QA
+  evidence is recorded here.
+
+---
+
+## Gate Review & QA Evidence (P2.3)
+
+- `nuclear-reviewer` first pass: **CONCERNS** — (1) `MIN_SLICES = 3` rationale
+  undocumented, plus low findings (malformed-tag reason wording, untested
+  compatibility`unavailable` side, undocumented `sliceSpacing` mean). All
+  corrected.
+- `nuclear-reviewer` second pass: **CONCERNS (blocker)** — the mypy gate
+  silently bypassed `python/pyproject.toml`; corrected by reconciling the
+  Python floor/mypy target to 3.12, fixing five strict test errors, and adding
+  a config-pinning `typecheck:python` script.
+- `nuclear-reviewer` final pass: **PASS** — order and geometry conventions
+  verified, config enforcement independently probed, eleven expected fixtures
+  byte-identical, all gates green.
+- `nuclear-qa` final re-verification: **PASS on gates 1–7** — 90/90 Python
+  tests, config-aware strict mypy clean over 32 files (with a three-way probe
+  proving the config is applied), ruff clean, 33/33 TS tests, build clean, file
+  lengths <=250, fixture integrity, and live stdio checks (axial computed,
+  irregular rejected, compatibility unavailable side). Gate 8 (AgentLog) was
+  pending at QA time and is satisfied by this report.

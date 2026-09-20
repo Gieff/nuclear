@@ -8,9 +8,15 @@ Modules:
     metadata: Metadata-only instance record and shared tag vocabulary.
     classification: Deterministic standard-tag series classification.
     aggregation: Study/series grouping and result assembly.
+    locators: Source-locator validation and structured source errors.
     sources: Source-locator resolution and metadata-only DICOM reading.
     scanner: ``nuclear.dicom.inspect`` handler and provenance.
-    geometry: Physical patient coordinate validation in LPS mm space (P2.3).
+    geometry_math: Geometry conventions, named tolerances, bounds and digest.
+    geometry_metadata: Geometry-tag reader and disposition vocabulary.
+    geometry_validation: Per-instance regular-grid invariant checks.
+    geometry: Regular-grid extraction and fail-closed dispositions.
+    compatibility: Frame-of-reference and orientation compatibility evidence.
+    geometry_operations: ``nuclear.dicom.geometry``/``compatibility`` handlers.
     quantitation: Quantitative SUVbw calibration and decay factor (P2.4).
 """
 

@@ -92,10 +92,10 @@ def test_planned_slices_cover_dicom_geometry_and_quantitation(
         for fixture in _fixtures(manifest)
         if fixture["status"] == "planned"
     }
-    # P2.2 classification is established; geometry (P2.3) and quantitation
-    # (P2.4) remain explicitly planned and are never evidence for PASS.
-    assert "P2.2" in established_slices
-    assert {"P2.3", "P2.4"} <= planned_slices
+    # P2.2 classification and P2.3 geometry are established; quantitation
+    # (P2.4) remains explicitly planned and is never evidence for PASS.
+    assert {"P2.2", "P2.3"} <= established_slices
+    assert "P2.4" in planned_slices
 
 
 def test_negative_request_shaped_fixtures_are_envelope_shaped(

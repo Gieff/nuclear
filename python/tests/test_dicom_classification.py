@@ -72,7 +72,7 @@ def _folder(tmp_path: Path, writer: Writer) -> dict[str, Any]:
 
 def _single_series(payload: dict[str, Any]) -> dict[str, Any]:
     assert len(payload["studies"]) == 1, payload["studies"]
-    series = payload["studies"][0]["series"]
+    series: list[dict[str, Any]] = payload["studies"][0]["series"]
     assert len(series) == 1, series
     return series[0]
 

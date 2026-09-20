@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .protocol import (
+    DICOM_COMPATIBILITY_METHOD,
+    DICOM_GEOMETRY_METHOD,
     DICOM_INSPECT_METHOD,
     ERROR_MESSAGES,
     HANDSHAKE_METHOD,
@@ -126,9 +128,10 @@ def build_dispatcher(now: Clock | None = None) -> Dispatcher:
         now: Optional clock injection for deterministic provenance timestamps.
 
     Returns:
-        A dispatcher registering ``nuclear.protocol.handshake`` and
-        ``nuclear.dicom.inspect``.
+        A dispatcher registering the handshake and every DICOM operation the
+        worker implements.
     """
+    from dicom.geometry_operations import compatibility_operation, geometry_operation
     from dicom.scanner import inspect_source
 
     dispatcher = Dispatcher(now=now)
@@ -136,6 +139,14 @@ def build_dispatcher(now: Clock | None = None) -> Dispatcher:
     def inspect(params: Mapping[str, Any]) -> dict[str, Any]:
         return inspect_source(params, clock=dispatcher.clock)
 
+    def geometry(params: Mapping[str, Any]) -> dict[str, Any]:
+        return geometry_operation(params, clock=dispatcher.clock)
+
+    def compatibility(params: Mapping[str, Any]) -> dict[str, Any]:
+        return compatibility_operation(params, clock=dispatcher.clock)
+
     dispatcher.register(HANDSHAKE_METHOD, dispatcher._handshake)
     dispatcher.register(DICOM_INSPECT_METHOD, inspect)
+    dispatcher.register(DICOM_GEOMETRY_METHOD, geometry)
+    dispatcher.register(DICOM_COMPATIBILITY_METHOD, compatibility)
     return dispatcher
