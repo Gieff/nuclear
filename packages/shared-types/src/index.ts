@@ -39,8 +39,6 @@ export type {
   LocalFolderLocator,
   LocalFileListLocator,
   ArchiveEntryLocator,
-  DicomWebLocator,
-  ManagedCacheLocator,
   SourceLocator,
   SourceFingerprint,
 } from './source.js';

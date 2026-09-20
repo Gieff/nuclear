@@ -13,7 +13,13 @@ export type Point3D = readonly [number, number, number];
 /** 3D direction or displacement vector */
 export type Vector3D = readonly [number, number, number];
 
-/** Axis-aligned bounding box in LPS physical patient coordinates (mm) */
+/** 
+ * Axis-aligned bounding box in LPS physical patient coordinates (mm).
+ * Represents the physical spatial extent of the volume (`voxel-extent`, covering outer half-voxel borders):
+ * `min = origin - 0.5 * spacing`
+ * `max = origin + (dimensions - 0.5) * spacing`
+ * where `origin` is DICOM `ImagePositionPatient` (the center of voxel [0,0,0]).
+ */
 export interface BoundingBox3D {
   readonly min: Point3D;
   readonly max: Point3D;
@@ -66,7 +72,7 @@ export type Matrix4x4 = readonly [
  */
 export interface AssetGeometry {
   /** DICOM Frame of Reference UID (0020,0052) */
-  readonly frameOfReferenceUID: FrameOfReferenceUID | string;
+  readonly frameOfReferenceUID: FrameOfReferenceUID;
 
   /** Grid dimensions in voxels [columns, rows, slices] (nx, ny, nz) */
   readonly dimensions: readonly [number, number, number];
@@ -80,6 +86,6 @@ export interface AssetGeometry {
   /** Row and column direction cosines in LPS space (ImageOrientationPatient) */
   readonly direction: DirectionCosines;
 
-  /** Physical bounding box in LPS space (mm) spanning the complete volume */
+  /** Physical bounding box in LPS space (mm) spanning the complete volume covering outer half-voxel borders */
   readonly bounds: BoundingBox3D;
 }

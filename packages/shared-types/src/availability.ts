@@ -64,9 +64,10 @@ export interface AssetResidencyStatus {
 /** Demand priority declared by the view-engine */
 export type ResourcePriority =
   | 'visible-interactive'
-  | 'visible-static'
-  | 'pre-fetch'
-  | 'idle';
+  | 'visible-read-only'
+  | 'prepared-hidden'
+  | 'prefetch-candidate'
+  | 'unused';
 
 /**
  * Demand declaration submitted by view-engine to medical-engine ResourceManager.

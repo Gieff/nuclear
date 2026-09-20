@@ -11,15 +11,12 @@ import type {
   ArchiveEntryLocator,
   AssetAvailability,
   AssetResidencyTier,
-  DicomWebLocator,
   LocalFileListLocator,
-  ManagedCacheLocator,
 } from '../../packages/shared-types/src/index.js';
 import {
   MOCK_CT_SERIES_UID,
   MOCK_FOLLOWUP_FOR_UID,
   MOCK_FOR_UID,
-  MOCK_PET_SERIES_UID,
   MOCK_STUDY_UID,
   mockCtAsset,
   mockIdentityTransform,
@@ -29,16 +26,16 @@ import {
   mockViewProvenance,
 } from '../fixtures/clinical-contracts.fixture.ts';
 import {
-  calculateSuvBwFactor,
   isAssetGeometry,
   isDirectionCosinesValid,
   isImagingAsset,
-  isMatrix4x4Valid,
+  isHomogeneousAffineMatrix4x4,
   isSourceFingerprint,
   isSourceLocator,
   isSpatialTransform,
   isStudyReference,
   isViewProvenance,
+  isPetAcquisitionMetadata,
 } from './validators.ts';
 
 describe('NuClear Phase 1 — Clinical Data Contracts', () => {
@@ -77,6 +74,24 @@ describe('NuClear Phase 1 — Clinical Data Contracts', () => {
       assert.equal(mockPetAsset.valueSemantics.unit, 'g/mL');
     });
 
+    it('should verify that bounding boxes strictly match the declared outer half-voxel extent formula', () => {
+      for (const asset of [mockCtAsset, mockPetAsset]) {
+        const { origin, spacing, dimensions, bounds } = asset.geometry;
+        for (let i = 0; i < 3; i++) {
+          const expectedMin = origin[i] - 0.5 * spacing[i];
+          const expectedMax = origin[i] + (dimensions[i] - 0.5) * spacing[i];
+          assert.ok(
+            Math.abs(bounds.min[i] - expectedMin) < 1e-5,
+            `${asset.modality} bounds.min[${i}] (${bounds.min[i]}) != expected (${expectedMin})`,
+          );
+          assert.ok(
+            Math.abs(bounds.max[i] - expectedMax) < 1e-5,
+            `${asset.modality} bounds.max[${i}] (${bounds.max[i]}) != expected (${expectedMax})`,
+          );
+        }
+      }
+    });
+
     it('should reject invalid direction cosines that are not orthogonal unit vectors', () => {
       assert.equal(isDirectionCosinesValid([1, 0, 0, 1, 0, 0]), false); // Parallel vectors
       assert.equal(isDirectionCosinesValid([2, 0, 0, 0, 1, 0]), false); // Non-unit norm
@@ -85,28 +100,17 @@ describe('NuClear Phase 1 — Clinical Data Contracts', () => {
   });
 
   describe('Quantitative PET SUVbw Determination', () => {
-    it('should calculate reference SUVbw factor within 0.05% tolerance of declared fixture', () => {
+    it('should validate PET acquisition metadata structure without runtime calculation', () => {
       assert.ok(mockPetAsset.metadata.pet);
-      const { factor, decayedDoseBq } = calculateSuvBwFactor(
-        mockPetAsset.metadata.pet,
-        mockStudyReference.patient.patientWeightKg!,
-      );
-
-      // Decayed dose for 370 MBq after 3600s with T_1/2 = 6586.2s ≈ 253,391,332 Bq
-      assert.ok(decayedDoseBq > 2.5e8 && decayedDoseBq < 2.6e8);
-
-      const expectedFactor = mockPetAsset.metadata.pet.suvFactor!;
-      const relativeDiff = Math.abs(factor - expectedFactor) / expectedFactor;
-      assert.ok(
-        relativeDiff < 0.0005,
-        `SUV factor diff ${relativeDiff} exceeds tolerance against ${expectedFactor}`,
-      );
+      assert.ok(isPetAcquisitionMetadata(mockPetAsset.metadata.pet));
+      assert.equal(mockPetAsset.metadata.pet.units, 'BQML');
+      assert.ok(mockPetAsset.metadata.pet.radionuclideHalfLifeSeconds > 0);
+      assert.ok(mockPetAsset.metadata.pet.radionuclideTotalDoseBq > 0);
     });
 
-    it('should throw on invalid patient weight <= 0', () => {
-      assert.throws(() => {
-        calculateSuvBwFactor(mockPetAsset.metadata.pet!, 0);
-      }, /Invalid patient weight/);
+    it('should reject invalid PET metadata', () => {
+      const badPet = { ...mockPetAsset.metadata.pet, units: 123 };
+      assert.equal(isPetAcquisitionMetadata(badPet), false);
     });
   });
 
@@ -122,23 +126,10 @@ describe('NuClear Phase 1 — Clinical Data Contracts', () => {
         archivePath: '/data/bundle.zip',
         innerEntryPrefix: 'CT_SERIES/',
       };
-      const dicomWebLocator: DicomWebLocator = {
-        kind: 'dicomweb',
-        endpoint: 'https://pacs.hospital.org/dicomweb',
-        studyInstanceUID: MOCK_STUDY_UID,
-        seriesInstanceUID: MOCK_CT_SERIES_UID,
-      };
-      const cacheLocator: ManagedCacheLocator = {
-        kind: 'managed-cache',
-        cacheKey: 'proj-cache-001',
-        relativePath: 'cache/assets/ct-001',
-      };
 
       assert.ok(isSourceLocator(folderLocator));
       assert.ok(isSourceLocator(fileListLocator));
       assert.ok(isSourceLocator(archiveLocator));
-      assert.ok(isSourceLocator(dicomWebLocator));
-      assert.ok(isSourceLocator(cacheLocator));
     });
 
     it('should reject malformed source locators', () => {
@@ -184,7 +175,7 @@ describe('NuClear Phase 1 — Clinical Data Contracts', () => {
       assert.ok(isSpatialTransform(mockIdentityTransform));
       assert.equal(mockIdentityTransform.transformType, 'identity');
       assert.equal(mockIdentityTransform.sourceFrameOfReferenceUID, mockIdentityTransform.targetFrameOfReferenceUID);
-      assert.ok(isMatrix4x4Valid(mockIdentityTransform.matrix4x4));
+      assert.ok(isHomogeneousAffineMatrix4x4(mockIdentityTransform.matrix4x4));
       assert.equal(mockIdentityTransform.units, 'mm');
     });
 
@@ -193,7 +184,7 @@ describe('NuClear Phase 1 — Clinical Data Contracts', () => {
       assert.equal(mockRigidFollowupTransform.transformType, 'rigid');
       assert.equal(mockRigidFollowupTransform.sourceFrameOfReferenceUID, MOCK_FOLLOWUP_FOR_UID);
       assert.equal(mockRigidFollowupTransform.targetFrameOfReferenceUID, MOCK_FOR_UID);
-      assert.ok(isMatrix4x4Valid(mockRigidFollowupTransform.matrix4x4));
+      assert.ok(isHomogeneousAffineMatrix4x4(mockRigidFollowupTransform.matrix4x4));
       assert.equal(mockRigidFollowupTransform.validity.isValid, true);
     });
 
@@ -204,7 +195,7 @@ describe('NuClear Phase 1 — Clinical Data Contracts', () => {
         0, 0, 1, 0,
         0, 0, 1, 0, // Last element should be 1, not 0
       ] as const;
-      assert.equal(isMatrix4x4Valid(badMatrix as unknown as [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]), false);
+      assert.equal(isHomogeneousAffineMatrix4x4(badMatrix as unknown as [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]), false);
     });
   });
 

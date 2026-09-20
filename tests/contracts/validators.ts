@@ -33,10 +33,6 @@ export function isSourceLocator(value: unknown): value is SourceLocator {
       return Array.isArray(value['files']) && value['files'].every((f) => typeof f === 'string');
     case 'archive-entry':
       return typeof value['archivePath'] === 'string';
-    case 'dicomweb':
-      return typeof value['endpoint'] === 'string' && typeof value['studyInstanceUID'] === 'string';
-    case 'managed-cache':
-      return typeof value['cacheKey'] === 'string' && typeof value['relativePath'] === 'string';
     default:
       return false;
   }
@@ -125,34 +121,7 @@ export function isPetAcquisitionMetadata(value: unknown): value is PetAcquisitio
   );
 }
 
-/** Calculates reference SUVbw factor and verifies decay formula */
-export function calculateSuvBwFactor(
-  pet: PetAcquisitionMetadata,
-  patientWeightKg: number,
-): { factor: number; decayedDoseBq: number } {
-  if (patientWeightKg <= 0) {
-    throw new Error(`Invalid patient weight: ${patientWeightKg} kg`);
-  }
 
-  // Parse HHMMSS times
-  const parseTime = (t: string): number => {
-    const hh = parseInt(t.slice(0, 2), 10);
-    const mm = parseInt(t.slice(2, 4), 10);
-    const ss = parseInt(t.slice(4, 6), 10);
-    return hh * 3600 + mm * 60 + ss;
-  };
-
-  const startSec = parseTime(pet.radiopharmaceuticalStartTime);
-  const seriesSec = parseTime(pet.seriesTime);
-  const deltaT = seriesSec >= startSec ? seriesSec - startSec : seriesSec + 86400 - startSec;
-
-  const tHalf = pet.radionuclideHalfLifeSeconds;
-  const decayedDoseBq = pet.radionuclideTotalDoseBq * Math.pow(2, -deltaT / tHalf);
-  const patientWeightG = patientWeightKg * 1000.0;
-  const factor = 1.0 / (decayedDoseBq / patientWeightG);
-
-  return { factor, decayedDoseBq };
-}
 
 /** Type guard for ImagingAsset */
 export function isImagingAsset(value: unknown): value is ImagingAsset {
@@ -183,8 +152,11 @@ export function isStudyReference(value: unknown): value is StudyReference {
   );
 }
 
-/** Validates that a 4x4 matrix is homogeneous (last row is [0, 0, 0, 1]) */
-export function isMatrix4x4Valid(m: Matrix4x4): boolean {
+/**
+ * Type guard structurally asserting homogeneous affine coordinates [0,0,0,1].
+ * Note: True rigid/numerical validation belongs to the Python worker.
+ */
+export function isHomogeneousAffineMatrix4x4(m: Matrix4x4): boolean {
   if (!Array.isArray(m) || m.length !== 16) return false;
   const [m30, m31, m32, m33] = [m[12], m[13], m[14], m[15]];
   return m30 === 0 && m31 === 0 && m32 === 0 && m33 === 1;
@@ -197,7 +169,7 @@ export function isSpatialTransform(value: unknown): value is SpatialTransform {
     typeof value['id'] === 'string' &&
     typeof value['sourceFrameOfReferenceUID'] === 'string' &&
     typeof value['targetFrameOfReferenceUID'] === 'string' &&
-    isMatrix4x4Valid(value['matrix4x4'] as Matrix4x4) &&
+    isHomogeneousAffineMatrix4x4(value['matrix4x4'] as Matrix4x4) &&
     value['units'] === 'mm' &&
     isObject(value['provenance']) &&
     isObject(value['validity'])

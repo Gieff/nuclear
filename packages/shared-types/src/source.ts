@@ -12,9 +12,7 @@ import type { SeriesInstanceUID, StudyInstanceUID } from './identifiers.js';
 export type SourceLocatorKind =
   | 'local-folder'
   | 'local-file-list'
-  | 'archive-entry'
-  | 'dicomweb'
-  | 'managed-cache';
+  | 'archive-entry';
 
 /** Local filesystem directory containing DICOM series files */
 export interface LocalFolderLocator {
@@ -36,28 +34,11 @@ export interface ArchiveEntryLocator {
   readonly innerEntryPrefix?: string;
 }
 
-/** DICOMweb WADO-RS endpoint */
-export interface DicomWebLocator {
-  readonly kind: 'dicomweb';
-  readonly endpoint: string;
-  readonly studyInstanceUID: StudyInstanceUID | string;
-  readonly seriesInstanceUID?: SeriesInstanceUID | string;
-}
-
-/** Managed application cache directory for imported projects */
-export interface ManagedCacheLocator {
-  readonly kind: 'managed-cache';
-  readonly cacheKey: string;
-  readonly relativePath: string;
-}
-
 /** Discriminated union of all supported source locators */
 export type SourceLocator =
   | LocalFolderLocator
   | LocalFileListLocator
-  | ArchiveEntryLocator
-  | DicomWebLocator
-  | ManagedCacheLocator;
+  | ArchiveEntryLocator;
 
 /**
  * Intrinsic fingerprint identifying a clinical series independently of file path.
@@ -65,10 +46,10 @@ export type SourceLocator =
  */
 export interface SourceFingerprint {
   /** DICOM Study Instance UID */
-  readonly studyInstanceUID: StudyInstanceUID | string;
+  readonly studyInstanceUID: StudyInstanceUID;
 
   /** DICOM Series Instance UID */
-  readonly seriesInstanceUID: SeriesInstanceUID | string;
+  readonly seriesInstanceUID: SeriesInstanceUID;
 
   /** Total number of SOP instances (slices) belonging to the series */
   readonly instanceCount: number;

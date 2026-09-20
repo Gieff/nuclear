@@ -1,11 +1,13 @@
 /**
- * NuClear — Curated Clinical Fixtures for Contract Verification
+ * NuClear — Synthetic Curated Clinical Fixtures for Contract Verification
  *
- * Provides clinically accurate test fixtures representing an anonymized 18F-FDG PET/CT study:
+ * Provides synthetic clinically accurate test fixtures representing a 18F-FDG PET/CT study:
  * - Diagnostic CT axial volume (512x512, 2.5mm slice thickness)
  * - Calibrated PET whole-body volume (128x128, decay-corrected to START)
  * - Spatial registration transforms (identity intra-study & rigid inter-study)
  * - View provenance descriptor
+ * 
+ * NOTE: All UIDs and numbers are synthetic test vectors designed for contract verification.
  */
 
 import type {
@@ -30,9 +32,7 @@ export const MOCK_FOR_UID = '1.2.840.10008.1.3.20260920.401' as FrameOfReference
 export const MOCK_FOLLOWUP_FOR_UID = '1.2.840.10008.1.3.20261020.402' as FrameOfReferenceUID;
 
 export const mockPatient: PatientReference = {
-  patientId: 'ANON-ONCO-042',
-  patientName: 'ANONYMIZED^PATIENT',
-  patientBirthDate: '19650412',
+  patientId: 'SYNTH-ONCO-042',
   patientSex: 'M',
   patientWeightKg: 70.0,
 };
@@ -73,11 +73,11 @@ export const mockCtGeometry: AssetGeometry = {
   frameOfReferenceUID: MOCK_FOR_UID,
   dimensions: [512, 512, 200],
   spacing: [0.9765625, 0.9765625, 2.5],
-  origin: [-249.5117, -249.5117, -500.0],
+  origin: [-249.51171875, -249.51171875, -500.0],
   direction: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
   bounds: {
-    min: [-249.5117, -249.5117, -500.0],
-    max: [250.4883, 250.4883, 0.0],
+    min: [-250.0, -250.0, -501.25],
+    max: [250.0, 250.0, -1.25],
   },
 };
 
@@ -127,8 +127,8 @@ export const mockPetGeometry: AssetGeometry = {
   origin: [-254.0, -254.0, -500.0],
   direction: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
   bounds: {
-    min: [-254.0, -254.0, -500.0],
-    max: [258.0, 258.0, 0.0],
+    min: [-256.0, -256.0, -501.25],
+    max: [256.0, 256.0, -1.25],
   },
 };
 

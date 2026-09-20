@@ -57,10 +57,10 @@ export interface SpatialTransform {
   readonly id: TransformId;
 
   /** Source Frame of Reference UID */
-  readonly sourceFrameOfReferenceUID: FrameOfReferenceUID | string;
+  readonly sourceFrameOfReferenceUID: FrameOfReferenceUID;
 
   /** Target Frame of Reference UID */
-  readonly targetFrameOfReferenceUID: FrameOfReferenceUID | string;
+  readonly targetFrameOfReferenceUID: FrameOfReferenceUID;
 
   /** Classification of transformation matrix */
   readonly transformType: TransformType;

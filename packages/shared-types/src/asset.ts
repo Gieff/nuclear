@@ -86,10 +86,10 @@ export interface ImagingAsset {
   readonly id: AssetId;
 
   /** Parent Study Instance UID */
-  readonly studyInstanceUID: StudyInstanceUID | string;
+  readonly studyInstanceUID: StudyInstanceUID;
 
   /** Source Series Instance UID if derived directly from a single series */
-  readonly seriesInstanceUID?: SeriesInstanceUID | string;
+  readonly seriesInstanceUID?: SeriesInstanceUID;
 
   /** How to reach the underlying source data */
   readonly sourceLocator: SourceLocator;
@@ -107,7 +107,7 @@ export interface ImagingAsset {
   readonly geometry: AssetGeometry;
 
   /** DICOM Frame of Reference UID (0020,0052) */
-  readonly frameOfReferenceUID: FrameOfReferenceUID | string;
+  readonly frameOfReferenceUID: FrameOfReferenceUID;
 
   /** Acquisition, scaling, and quantitative calibration metadata */
   readonly metadata: AssetMetadata;

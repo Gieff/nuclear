@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Phase 1.1 (Clinical Data Contracts Correction & Hardening)**:
+  - Purged runtime SUVbw formula computation from TypeScript validators, restricting Node to pure structural contracts and reserving numerical quantitation for the Python worker (P3).
+  - Constrained `SourceLocator` strictly to v1 scope (`local-folder`, `local-file-list`, `archive-entry`), removing premature `dicomweb` and cache locators.
+  - Enforced strict nominal typing across all domain contracts by eliminating `| string` dilution on branded UIDs (`StudyInstanceUID`, `SeriesInstanceUID`, `FrameOfReferenceUID`).
+  - Aligned `ResourcePriority` in `AssetResidency` strictly with v3 architecture specification (`visible-interactive`, `visible-read-only`, `prepared-hidden`, `prefetch-candidate`, `unused`).
+  - Formalized geometric voxel convention for `AssetGeometry` (`BoundingBox3D` covering outer half-voxel borders: `min = origin - 0.5*spacing`, `max = origin + (dim - 0.5)*spacing`), corrected synthetic fixture bounds, and added automated mathematical assertion tests.
+  - Refactored matrix validation to `isHomogeneousAffineMatrix4x4`, asserting structural homogeneous form while reserving rigid registration verification for Python.
+  - Stripped direct PHI (`patientName`, `patientBirthDate`) from `PatientReference` to guarantee `.ncp` privacy-safe persistence, and accurately labeled test fixtures as synthetic contract fixtures.
 - **Phase 1 (Clinical Data Contracts in `@nuclear/shared-types`)**:
   - Defined pure TypeScript contracts in `@nuclear/shared-types` with zero runtime dependencies and zero runtime code (`StudyReference`, `ImagingAsset`, `SourceLocator`, `SourceFingerprint`, `AssetAvailability`, `AssetResidency`, `SpatialTransform`, `ViewProvenance`).
   - Implemented nominal branded identifiers for clinical IDs and DICOM UIDs (`StudyId`, `AssetId`, `ViewId`, `SurfaceId`, `RowId`, `CellId`, `TransformId`, `StudyInstanceUID`, `SeriesInstanceUID`, `SOPInstanceUID`, `FrameOfReferenceUID`).

@@ -26,16 +26,14 @@ export type AssetKind =
 /** DICOM Patient Sex (0010,0040) */
 export type PatientSex = 'M' | 'F' | 'O' | 'U';
 
-/** Anonymized or clinical patient demographic reference */
+/**
+ * Anonymized or clinical patient demographic reference.
+ * STRICT PRIVACY REQUIREMENT: Direct PHI fields (e.g. patientName, patientBirthDate)
+ * MUST NOT be part of this persisted clinical reference in .ncp.
+ */
 export interface PatientReference {
-  /** Anonymized patient identifier */
+  /** Anonymized or pseudo patient identifier */
   readonly patientId?: string;
-
-  /** Anonymized patient name or pseudonym */
-  readonly patientName?: string;
-
-  /** Patient birth date (YYYYMMDD) */
-  readonly patientBirthDate?: string;
 
   /** Patient administrative sex */
   readonly patientSex?: PatientSex;

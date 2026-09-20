@@ -38,13 +38,13 @@ export interface ScientificWorkerMetadata {
  */
 export interface ViewProvenance {
   /** Parent Study Instance UID */
-  readonly studyInstanceUID: StudyInstanceUID | string;
+  readonly studyInstanceUID: StudyInstanceUID;
 
   /** IDs of all ImagingAssets feeding into the view */
   readonly sourceAssetIds: readonly AssetId[];
 
   /** DICOM Series Instance UIDs of underlying data */
-  readonly sourceSeriesInstanceUIDs: readonly (SeriesInstanceUID | string)[];
+  readonly sourceSeriesInstanceUIDs: readonly SeriesInstanceUID[];
 
   /** Intrinsic fingerprints of all source series */
   readonly sourceFingerprints: readonly SourceFingerprint[];

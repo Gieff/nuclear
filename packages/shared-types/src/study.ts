@@ -14,7 +14,7 @@ import type { SourceLocator } from './source.js';
  */
 export interface StudySeriesReference {
   /** DICOM Series Instance UID (0020,000E) */
-  readonly seriesInstanceUID: SeriesInstanceUID | string;
+  readonly seriesInstanceUID: SeriesInstanceUID;
 
   /** Clinical series number (0020,0011) */
   readonly seriesNumber?: number;
@@ -31,13 +31,15 @@ export interface StudySeriesReference {
 
 /**
  * Clinical study reference grouping patient data and series summaries.
+ * STRICT PRIVACY REQUIREMENT: This object is persisted in .ncp project files.
+ * It must be privacy-safe and free from direct Patient Health Information (PHI).
  */
 export interface StudyReference {
   /** Internal opaque identifier for this study in the NuClear workspace */
   readonly id: StudyId;
 
   /** DICOM Study Instance UID (0020,000D) */
-  readonly studyInstanceUID: StudyInstanceUID | string;
+  readonly studyInstanceUID: StudyInstanceUID;
 
   /** Clinical Study ID tag (0020,0010) */
   readonly studyId?: string;
