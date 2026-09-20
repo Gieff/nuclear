@@ -6,7 +6,7 @@
     "protocolVersions": ["1.0"],
     "operations": ["nuclear.dicom.compatibility", "nuclear.dicom.geometry", "nuclear.dicom.inspect", "nuclear.protocol.handshake", "nuclear.quantitation.suvbw"],
     "workerMetadata": {
-      "workerVersion": "0.1.1",
+      "workerVersion": "0.1.2",
       "operation": "nuclear.protocol.handshake",
       "timestamp": "2026-09-20T00:00:00Z",
       "parameters": {}

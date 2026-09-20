@@ -1,12 +1,12 @@
 {
   "name": "@nuclear/rendering-presets",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Standardized CT, PET and fusion presets and transfer functions for NuClear",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "dependencies": {
-    "@nuclear/shared-types": "0.1.1"
+    "@nuclear/shared-types": "0.1.2"
   },
   "files": ["dist", "src"]
 }
