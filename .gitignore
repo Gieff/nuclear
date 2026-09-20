@@ -60,3 +60,13 @@ local_data/
 test_dicom/
 tests/fixtures/cases/
 tests/cases/
+
+# OpenCode / OpenCodeRAG workspace state
+.opencode/.gitignore
+.opencode/node_modules/
+.opencode/rag_db/
+.opencode/opencode-rag.log
+.opencode/package.json
+.opencode/package-lock.json
+.opencode/bun.lock
+

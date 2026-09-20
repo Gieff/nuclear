@@ -9,6 +9,7 @@
     "packages/*"
   ],
   "scripts": {
+    "bump": "node scripts/bump-version.mjs",
     "typecheck": "tsc -b",
     "test": "node --test",
     "test:python": "python/worker/.venv/bin/python -m pytest python/tests -q",
