@@ -314,3 +314,53 @@ P3.4-B.2.2.2 and P3.4-B.2.2.2.1 addenda.
 
 New refusal codes: `VIEW_PER_LAYER_PROPERTY_UNSUPPORTED`,
 `VIEW_VOLUME_SCHEME_UNSUPPORTED`.
+
+## Addendum — P3.4-B.2.2.4 (different-FoR refusal, viewport-measured size, real cache residency)
+
+Three corrections/hardenings before P3.4-C.
+
+**Correction: a valid `SpatialTransform` was validated but never applied.** The
+P3.4-B.2.2.1.1 addendum described a different-Frame-of-Reference layer as
+accepted when a valid millimetre `SpatialTransform` bridged the frames. The
+adapter then passed both volumes straight to `setVolumes`; neither Cornerstone
+nor the worker applies the matrix, so an inter-study fusion would have rendered
+misaligned.
+
+**Different-Frame-of-Reference layers are refused until transform application
+exists.** `validateLayerGeometry` now refuses every layer whose resident frame
+differs from the view plane's frame, whether or not a transform is present:
+absent transform → `VIEW_FOR_MISMATCH`; present but not
+`validity.isValid === true`, not `units === 'mm'`, or not bridging the
+volume/view frames in either direction → `VIEW_TRANSFORM_INVALID`; present and
+valid → the new `VIEW_TRANSFORM_UNSUPPORTED`, whose message states that spatial
+transform application is not implemented so the fusion would be misaligned. A
+co-referenced volume (same Frame of Reference) is still accepted without a
+transform, including a different native acquisition plane (MPR/reformat is
+legitimate). The former transformed-layer parallelism requirement is removed:
+transformed layers are refused outright. Orientation is still validated, but as
+a well-formedness check on every resident volume — a
+`ResidentVolumeGeometry.orientation` that is not exactly 6 finite numbers is
+refused with `VIEW_GEOMETRY_INCOMPATIBLE`, so the branch is not dead. Renderer
+consequence: the committed `ct-axial`/`pt-axial` fixtures have distinct
+`FrameOfReferenceUID`s, so they can no longer be applied as a fusion; the former
+fusion-palette/opacity positive was replaced by a `VIEW_TRANSFORM_UNSUPPORTED`
+negative.
+
+**Viewport size is read from the viewport.** `ApplyViewApplicationInput` no
+longer accepts `actualViewportSizePx`. `applyViewApplication` measures the
+mounted size from the adapter's own viewport element
+(`element.clientWidth`/`clientHeight`), refuses a missing, non-finite,
+non-integer or non-positive size with `VIEW_VIEWPORT_READBACK_FAILED`, and
+passes the measured tuple to `validateViewportSize`. A caller can no longer
+declare a false expected size.
+
+**Residency is verified against the real cache.** `ViewGeometryEvidence` is
+caller-supplied and may claim a volume is resident. After the pure geometry
+validation and before any mutation, `assertVolumesCached` checks every
+`plan.layers[*].volumeId` against Cornerstone's real cache
+(`cache.getVolume(volumeId) !== undefined`) and refuses
+`VIEW_VOLUME_NOT_RESIDENT` naming the volume otherwise. The browser-only guards
+live in `renderer/view-application-guards.ts`, which imports
+`@cornerstonejs/core` and is therefore not exported from `src/index.ts`.
+
+New refusal code: `VIEW_TRANSFORM_UNSUPPORTED`.

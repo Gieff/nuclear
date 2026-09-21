@@ -14,16 +14,12 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { Page } from 'playwright';
 
-import { mockPetAsset } from '../fixtures/clinical-contracts.fixture.ts';
 import { createRendererHarness } from './fixtures/renderer-harness.mjs';
 
 const APPLICATION_ENTRY_PATH = fileURLToPath(
   new URL('./fixtures/application-entry.ts', import.meta.url),
 );
 
-const SUV_FACTOR = mockPetAsset.metadata.petQuantitation?.suvFactor as number;
-/** Canonical fusion overlay opacity: `(blendSlider / 100) ^ 0.42` at 50%. */
-const FUSION_OPACITY = (0.5) ** 0.42;
 /** Declared MIP slab for the observed read-back test (well above Cornerstone's 0.1 mm clamp). */
 const SLAB_THICKNESS_MM = 12;
 const ORIENTATION_TOLERANCE = 1e-6;
@@ -77,6 +73,7 @@ interface ApplicationAck {
 
 const SCENARIOS: readonly { readonly scenario: string; readonly code: string }[] = [
   { scenario: 'missing-resident', code: 'VIEW_VOLUME_NOT_RESIDENT' },
+  { scenario: 'evidence-not-cached', code: 'VIEW_VOLUME_NOT_RESIDENT' },
   { scenario: 'for-mismatch', code: 'VIEW_FOR_MISMATCH' },
   { scenario: 'invalid-transform', code: 'VIEW_TRANSFORM_INVALID' },
   { scenario: 'viewport-size-mismatch', code: 'VIEW_VIEWPORT_SIZE_MISMATCH' },
@@ -184,42 +181,16 @@ describe('NuClear P3.4-B.2.2.2 — Cornerstone volume viewport application', () 
     }
   });
 
-  it('3. a CT+PET fusion applies the PET palette, 0.5^0.42 opacity, mapping and orientation', async () => {
+  it('3. a different-Frame-of-Reference CT+PET fusion is refused with VIEW_TRANSFORM_UNSUPPORTED despite a valid transform', async () => {
     const harness = await createRendererHarness({ entryPath: APPLICATION_ENTRY_PATH });
     try {
       const ack = await callProbe(harness.page, 'applyFusion', [
         { ct: readFixture('ct-axial'), pet: readFixture('pt-axial') },
       ]);
-      assert.equal(ack.ok, true, describeAck(ack));
-      const applied = ack.applied as AppliedState;
-      assert.equal(applied.viewId, 'view-fusion');
-      assert.equal(applied.layers.length, 2);
-      assert.equal(applied.blendMode, 'COMPOSITE');
-      assert.equal(applied.slabThicknessMm, undefined);
-
-      const [ctLayer, petLayer] = applied.layers;
-      assert.equal(ctLayer.assetId, 'fixture.volume.ct-axial');
-      assert.equal(ctLayer.properties.colormap.name, 'Grayscale');
-      assert.equal(petLayer.assetId, 'fixture.volume.pt-axial');
-      assert.equal(petLayer.properties.colormap.name, 'PET');
-      assert.equal(petLayer.properties.invert, false);
-      assert.equal(petLayer.properties.interpolationType, 1);
-
-      assertNear(petLayer.properties.voiRange.lower, 0, 1e-6, 'PET voiRange.lower');
-      assertNear(petLayer.properties.voiRange.upper, 8 / SUV_FACTOR, 1e-6, 'PET voiRange.upper');
-      assertNear(
-        petLayer.properties.colormap.opacity,
-        FUSION_OPACITY,
-        1e-12,
-        'PET fusion opacity',
-      );
-      assert.ok(
-        (petLayer.properties.colormap.opacityMapping?.length ?? 0) > 0,
-        'the fusion overlay must carry an opacity mapping',
-      );
-
-      assertComponentsNear(applied.camera.viewPlaneNormal, [0, 0, 1], 'camera.viewPlaneNormal');
-      assertComponentsNear(applied.camera.viewUp, [0, 1, 0], 'camera.viewUp');
+      assert.equal(ack.ok, false, describeAck(ack));
+      assert.equal(ack.code, 'VIEW_TRANSFORM_UNSUPPORTED', describeAck(ack));
+      assert.match(ack.message ?? '', /misaligned/, 'the refusal must explain the misalignment risk');
+      assert.equal(ack.actorCount, 0, 'a refused fusion must not set any volume');
       assert.deepEqual(harness.pageErrors, []);
       assert.deepEqual(harness.consoleErrors, []);
     } finally {

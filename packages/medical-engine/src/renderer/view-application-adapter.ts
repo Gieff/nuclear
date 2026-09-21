@@ -9,8 +9,9 @@
  * Every refusal runs fail-closed before `setVolumes`/`setProperties`: the
  * `nuclear-volume` scheme allowlist is checked first, then DICOM palettes
  * (ADR-007, `dicom-palette-registration.ts`) are registered, and
- * geometry/Frame-of-Reference
- * (`validateLayerGeometry`), viewport size (`validateViewportSize`), colormap
+ * geometry/Frame-of-Reference (`validateLayerGeometry`), real cache residency
+ * (`assertVolumesCached`), viewport size measured from the live viewport
+ * element (`mountedViewportSize` + `validateViewportSize`), colormap
  * resolvability, and slice positioning are checked. A non-neutral slice
  * reference is refused with a typed error rather than silently ignored or
  * guessed. Nothing is inferred and no error is swallowed.
@@ -33,13 +34,16 @@ import type {
 } from '../view-application/index.js';
 import type { CornerstoneRendererAdapter } from './adapter.js';
 import { registerDicomPalettes } from './dicom-palette-registration.js';
+import {
+  assertVolumesCached,
+  mountedViewportSize,
+} from './view-application-guards.js';
 
 /** Input for one browser-side application of a compiled plan. */
 export interface ApplyViewApplicationInput {
   readonly plan: ViewApplicationPlan;
   /** assetId -> resident volume geometry / persisted transforms. */
   readonly evidence: ViewGeometryEvidence;
-  readonly actualViewportSizePx: readonly [number, number];
   /** Optional explicit slice request; only the neutral reference is accepted. */
   readonly slicePosition?: {
     readonly referenceLocation: readonly [number, number, number];
@@ -228,16 +232,17 @@ export async function applyViewApplication(
   adapter: CornerstoneRendererAdapter,
   input: ApplyViewApplicationInput,
 ): Promise<AppliedViewState> {
-  const { plan, evidence, actualViewportSizePx } = input;
+  const { plan, evidence } = input;
 
   assertLocalVolumeScheme(plan);
   registerDicomPalettes();
   validateLayerGeometry(plan, evidence);
-  validateViewportSize(plan.transforms, actualViewportSizePx);
+  assertVolumesCached(plan);
+  const viewport = adapter.getViewport() as VolumeViewport;
+  validateViewportSize(plan.transforms, mountedViewportSize(viewport));
   assertColormapsResolvable(plan);
   assertSlicePositionSupported(input);
 
-  const viewport = adapter.getViewport() as VolumeViewport;
   const volumeIds = plan.layers.map((layer) => layer.volumeId);
 
   ensureLocalVolumeImageLoader();

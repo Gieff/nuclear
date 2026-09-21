@@ -15,6 +15,7 @@ export const VIEW_APPLICATION_ERROR_CODES = {
   forMismatch: 'VIEW_FOR_MISMATCH',
   geometryIncompatible: 'VIEW_GEOMETRY_INCOMPATIBLE',
   transformInvalid: 'VIEW_TRANSFORM_INVALID',
+  transformUnsupported: 'VIEW_TRANSFORM_UNSUPPORTED',
   viewportSizeMismatch: 'VIEW_VIEWPORT_SIZE_MISMATCH',
   slicePositionUnsupported: 'VIEW_SLICE_POSITION_UNSUPPORTED',
   viewportReadbackFailed: 'VIEW_VIEWPORT_READBACK_FAILED',

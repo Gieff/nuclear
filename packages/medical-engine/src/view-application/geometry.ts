@@ -1,22 +1,24 @@
 /**
  * @nuclear/medical-engine — pure, Node-safe geometry / Frame-of-Reference
- * validation for a compiled `ViewApplicationPlan` (P3.4-B.2.2.1.1).
+ * validation for a compiled `ViewApplicationPlan` (P3.4-B.2.2.1.1, corrected by
+ * P3.4-B.2.2.4).
  *
  * The compiler carries spatial identity but cannot know which volumes are
  * actually resident in the renderer. This module is the Node-testable half of
  * the browser adapter's mandatory fail-closed checks: a layer may only be
- * composited when its resident volume is co-referenced with the view plane, or
- * when an explicit, valid millimetre `SpatialTransform` bridges the two frames.
+ * composited when its resident volume is co-referenced with the view plane.
  *
  * A co-referenced volume (same Frame of Reference) is the authoritative
  * co-reference signal and is accepted without a transform, including a
- * different native acquisition plane (MPR/reformat is legitimate). For a
- * different frame the bridging transform is mandatory, and the resident volume
- * orientation must be parallel to the view-plane orientation because no oblique
- * transformed reslicing is implemented yet.
+ * different native acquisition plane (MPR/reformat is legitimate). A volume in
+ * a different Frame of Reference is ALWAYS refused (P3.4-B.2.2.4): a valid
+ * `SpatialTransform` proves the frames could be bridged, but neither
+ * Cornerstone nor the worker applies that matrix yet, so compositing the
+ * volumes would render a misaligned fusion (`VIEW_TRANSFORM_UNSUPPORTED`).
  *
- * No floating-point library call is performed (P2.5 integrity gate):
- * parallelism is a one-sided dot-product comparison, never an absolute value.
+ * Every resident volume must still carry a complete 6-value finite DICOM
+ * ImageOrientationPatient; an unreadable orientation is refused rather than
+ * assumed. No floating-point library call is performed (P2.5 integrity gate).
  */
 
 import type { SpatialTransform } from '@nuclear/shared-types';
@@ -43,35 +45,21 @@ export interface ViewGeometryEvidence {
   readonly spatialTransforms?: ReadonlyMap<string, SpatialTransform>;
 }
 
-/** Greatest accepted deviation from a perfectly aligned dot product of 1. */
-const PARALLELISM_TOLERANCE = 1e-5;
-
-/** Dot product of the 3-vector starting at `offset` in each array. */
-function dot3(a: readonly number[], b: readonly number[], offset: number): number {
-  return (
-    a[offset] * b[offset] +
-    a[offset + 1] * b[offset + 1] +
-    a[offset + 2] * b[offset + 2]
-  );
-}
-
 /**
- * True only when both the IOP row and the IOP column of the resident volume are
- * directionally aligned with the view-plane orientation. Both operands must be
- * complete 6-value DICOM IOPs; anything else is refused by the caller. Only the
- * same direction (`dot >= 1 - tolerance`) is accepted: anti-parallel axes are
- * not silently normalised.
+ * True only for a complete DICOM ImageOrientationPatient: exactly 6 finite
+ * numbers. Any other shape is an unreadable frame orientation and is refused by
+ * the caller rather than assumed.
  */
-function orientationsAligned(
-  viewOrientation: readonly number[],
-  volumeOrientation: readonly number[],
-): boolean {
-  if (viewOrientation.length !== 6 || volumeOrientation.length !== 6) {
+function isCompleteOrientation(orientation: readonly number[]): boolean {
+  if (orientation.length !== 6) {
     return false;
   }
-  const rowDot = dot3(viewOrientation, volumeOrientation, 0);
-  const colDot = dot3(viewOrientation, volumeOrientation, 3);
-  return rowDot >= 1 - PARALLELISM_TOLERANCE && colDot >= 1 - PARALLELISM_TOLERANCE;
+  for (const value of orientation) {
+    if (!Number.isFinite(value)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** True when the transform bridges the volume and view frames in either direction. */
@@ -91,7 +79,6 @@ function transformBridges(
 /** Validates one plan layer against the adapter's resident-volume evidence. */
 function validateResidentLayer(
   layer: ViewLayerApplication,
-  viewOrientation: readonly number[],
   viewFrame: string,
   evidence: ViewGeometryEvidence,
 ): void {
@@ -100,6 +87,13 @@ function validateResidentLayer(
     refuse(
       VIEW_APPLICATION_ERROR_CODES.volumeNotResident,
       `layer '${layer.assetId}' has no resident volume evidence: refusing to composite a non-resident volume`,
+    );
+  }
+
+  if (!isCompleteOrientation(volume.orientation)) {
+    refuse(
+      VIEW_APPLICATION_ERROR_CODES.geometryIncompatible,
+      `layer '${layer.assetId}' has no complete 6-value finite DICOM ImageOrientationPatient: refusing to composite a volume whose frame orientation cannot be verified`,
     );
   }
 
@@ -126,32 +120,26 @@ function validateResidentLayer(
     );
   }
 
-  if (!orientationsAligned(viewOrientation, volume.orientation)) {
-    refuse(
-      VIEW_APPLICATION_ERROR_CODES.geometryIncompatible,
-      `layer '${layer.assetId}' orientation is not parallel to the view-plane orientation: oblique transformed reslicing is not implemented`,
-    );
-  }
+  refuse(
+    VIEW_APPLICATION_ERROR_CODES.transformUnsupported,
+    `layer '${layer.assetId}' has a valid millimetre co-registration transform from frame '${volume.frameOfReferenceUID}' to '${viewFrame}', but spatial transform application is not implemented: applying both volumes without it would render a misaligned fusion, so the layer is refused`,
+  );
 }
 
 /**
  * Fail-closed per-layer geometry check. For every layer: the volume must be
- * resident; a volume in the view plane's own Frame of Reference is accepted; a
- * volume in a different frame requires a valid millimetre `SpatialTransform`
- * bridging the frames (either direction) and an orientation parallel to the
- * view plane. The first violation throws a typed `ViewApplicationError`.
+ * resident and carry a complete finite IOP; a volume in the view plane's own
+ * Frame of Reference is accepted; a volume in a different frame is refused,
+ * whether or not a valid bridging `SpatialTransform` exists, because spatial
+ * transform application is not implemented and the fusion would be misaligned.
+ * The first violation throws a typed `ViewApplicationError`.
  */
 export function validateLayerGeometry(
   plan: ViewApplicationPlan,
   evidence: ViewGeometryEvidence,
 ): void {
   for (const layer of plan.layers) {
-    validateResidentLayer(
-      layer,
-      plan.spatial.orientation,
-      plan.spatial.frameOfReferenceUID,
-      evidence,
-    );
+    validateResidentLayer(layer, plan.spatial.frameOfReferenceUID, evidence);
   }
 }
 

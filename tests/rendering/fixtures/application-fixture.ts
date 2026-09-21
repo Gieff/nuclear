@@ -46,12 +46,7 @@ export const PET_BINDING: QuantitativePetBinding = resolvePetQuantitationBinding
   'rescaled-bqml',
 );
 
-const IDENTITY_MATRIX = [
-  1, 0, 0, 0,
-  0, 1, 0, 0,
-  0, 0, 1, 0,
-  0, 0, 0, 1,
-];
+const IDENTITY_MATRIX = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 /** Creates a real DOM host whose engine element is exactly width×height px. */
 export function createSizedHost(width: number, height: number): RendererRuntimeHost {
@@ -178,6 +173,7 @@ export function buildCtState(
   ct: VolumeIngestionPlan,
   colormapId = CT_COLORMAP_ID,
   slabThicknessMm?: number,
+  viewportSizePx: readonly [number, number] = VIEWPORT_SIZE_PX,
 ): MedicalViewState {
   return {
     id: 'view-ct',
@@ -204,7 +200,10 @@ export function buildCtState(
         ? { mode: 'slice' }
         : { mode: 'MIP', slabThicknessMm },
     composition: { mode: 'single', layers: [{ assetId: CT_ASSET_ID, role: 'base' }] },
-    coordinateTransforms: { ...IDENTITY_TRANSFORMS },
+    coordinateTransforms: {
+      ...IDENTITY_TRANSFORMS,
+      viewportSizePx: [...viewportSizePx],
+    },
   } as unknown as MedicalViewState;
 }
 
@@ -290,9 +289,10 @@ export function compileCt(
   ct: VolumeIngestionPlan,
   colormapId = CT_COLORMAP_ID,
   slabThicknessMm?: number,
+  viewportSizePx?: readonly [number, number],
 ) {
   return compileMedicalViewApplication({
-    state: buildCtState(ct, colormapId, slabThicknessMm),
+    state: buildCtState(ct, colormapId, slabThicknessMm, viewportSizePx),
     volumeIds: new Map([[CT_ASSET_ID, ct.volumeId]]),
     petBindings: new Map(),
   });

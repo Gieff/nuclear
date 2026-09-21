@@ -21,11 +21,12 @@ import {
   VolumeIngestionError,
   applyViewApplication,
 } from '../../../packages/medical-engine/src/renderer/index.ts';
-import type { AppliedViewState } from '../../../packages/medical-engine/src/renderer/index.ts';
 import { ViewApplicationError } from '../../../packages/medical-engine/src/view-application/index.ts';
+import type { ApplicationAck, NegativeScenario } from './application-probe-types.ts';
 import type { VolumeProbeInput } from './volume-fixture.ts';
 import { probeWebGL2 } from './adapter-host.ts';
 import {
+  CT_COLORMAP_ID,
   PET_ASSET_ID,
   VIEWPORT_SIZE_PX,
   compileCt,
@@ -40,51 +41,6 @@ import {
 
 const ENGINE_ID = 'nuclear-application-probe';
 
-type NegativeScenario =
-  | 'missing-resident'
-  | 'for-mismatch'
-  | 'invalid-transform'
-  | 'viewport-size-mismatch'
-  | 'unresolved-palette'
-  | 'slice-position'
-  | 'unsupported-scheme';
-
-interface ApplicationAck {
-  ok: boolean;
-  name?: string;
-  code?: string;
-  message?: string;
-  stack?: string;
-  actorCount?: number;
-  applied?: AppliedViewState;
-  constructorName?: string;
-  type?: string;
-  useGenericViewport?: boolean;
-  elementSizePx?: number[];
-  methodSurface?: Record<string, boolean>;
-}
-
-interface NuclearApplicationProbe {
-  viewport(): ApplicationAck;
-  applyCt(input: VolumeProbeInput, colormapId?: string, slabThicknessMm?: number): Promise<ApplicationAck>;
-  applyFusion(inputs: { ct: VolumeProbeInput; pet: VolumeProbeInput }): Promise<ApplicationAck>;
-  negative(
-    inputs: { ct: VolumeProbeInput; pet: VolumeProbeInput },
-    scenario: NegativeScenario,
-  ): Promise<ApplicationAck>;
-  teardown(): ApplicationAck;
-}
-
-interface NuclearRendererProbe {
-  webgl2(): ReturnType<typeof probeWebGL2>;
-}
-
-declare global {
-  var __nuclearApplicationProbe: NuclearApplicationProbe | undefined;
-  var __nuclearRendererProbe: NuclearRendererProbe | undefined;
-  var __nuclearRendererProbeReady: boolean | undefined;
-}
-
 let adapter: CornerstoneRendererAdapter | undefined;
 
 function ensureAdapter(): CornerstoneRendererAdapter {
@@ -94,10 +50,6 @@ function ensureAdapter(): CornerstoneRendererAdapter {
   });
   return adapter;
 }
-
-function viewportElement(): HTMLDivElement { return (ensureAdapter().getViewport() as unknown as { element: HTMLDivElement }).element; }
-
-function viewportSize(): [number, number] { const element = viewportElement(); return [element.clientWidth, element.clientHeight]; }
 
 function actorCount(): number { return (ensureAdapter().getViewport() as unknown as { getActors(): unknown[] }).getActors().length; }
 
@@ -159,7 +111,6 @@ async function applyCt(input: VolumeProbeInput, colormapId?: string, slabThickne
     const applied = await applyViewApplication(renderer, {
       plan,
       evidence: ctEvidence(ct),
-      actualViewportSizePx: viewportSize(),
     });
     return { ok: true, applied };
   } catch (error) {
@@ -181,11 +132,12 @@ async function applyFusion(inputs: {
     const applied = await applyViewApplication(renderer, {
       plan,
       evidence: fusionEvidence(pet, ct),
-      actualViewportSizePx: viewportSize(),
     });
     return { ok: true, applied };
   } catch (error) {
-    return describeError(error);
+    const ack = describeError(error);
+    ack.actorCount = actorCount();
+    return ack;
   }
 }
 
@@ -212,18 +164,28 @@ async function negative(
     const renderer = ensureAdapter();
     const ct = planFromInput(inputs.ct);
     const pet = planFromInput(inputs.pet);
+    if (scenario === 'evidence-not-cached') {
+      // Evidence claims the CT volume is resident, but it is deliberately never
+      // materialized in Cornerstone's cache: only the real cache check can refuse.
+      return await runNegative(renderer, {
+        plan: compileCt(ct),
+        evidence: ctEvidence(ct),
+      });
+    }
+
+    renderer.loadVolume(ct);
+    renderer.loadVolume(pet);
+
     if (scenario === 'missing-resident') {
       return await runNegative(renderer, {
         plan: compileFusion(pet, ct),
         evidence: { volumes: new Map() },
-        actualViewportSizePx: viewportSize(),
       });
     }
     if (scenario === 'for-mismatch') {
       return await runNegative(renderer, {
         plan: compileFusion(pet, ct),
         evidence: fusionEvidence(pet, ct, { includeTransform: false }),
-        actualViewportSizePx: viewportSize(),
       });
     }
     if (scenario === 'invalid-transform') {
@@ -239,35 +201,33 @@ async function negative(
       return await runNegative(renderer, {
         plan: compileFusion(pet, ct),
         evidence: { volumes: fusionEvidence(pet, ct).volumes, spatialTransforms: transforms },
-        actualViewportSizePx: viewportSize(),
       });
     }
     if (scenario === 'viewport-size-mismatch') {
+      // A compiled state whose declared viewportSizePx (500x500) differs from
+      // the 512x512 element the probe host actually mounted.
       return await runNegative(renderer, {
-        plan: compileFusion(pet, ct),
-        evidence: fusionEvidence(pet, ct),
-        actualViewportSizePx: [500, 500],
+        plan: compileCt(ct, CT_COLORMAP_ID, undefined, [500, 500]),
+        evidence: ctEvidence(ct),
       });
     }
     if (scenario === 'unresolved-palette') {
       return await runNegative(renderer, {
-        plan: compileFusion(pet, ct, { ctColormapId: 'not-a-palette' }),
-        evidence: fusionEvidence(pet, ct),
-        actualViewportSizePx: viewportSize(),
+        plan: compileCt(ct, 'not-a-palette'),
+        evidence: ctEvidence(ct),
       });
     }
     if (scenario === 'slice-position') {
+      const plan = compileCt(ct);
       return await runNegative(renderer, {
-        plan: compileFusion(pet, ct, { sliceOffsetMm: 5 }),
-        evidence: fusionEvidence(pet, ct),
-        actualViewportSizePx: viewportSize(),
+        plan: { ...plan, spatial: { ...plan.spatial, sliceOffsetMm: 5 } },
+        evidence: ctEvidence(ct),
       });
     }
     if (scenario === 'unsupported-scheme') {
       return await runNegative(renderer, {
         plan: nonLocalFusionPlan(pet, ct),
         evidence: fusionEvidence(pet, ct),
-        actualViewportSizePx: viewportSize(),
       });
     }
     return { ok: false, code: 'UNKNOWN_SCENARIO', message: `unknown scenario '${String(scenario)}'` };

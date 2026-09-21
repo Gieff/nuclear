@@ -3164,3 +3164,126 @@ the applied volume viewport through the adapter (no screen-pixel state
 persisted), verify provenance and dimensions, prove state isolation between two
 views, and keep the camera refusal explicit in the capture path. Do not add the
 temporary high-resolution `RenderTarget` (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.4-B.2.2.4 (corrective): Transform Refusal, Viewport-Measured Size, Real Cache Residency
+
+Blocking corrective (plus two hardening items) before P3.4-C. Capture (P3.4-C),
+`RenderTarget` (P3.5), UI, view-engine and `@nuclear/shared-types` were not
+touched. Nothing was staged or committed.
+
+## 1. What Was Implemented
+
+- **Blocker — a valid `SpatialTransform` is validated but never applied.**
+  `validateLayerGeometry` (`view-application/geometry.ts`) no longer accepts a
+  different-Frame-of-Reference layer merely because a valid transform bridges
+  the frames. Per layer: no volume evidence → `VIEW_VOLUME_NOT_RESIDENT`; a
+  resident `orientation` that is not exactly 6 finite numbers →
+  `VIEW_GEOMETRY_INCOMPATIBLE`; same Frame of Reference as the view plane →
+  accept; different frame with no transform → `VIEW_FOR_MISMATCH`; transform
+  present but not `isValid`/`mm`/bridging → `VIEW_TRANSFORM_INVALID`; transform
+  present and valid → the new `VIEW_TRANSFORM_UNSUPPORTED`, stating that spatial
+  transform application is not implemented so the fusion would be misaligned.
+  The former transformed-layer parallelism requirement is removed (transformed
+  layers are refused outright); orientation is now an explicit IOP
+  well-formedness check on every layer, so it is not a dead branch.
+- **Hardening — viewport size is read from the viewport.**
+  `ApplyViewApplicationInput` no longer accepts `actualViewportSizePx`.
+  `applyViewApplication` measures `viewport.element.clientWidth/clientHeight`,
+  refuses a missing/non-positive/non-integer size with
+  `VIEW_VIEWPORT_READBACK_FAILED`, and passes the measured tuple to
+  `validateViewportSize`. A caller cannot declare a false expected size.
+- **Hardening — residency is checked against the real cache.**
+  `assertVolumesCached` (new browser-only `renderer/view-application-guards.ts`)
+  verifies every `plan.layers[*].volumeId` against
+  `cache.getVolume(volumeId) !== undefined` after the pure geometry check and
+  before any mutation, refusing `VIEW_VOLUME_NOT_RESIDENT` naming the volume.
+- **New error code.** `VIEW_TRANSFORM_UNSUPPORTED` added to
+  `VIEW_APPLICATION_ERROR_CODES` (now 16 codes).
+
+## 2. Files Changed / Created
+
+| File | Lines | Change |
+| --- | --- | --- |
+| `packages/medical-engine/src/view-application/geometry.ts` | 165 | different-FoR refusal; explicit IOP completeness |
+| `packages/medical-engine/src/view-application/errors.ts` | 49 | `transformUnsupported` code |
+| `packages/medical-engine/src/renderer/view-application-guards.ts` | 65 | new: `mountedViewportSize`, `assertVolumesCached` |
+| `packages/medical-engine/src/renderer/view-application-adapter.ts` | 295 | caller size removed; viewport measured; real-cache guard |
+| `tests/rendering/fixtures/application-entry.ts` | 259 | CT-based negatives; `evidence-not-cached`; no caller size |
+| `tests/rendering/fixtures/application-fixture.ts` | 299 | `buildCtState`/`compileCt` optional `viewportSizePx` |
+| `tests/rendering/fixtures/application-probe-types.ts` | 56 | new: split probe types (300-line gate) |
+| `tests/view-application/view-application-geometry.test.ts` | 236 | test 24 inverted; non-identity rigid case; 27d |
+| `tests/rendering/view-application.test.ts` | 242 | fusion positive inverted; `evidence-not-cached` scenario |
+| `docs/decisions/ADR-008-medical-view-state-application.md` | 366 | P3.4-B.2.2.4 addendum |
+| `docs/agentlog/phase-3.md` | this | handover |
+
+Untouched: `packages/medical-engine/src/renderer/adapter.ts` (300), the Python
+worker, `@nuclear/shared-types`, capture, `RenderTarget`, UI, view-engine.
+
+## 3. Architectural Assumptions Made
+
+- A different-FoR layer is a clinical correctness hazard, not a rendering
+  preference: validating a transform is insufficient while nothing applies it,
+  so the layer is refused fail-closed until Cornerstone or the worker applies
+  the matrix.
+- The mounted viewport is the only authority for pixel size; a caller-declared
+  size is not evidence and was removed.
+- `ViewGeometryEvidence` remains caller-supplied for frame/orientation, but real
+  cache residency is independently verified; a false residency claim cannot
+  reach `setVolumes`.
+- The anti-parallel orientation caveat from B.2.2.1.1 for transformed layers no
+  longer applies, since transformed layers are refused before any orientation
+  comparison.
+
+## 4. Tests Added & Executed
+
+New/updated pure tests (`tests/view-application/view-application-geometry.test.ts`):
+- `24. a different-Frame-of-Reference layer bridged by a valid mm transform refuses VIEW_TRANSFORM_UNSUPPORTED in either direction` (inverted)
+- `27. a valid non-identity rigid transform on a different-FoR layer also refuses VIEW_TRANSFORM_UNSUPPORTED` (new)
+- `27b. a malformed non-6-value IOP on a different-FoR volume refuses VIEW_GEOMETRY_INCOMPATIBLE`
+- `27d. a co-referenced volume with a malformed IOP refuses VIEW_GEOMETRY_INCOMPATIBLE` (new)
+
+New/updated renderer tests (`tests/rendering/view-application.test.ts`):
+- `3. a different-Frame-of-Reference CT+PET fusion is refused with VIEW_TRANSFORM_UNSUPPORTED despite a valid transform`
+- `4.evidence-not-cached refuses with VIEW_VOLUME_NOT_RESIDENT and leaves the viewport unmodified`
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **217 pass / 0 fail** (46 suites) |
+| `node --test --test-concurrency=1 "tests/rendering/**/*.test.ts"` | **57 pass / 0 fail** (12 suites) |
+| `npm run build` | clean (exit 0) |
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-008 gains a P3.4-B.2.2.4 addendum recording the different-FoR refusal and
+  `VIEW_TRANSFORM_UNSUPPORTED`, the viewport-measured size, and the real-cache
+  residency check.
+- This report satisfies the Agentlog Gate for P3.4-B.2.2.4.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+
+## 6. Project Model Impact
+
+- One new Node-visible error code (`VIEW_TRANSFORM_UNSUPPORTED`); the apply
+  module remains exported only from `renderer/index.ts`; the new guard module is
+  internal (never exported). No `@nuclear/shared-types` / `.ncp` change.
+
+## 7. Known Limitations & Technical Debt
+
+- **Scope is narrower than "the whole state plan is applied".** Non-neutral
+  camera is refused (`VIEW_CAMERA_UNSUPPORTED`); slice positioning remains
+  refused (`VIEW_SLICE_POSITION_UNSUPPORTED`); a different-FoR layer is refused
+  (`VIEW_TRANSFORM_UNSUPPORTED`). The plan carries camera/spatial/transforms
+  verbatim, but only the same-FoR, neutral-camera, neutral-slice case is
+  actually applied.
+- Because the committed `ct-axial`/`pt-axial` fixtures have distinct
+  `FrameOfReferenceUID`s, the browser harness has no positive inter-study fusion
+  case; that coverage returns only when transform application exists.
+- `application-fixture.ts` remains at 299 lines; further harness additions must
+  split it.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-C — ordinary raster capture** as previously recommended,
+keeping the camera refusal explicit in the capture path.

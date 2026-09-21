@@ -4,9 +4,10 @@
  *
  * These checks are Node-safe and resolve no GPU resource: they assert that a
  * layer is refused unless its resident volume is co-referenced with the view
- * plane or bridged by a valid millimetre `SpatialTransform`, that the resident
- * volume orientation is parallel to the view plane, and that the compiled
- * transform pixel space matches the mounted viewport.
+ * plane, that a different-Frame-of-Reference layer is refused until spatial
+ * transform application exists, that the resident volume orientation is a
+ * complete finite IOP, and that the compiled transform pixel space matches the
+ * mounted viewport.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -46,6 +47,13 @@ const MATRIX: SpatialTransform['matrix4x4'] = [
   1, 0, 0, 0,
   0, 1, 0, 0,
   0, 0, 1, 0,
+  0, 0, 0, 1,
+];
+/** A valid rigid transform that is not the identity (translation + rotation-free). */
+const NON_IDENTITY_RIGID_MATRIX: SpatialTransform['matrix4x4'] = [
+  1, 0, 0, 5,
+  0, 1, 0, -3,
+  0, 0, 1, 2,
   0, 0, 0, 1,
 ];
 
@@ -108,7 +116,7 @@ describe('NuClear P3.4-B.2.2.1.1 — resident geometry / Frame-of-Reference', ()
     );
   });
 
-  it('24. a different-Frame-of-Reference layer bridged by a valid mm transform validates in either direction', () => {
+  it('24. a different-Frame-of-Reference layer bridged by a valid mm transform refuses VIEW_TRANSFORM_UNSUPPORTED in either direction', () => {
     const plan = compileCtPlan();
     const assetId = plan.layers[0].assetId;
     for (const transform of [
@@ -122,7 +130,10 @@ describe('NuClear P3.4-B.2.2.1.1 — resident geometry / Frame-of-Reference', ()
         volumes: new Map([[assetId, resident(OTHER_FOR, AXIAL)]]),
         spatialTransforms: new Map([[assetId, transform]]),
       };
-      assert.doesNotThrow(() => validateLayerGeometry(plan, evidence));
+      expectCode(
+        () => validateLayerGeometry(plan, evidence),
+        VIEW_APPLICATION_ERROR_CODES.transformUnsupported,
+      );
     }
   });
 
@@ -160,20 +171,22 @@ describe('NuClear P3.4-B.2.2.1.1 — resident geometry / Frame-of-Reference', ()
     );
   });
 
-  it('27. a transformed volume not parallel to the view orientation refuses VIEW_GEOMETRY_INCOMPATIBLE', () => {
+  it('27. a valid non-identity rigid transform on a different-FoR layer also refuses VIEW_TRANSFORM_UNSUPPORTED', () => {
     const plan = compileCtPlan();
     const assetId = plan.layers[0].assetId;
     const evidence: ViewGeometryEvidence = {
-      volumes: new Map([[assetId, resident(OTHER_FOR, SAGITTAL)]]),
-      spatialTransforms: new Map([[assetId, bridgingTransform()]]),
+      volumes: new Map([[assetId, resident(OTHER_FOR, AXIAL)]]),
+      spatialTransforms: new Map([
+        [assetId, bridgingTransform({ matrix4x4: NON_IDENTITY_RIGID_MATRIX })],
+      ]),
     };
     expectCode(
       () => validateLayerGeometry(plan, evidence),
-      VIEW_APPLICATION_ERROR_CODES.geometryIncompatible,
+      VIEW_APPLICATION_ERROR_CODES.transformUnsupported,
     );
   });
 
-  it('27b. a malformed non-6-value IOP on a transformed volume refuses VIEW_GEOMETRY_INCOMPATIBLE', () => {
+  it('27b. a malformed non-6-value IOP on a different-FoR volume refuses VIEW_GEOMETRY_INCOMPATIBLE', () => {
     const plan = compileCtPlan();
     const assetId = plan.layers[0].assetId;
     const evidence: ViewGeometryEvidence = {
@@ -193,6 +206,18 @@ describe('NuClear P3.4-B.2.2.1.1 — resident geometry / Frame-of-Reference', ()
       volumes: new Map([[assetId, resident(VIEW_FOR, SAGITTAL)]]),
     };
     assert.doesNotThrow(() => validateLayerGeometry(plan, evidence));
+  });
+
+  it('27d. a co-referenced volume with a malformed IOP refuses VIEW_GEOMETRY_INCOMPATIBLE', () => {
+    const plan = compileCtPlan();
+    const assetId = plan.layers[0].assetId;
+    const evidence: ViewGeometryEvidence = {
+      volumes: new Map([[assetId, resident(VIEW_FOR, BROKEN_IOP)]]),
+    };
+    expectCode(
+      () => validateLayerGeometry(plan, evidence),
+      VIEW_APPLICATION_ERROR_CODES.geometryIncompatible,
+    );
   });
 });
 
