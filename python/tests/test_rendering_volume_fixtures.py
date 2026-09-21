@@ -2,7 +2,8 @@
 
 Every check reads the committed artifacts under
 ``tests/rendering/fixtures/volumes/`` and exercises the real worker through
-``build_dispatcher()`` with the generator's frozen clock. Nothing here is a
+``build_dispatcher()`` with the generator's frozen clock. It covers the payload,
+geometry, classification and SUVbw quantitation evidence. Nothing here is a
 clinical claim; the fixtures are test-only (ADR-004).
 """
 
@@ -10,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 from pathlib import Path
 from typing import Any, cast
 
@@ -20,7 +22,7 @@ import synthetic_pixel_volume as spv
 
 from worker.dispatch import build_dispatcher
 from worker.envelope import process_record
-from worker.protocol import DICOM_GEOMETRY_METHOD, DICOM_INSPECT_METHOD
+from worker.protocol import DICOM_GEOMETRY_METHOD, DICOM_INSPECT_METHOD, QUANTITATION_SUVBW_METHOD
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES_ROOT = REPO_ROOT / "tests" / "rendering" / "fixtures" / "volumes"
@@ -45,6 +47,7 @@ PAYLOAD_KEYS = [
 CASES: list[tuple[str, str, str, str, str]] = [
     ("ct-axial", "CT", "ct-primary", "int16", "rescaled-hu"),
     ("pt-axial", "PT", "pt-primary", "float32", "rescaled-bqml"),
+    ("pt-axial-coreg", "PT", "pt-primary", "float32", "rescaled-bqml"),
 ]
 CASE_IDS = [case[0] for case in CASES]
 
@@ -75,6 +78,17 @@ def _numpy_dtype(dtype_name: str) -> np.dtype[Any]:
     return np.dtype("<i2") if dtype_name == "int16" else np.dtype("<f4")
 
 
+def _quantitation_result(name: str, directory: Path) -> dict[str, Any]:
+    """Run ``nuclear.quantitation.suvbw`` for a fixture and return its result."""
+    fixture = _load_json(FIXTURES_ROOT / name / "fixture.json")
+    response = _call(
+        QUANTITATION_SUVBW_METHOD,
+        {"locator": _locator(directory), "seriesInstanceUID": fixture["seriesInstanceUID"]},
+    )
+    assert "result" in response, response
+    return cast(dict[str, Any], response["result"])
+
+
 @pytest.mark.parametrize(
     ("name", "modality", "classification", "dtype_name", "domain"), CASES, ids=CASE_IDS
 )
@@ -100,6 +114,10 @@ def test_regeneration_is_byte_identical(
     assert _load_json(regenerated / "expected-geometry.json") == _load_json(
         committed / "expected-geometry.json"
     )
+    if modality == "PT":
+        assert _load_json(regenerated / "expected-quantitation.json") == _load_json(
+            committed / "expected-quantitation.json"
+        )
 
 
 @pytest.mark.parametrize(
@@ -259,3 +277,21 @@ def test_mutated_classification_tags_fail_closed(
         assert entry["reason"] == "non-primary-image-type"
     else:
         assert entry["reason"] == "attenuation-correction-missing"
+
+
+def test_pt_axial_coreg_shares_ct_study_and_frame_of_reference() -> None:
+    """The co-registered PT fixture shares CT geometry but keeps its own series."""
+    ct = _load_json(FIXTURES_ROOT / "ct-axial" / "fixture.json")
+    coreg = _load_json(FIXTURES_ROOT / "pt-axial-coreg" / "fixture.json")
+    assert coreg["studyInstanceUID"] == ct["studyInstanceUID"]
+    assert coreg["frameOfReferenceUID"] == ct["frameOfReferenceUID"]
+    assert coreg["seriesInstanceUID"] != ct["seriesInstanceUID"]
+
+
+@pytest.mark.parametrize("name", ["pt-axial", "pt-axial-coreg"])
+def test_worker_quantitation_evidence_is_accepted(name: str) -> None:
+    directory = FIXTURES_ROOT / name
+    result = _quantitation_result(name, directory / "instances")
+    assert result == _load_json(directory / "expected-quantitation.json")
+    assert result["status"] == "computed"
+    assert math.isfinite(result["suvFactor"]) and result["suvFactor"] > 0.0

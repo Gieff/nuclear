@@ -1,0 +1,30 @@
+{
+  "method": "suv-bw",
+  "status": "computed",
+  "seriesInstanceUID": "1.2.826.0.1.3680043.10.5002.2",
+  "studyInstanceUID": "1.2.826.0.1.3680043.10.5002.1",
+  "petAcquisition": {
+    "units": "BQML",
+    "decayCorrection": "START",
+    "radionuclideHalfLifeSeconds": 6586.2,
+    "radionuclideTotalDoseBq": 370000000.0,
+    "radiopharmaceuticalStartDateTime": "20260921080000",
+    "acquisitionDateTime": "20260921083000",
+    "patientWeightKg": 70.0
+  },
+  "elapsedSeconds": 1800.0,
+  "decayedDoseBq": 306147426.3968376,
+  "suvFactor": 0.00022864801061323923,
+  "diagnostics": [],
+  "workerMetadata": {
+    "workerVersion": "0.1.2",
+    "operation": "nuclear.quantitation.suvbw",
+    "timestamp": "2026-09-21T00:00:00Z",
+    "parameters": {
+      "locatorKind": "local-folder",
+      "seriesInstanceUID": "1.2.826.0.1.3680043.10.5002.2",
+      "instanceCount": 3,
+      "status": "computed"
+    }
+  }
+}

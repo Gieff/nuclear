@@ -1,0 +1,22 @@
+{
+  "encoding": "base64",
+  "byteOrder": "little",
+  "dtype": "float32",
+  "signedness": "not-applicable",
+  "samplesPerPixel": 1,
+  "bitsAllocated": 16,
+  "bitsStored": 16,
+  "highBit": 15,
+  "photometricInterpretation": "MONOCHROME2",
+  "scalarDataDomain": "rescaled-bqml",
+  "rescale": {
+    "slope": 1000.0,
+    "intercept": 0.0
+  },
+  "dimensions": [
+    4,
+    4,
+    3
+  ],
+  "values": "AFBDSABKREgAREVIAD5GSAA4R0gAMkhIACxJSAAmSkgAIEtIABpMSAAUTUgADk5IAAhPSAACUEgA/FBIAPZRSADwUkgA6lNIAORUSADeVUgA2FZIANJXSADMWEgAxllIAMBaSAC6W0gAtFxIAK5dSACoXkgAol9IAJxgSACWYUgAkGJIAIpjSACEZEgAfmVIAHhmSAByZ0gAbGhIAGZpSABgakgAWmtIAFRsSABObUgASG5IAEJvSAA8cEgANnFI"
+}

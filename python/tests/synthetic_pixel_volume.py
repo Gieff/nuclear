@@ -5,7 +5,8 @@ Scope
 Generates the committed P3.2 rendering fixtures under
 ``tests/rendering/fixtures/volumes/``. Everything here is test-only: the
 payload and the descriptor are neither a runtime ``.ncp`` representation nor a
-clinical authority (ADR-004).
+clinical authority (ADR-004). The declared fixture identity and PET acquisition
+tags live in :mod:`synthetic_volume_catalog`.
 
 Artifacts written per fixture directory
 ---------------------------------------
@@ -14,17 +15,21 @@ Artifacts written per fixture directory
   UIDs and fixed signed 16-bit stored pixel arrays. CT declares
   ``RescaleSlope``/``RescaleIntercept`` (HU). PT declares an attenuation-
   corrected tag set (``CorrectedImage`` ATTN, ``Units`` BQML,
-  ``DecayCorrection`` START).
+  ``DecayCorrection`` START) plus root-level ``PatientWeight``,
+  ``AcquisitionDateTime`` and a single-item
+  ``RadiopharmaceuticalInformationSequence``.
 - ``pixels.json``: the declared payload. ``values`` is the base64 of the
   little-endian typed array in the declared domain (CT int16 rescaled HU,
   PT float32 rescaled Bq/mL). Element order is DICOM acquisition order:
   slice-major then row-major (x fastest inside a slice), which is also
   Cornerstone's scalar-data layout for ``dimensions`` = [columns, rows, slices].
   Signedness describes the declared payload dtype; source pixels are signed 16-bit.
-- ``fixture.json``: the self-describing asset descriptor.
+- ``fixture.json``: the self-describing asset descriptor (schema unchanged).
 - ``expected-geometry.json``: the real ``nuclear.dicom.geometry`` result over
   the committed ``instances/`` directory. It is captured, not reshaped, with a
   frozen clock so the ``workerMetadata`` provenance is reproducible.
+- ``expected-quantitation.json``: for PT fixtures only, the real
+  ``nuclear.quantitation.suvbw`` result captured the same deterministic way.
 
 Regenerate in place (from the repository root)::
 
@@ -38,20 +43,19 @@ import argparse
 import base64
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
 from numpy.typing import NDArray
-from pydicom.dataset import FileDataset, FileMetaDataset
+from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
 from pydicom.uid import UID, ExplicitVRLittleEndian
+from synthetic_volume_catalog import FIXTURES, VolumeFixture
 
-from dicom.metadata import CT_IMAGE_STORAGE, PET_IMAGE_STORAGE
 from worker.dispatch import build_dispatcher
 from worker.envelope import process_record
-from worker.protocol import DICOM_GEOMETRY_METHOD
+from worker.protocol import DICOM_GEOMETRY_METHOD, QUANTITATION_SUVBW_METHOD
 
 FROZEN_NOW = datetime(2026, 9, 21, 0, 0, 0, tzinfo=timezone.utc)
 REQUEST_ID = "req-p32-generate"
@@ -70,75 +74,6 @@ PROVENANCE_NOTE = (
 )
 
 PayloadArray = NDArray[np.int16] | NDArray[np.float32]
-
-
-@dataclass(frozen=True)
-class VolumeFixture:
-    """Declared identity and pixel format for one committed volume fixture."""
-
-    directory: str
-    asset_id: str
-    modality: str
-    sop_class_uid: str
-    study_uid: str
-    series_uid: str
-    sop_root: str
-    frame_uid: str
-    image_type: tuple[str, ...]
-    corrected_image: tuple[str, ...] | None
-    units: str | None
-    decay_correction: str | None
-    stored_offset: int
-    rescale_slope: float
-    rescale_intercept: float
-    payload_dtype: str
-    signedness: str
-    scalar_domain: str
-
-
-CT_FIXTURE = VolumeFixture(
-    directory="ct-axial",
-    asset_id="fixture.volume.ct-axial",
-    modality="CT",
-    sop_class_uid=CT_IMAGE_STORAGE,
-    study_uid="1.2.826.0.1.3680043.10.5001.1",
-    series_uid="1.2.826.0.1.3680043.10.5001.2",
-    sop_root="1.2.826.0.1.3680043.10.5001.3",
-    frame_uid="1.2.826.0.1.3680043.10.5001.4",
-    image_type=("ORIGINAL", "PRIMARY", "AXIAL"),
-    corrected_image=None,
-    units=None,
-    decay_correction=None,
-    stored_offset=1000,
-    rescale_slope=1.0,
-    rescale_intercept=-1024.0,
-    payload_dtype="int16",
-    signedness="signed",
-    scalar_domain="rescaled-hu",
-)
-
-PT_FIXTURE = VolumeFixture(
-    directory="pt-axial",
-    asset_id="fixture.volume.pt-axial",
-    modality="PT",
-    sop_class_uid=PET_IMAGE_STORAGE,
-    study_uid="1.2.826.0.1.3680043.10.5002.1",
-    series_uid="1.2.826.0.1.3680043.10.5002.2",
-    sop_root="1.2.826.0.1.3680043.10.5002.3",
-    frame_uid="1.2.826.0.1.3680043.10.5002.4",
-    image_type=("ORIGINAL", "PRIMARY"),
-    corrected_image=("DECY", "ATTN", "SCAT"),
-    units="BQML",
-    decay_correction="START",
-    stored_offset=100,
-    rescale_slope=1000.0,
-    rescale_intercept=0.0,
-    payload_dtype="float32",
-    signedness="not-applicable",
-    scalar_domain="rescaled-bqml",
-)
-
-FIXTURES = (CT_FIXTURE, PT_FIXTURE)
 
 
 def _stored_volume(offset: int) -> NDArray[np.int16]:
@@ -194,6 +129,16 @@ def _write_instance(path: Path, fixture: VolumeFixture, index: int, pixels: NDAr
         dataset.Units = fixture.units
     if fixture.decay_correction is not None:
         dataset.DecayCorrection = fixture.decay_correction
+    if fixture.patient_weight_kg is not None:
+        dataset.PatientWeight = fixture.patient_weight_kg
+    if fixture.acquisition_datetime is not None:
+        dataset.AcquisitionDateTime = fixture.acquisition_datetime
+    if fixture.radiopharmaceutical_start_datetime is not None:
+        item = Dataset()
+        item.RadionuclideHalfLife = fixture.radionuclide_half_life_seconds
+        item.RadionuclideTotalDose = fixture.radionuclide_total_dose_bq
+        item.RadiopharmaceuticalStartDateTime = fixture.radiopharmaceutical_start_datetime
+        dataset.RadiopharmaceuticalInformationSequence = [item]
     dataset.PixelData = pixels.tobytes()
     dataset.save_as(str(path), enforce_file_format=True)
 
@@ -209,24 +154,34 @@ def _write_instances(instances_dir: Path, fixture: VolumeFixture) -> NDArray[np.
     return volume
 
 
-def geometry_result(instances_dir: Path, series_uid: str) -> dict[str, Any]:
-    """Run the real ``nuclear.dicom.geometry`` operation and return its result."""
-    dispatcher = build_dispatcher(now=lambda: FROZEN_NOW)
+def _worker_result(method: str, instances_dir: Path, series_uid: str) -> dict[str, Any]:
+    """Run one series-scoped worker operation and return its real result."""
     request = {
         "jsonrpc": "2.0",
         "id": REQUEST_ID,
         "protocolVersion": "1.0",
-        "method": DICOM_GEOMETRY_METHOD,
+        "method": method,
         "params": {
             "locator": {"kind": "local-folder", "path": str(instances_dir)},
             "seriesInstanceUID": series_uid,
         },
     }
+    dispatcher = build_dispatcher(now=lambda: FROZEN_NOW)
     response = process_record(json.dumps(request), 0, dispatcher)
     result = response.get("result")
     if not isinstance(result, dict):
-        raise RuntimeError(f"nuclear.dicom.geometry failed while generating evidence: {response}")
+        raise RuntimeError(f"{method} failed while generating evidence: {response}")
     return cast(dict[str, Any], result)
+
+
+def geometry_result(instances_dir: Path, series_uid: str) -> dict[str, Any]:
+    """Run the real ``nuclear.dicom.geometry`` operation and return its result."""
+    return _worker_result(DICOM_GEOMETRY_METHOD, instances_dir, series_uid)
+
+
+def _quantitation_result(instances_dir: Path, series_uid: str) -> dict[str, Any]:
+    """Run the real ``nuclear.quantitation.suvbw`` operation and return its result."""
+    return _worker_result(QUANTITATION_SUVBW_METHOD, instances_dir, series_uid)
 
 
 def _pixels_document(fixture: VolumeFixture, declared: PayloadArray) -> dict[str, Any]:
@@ -272,13 +227,18 @@ def _write_json(path: Path, document: Mapping[str, Any]) -> None:
 
 
 def write_fixture(output_root: Path, fixture: VolumeFixture) -> None:
-    """Write all four artifacts for one fixture into ``output_root``."""
+    """Write all artifacts for one fixture into ``output_root``."""
     directory = output_root / fixture.directory
     instances_dir = directory / "instances"
     volume = _write_instances(instances_dir, fixture)
     _write_json(directory / "pixels.json", _pixels_document(fixture, _declared_payload(fixture, volume)))
     _write_json(directory / "fixture.json", _fixture_document(fixture))
     _write_json(directory / "expected-geometry.json", geometry_result(instances_dir, fixture.series_uid))
+    if fixture.modality == "PT":
+        _write_json(
+            directory / "expected-quantitation.json",
+            _quantitation_result(instances_dir, fixture.series_uid),
+        )
 
 
 def write_fixtures(output_root: Path) -> None:
