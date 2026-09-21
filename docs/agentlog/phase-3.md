@@ -7,9 +7,10 @@ P3.3-B `3fbc011`, P3.3.1 corrective `9ede6d7`, conclusive P3.3-C review/QA
 under ADR-005), P3.4-A.2 accepted (ADR-006 per-layer fusion `MedicalViewState`
 contract), P3.4-A.3 accepted (corrective single-source PET overlay opacity) and
 P3.4-A.3bis accepted (representability precision); P3.4-B in progress —
-P3.4-B.1 accepted (ADR-007 DICOM palette catalog) and P3.4-B.1.1 accepted
-(canonical colormap id, whole-LUT digest, registration dedupe);
-P3.4-B.2–P3.6 not started.
+P3.4-B.1 accepted (ADR-007 DICOM palette catalog), P3.4-B.1.1 accepted
+(canonical colormap id, whole-LUT digest, registration dedupe) and P3.4-B.2.1
+accepted (pure `MedicalViewState` → Cornerstone application compiler);
+P3.4-B.2.2–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -2161,3 +2162,131 @@ union with the ADR-005 binding and the ADR-007 palettes (register before
 `(blendSlider/100)^0.42`; `highlighted`/`alpha` transfer), with CT/PT/fusion
 positives and the addendum's fail-closed negatives, plus real-harness evidence.
 Do not add `RenderTarget` (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.4-B.2.1: Pure `MedicalViewState` Application Compiler
+
+## 1. What Was Implemented
+
+P3.4-B.2 is large, so it is split: **B.2.1** delivers the pure, Node-safe
+compiler from a `MedicalViewState` (plus a per-asset volumeId map and the
+ADR-005 PET binding) to a serializable Cornerstone application plan. The browser
+volume viewport and `setProperties` application are **B.2.2** and are not in
+this slice.
+
+- **ADR-008** ratifies the split and the rules: pure compiler vs browser
+  adapter; explicit modality selection; fail-closed colormap resolution; ADR-005
+  binding for PET; projection mapping; the interpolation-enum boundary.
+- **`src/view-application/**`** (6 modules, exported from `src/index.ts`):
+  `compileMedicalViewApplication` builds per-layer `properties`
+  (`voiRange`, `colormap {name, opacity, opacityMapping?}`, `invert`,
+  `interpolationType`) in Cornerstone `ViewportProperties` shape, plus a
+  projection plan.
+- **Explicit modality, no inference**: PET only for a fusion `overlay` or a
+  single view with `modalityPresentation === 'pet'`; `ct`/`mr`/`generic`/
+  undefined and all `multi-layer` layers use the CT/generic path. No asset
+  metadata, modality byte or scalar range is read.
+- **Fail-closed**: unbound asset → `VIEW_VOLUME_NOT_BOUND`; missing/unknown/
+  non-catalog colormap → `VIEW_COLORMAP_UNKNOWN` (only `dicom-*` + `gray`);
+  CT without `voi` → `VIEW_STATE_INVALID`; PET without binding →
+  `VIEW_PET_BINDING_REQUIRED`; PET with both/neither range →
+  `VIEW_STATE_INVALID`; non-slice without a positive slab →
+  `VIEW_PROJECTION_INVALID`; `reference` role refused.
+- **Radiometry single-sourced**: fusion overlay opacity is exactly
+  `getFusionOpacity(blendSlider)` (no `presentation.opacity`) and the mapping is
+  exactly `getPETOpacityMapping(lower, upper, 0, gamma, transferMode)`; single
+  PET uses `presentation.opacity`; `suvRange` converts via `suvRangeToBqml`.
+- **Reviewer C1 closed**: added `toCornerstoneInterpolationType` (nearest → 0,
+  linear → 1) with a test, so the adapter has a tested mapping from the plan's
+  portable string to Cornerstone's numeric `InterpolationType`.
+
+## 2. Files Changed / Created
+
+Created:
+- `docs/decisions/ADR-008-medical-view-state-application.md`
+- `packages/medical-engine/src/view-application/{errors.ts (38), types.ts (78),
+  colormap.ts (42), projection.ts (43), layers.ts (199), view-application.ts
+  (120), index.ts (8)}`
+- `tests/view-application/view-application.test.ts` (278)
+
+Modified:
+- `packages/medical-engine/src/index.ts` (exports the Node-safe compiler barrel)
+
+Unchanged: `@nuclear/shared-types`, the renderer (no browser code touched),
+`CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- The plan is renderer-agnostic: portable strings for interpolation; exact
+  Cornerstone field names for `voiRange`/`colormap`/`invert`.
+- Binding-role correctness remains the ADR-006 validator's boundary; the
+  compiler only refuses the non-renderable `reference` role.
+- Only `gray` is allowlisted as a Cornerstone built-in; any other built-in must
+  be ratified before use.
+
+## 4. Tests Added & Executed
+
+Added: 13 pure compiler tests (single CT/PET, fusion, projection, volume
+binding, palette cause, interpolation mapping).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **183 pass / 0 fail** (38 suites; 170 prior + 13) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:renderer` | **45 pass / 0 fail** |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| P2.5 source integrity | **2/2** |
+
+The reviewer mutation-tested the exactly-one-range guard and the colormap
+allowlist (both mutations failed a test) and independently confirmed the fusion
+opacity equals `0.5^0.42` within `1e-12` against the committed fixtures.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-008 records the application contract.
+- This report satisfies the AgentLog Gate for P3.4-B.2.1.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: **PASS** with two non-blocking concerns. C1
+  (interpolation string vs numeric) was **closed before commit** via
+  `toCornerstoneInterpolationType` + test. C2 (degenerate-span/gamma/slider
+  refusals surface as the certified `PresetError`/`PetBindingError` rather than
+  `ViewApplicationError`) is deliberately left propagating fail-closed and is
+  recorded for B.2.2.
+- QA verdict: **PASS** on all 14 gates (typecheck, Node 182/182 at QA time,
+  compiler suite 12/12 by name, build, renderer 45/45, Python 178, mypy 45,
+  integrity 2/2, shared-types untouched, no flake); the only pending row was
+  this report. The final tree is 183/183 after the C1 test was added.
+
+## 6. Project Model Impact
+
+- New Node-safe public surface (`compileMedicalViewApplication` + plan types +
+  errors) exported from the package barrel; no shared-types/`.ncp` change.
+
+## 7. Known Limitations & Technical Debt
+
+- **C2**: malformed (non-degenerate) PET spans / bad gamma / out-of-domain
+  slider raise the presets' `PresetError`; malformed SUV ranges raise
+  `PetBindingError`. Both are fail-closed but outside the `ViewApplicationError`
+  vocabulary; B.2.2 must treat them as an owned boundary or wrap them.
+- `multi-layer` and `reference`-role refusals are implemented but not directly
+  tested (non-blocking).
+- Test sources remain outside the `tsc` graph (inherited debt).
+- No browser viewport, `setProperties`, capture or `RenderTarget` yet.
+- Intermittent renderer-harness startup flake remains (rerun green).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-B.2.2 — browser volume viewport and application**: empirically
+establish the volume viewport type in the controlled WebGL 2 harness
+(`ViewportType.ORTHOGRAPHIC` resolves to the modern planar path in 5.10.7 — do
+not assume), add the adapter capability, apply a compiled `ViewApplicationPlan`
+via `setVolumes` + per-volume `setProperties` (using
+`toCornerstoneInterpolationType`) + `setBlendMode`/`setSlabThickness`, register
+the ADR-007 palettes first, and assert the applied state via Cornerstone getters
+with CT/PT/fusion positives and the addendum's fail-closed negatives
+(non-resident/unbound volume, geometry/FoR mismatch, unresolved palette). Treat
+the certified `PresetError`/`PetBindingError` as an owned boundary. Do not add
+`RenderTarget` (P3.5), UI or view-engine work.
