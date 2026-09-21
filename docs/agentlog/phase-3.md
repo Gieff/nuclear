@@ -1,10 +1,9 @@
 # Phase 3 — Headless Medical Engine, Residency & RenderTarget
 
 Status: **IN PROGRESS** — P3.0–P3.2.1 accepted (P3.1 closed via corrective
-P3.1.1, P3.2 closed via corrective P3.2.1); P3.3-A accepted (pure
-`ResourceManager` residency core), P3.3-B accepted (real Cornerstone residency
-backend + controlled WebGL 2 evidence) and P3.3.1 accepted (corrective
-`dispose()` lifecycle + unified release path); P3.3-C–P3.6 not started.
+P3.1.1, P3.2 closed via corrective P3.2.1); P3.3 closed (P3.3-A `16c40b4`,
+P3.3-B `3fbc011`, P3.3.1 corrective `9ede6d7`, conclusive P3.3-C review/QA
+**PASS**); P3.4–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -1221,3 +1220,80 @@ semantic asset is deleted by eviction and that no global purge exists anywhere
 in the tree, re-run the full gate pipeline over the committed P3.3-A/B/1 state,
 and record the Phase 4/P3.4 entry conditions. Do not add state application
 (P3.4), `RenderTarget` (P3.5), UI or view-engine work in P3.3-C.
+
+---
+
+# P3.3-C — Conclusive Phase Review & QA (closure)
+
+**P3.3 is CLOSED** at HEAD `9ede6d7` (P3.3-A `16c40b4`, P3.3-B `3fbc011`,
+P3.3.1 corrective `9ede6d7`). `nuclear-reviewer` and `nuclear-qa` independently
+re-ran the phase against the committed tree; both returned **PASS** with no
+blocking findings and zero FAIL/BLOCKED gates.
+
+## Phase gate matrix (independently reproduced)
+
+| Gate | Observed | Verdict |
+| --- | --- | --- |
+| `npm run typecheck` | exit 0 | PASS |
+| `npm test` | **119 pass / 0 fail** (26 suites) | PASS |
+| `npm run test:renderer` | **43 pass / 0 fail** (real SwiftShader WebGL 2) | PASS |
+| `npm run build` | clean exit 0 | PASS |
+| `npm run test:python` | **178 passed** | PASS |
+| `npm run typecheck:python` | mypy clean over 45 files | PASS |
+| P2.5 source integrity | **2/2** | PASS |
+| AgentLog (P3.3-A/B/1) | three eight-point handovers present | PASS |
+| Changelog | `CHANGELOG.md` untouched (promotion via `/promote-changelog 3`) | NOT YET APPLICABLE |
+
+## Invariants confirmed by the final review
+
+- **No global purge anywhere.** A repo-wide search for `purgeCache`,
+  `purgeVolumeCache`, `clearCache` returns zero code hits; the only
+  cache-mutating calls are per-volume `cache.removeVolumeLoadObject` and
+  `cache.removeImageLoadObject`.
+- **No semantic deletion.** `assetId`, `geometricDigest` and the validated plan
+  survive eviction; identity and reloadability are asserted by pure tests 6/7
+  and harness tests 2/5/6.
+- **Lifecycle coherence** across A/B/1: ordering, lease pinning, deterministic
+  eviction, `budget-unverified` honesty, terminal `dispose()` fail-closed
+  behaviour and the unified per-volume release are all implemented and tested.
+- **Boundary/acyclicity**: `src/residency/**` is Cornerstone-free; the renderer
+  residency backend is exported only from `renderer/index.ts`; `src/index.ts`
+  exports worker+residency only; no `view-engine`/UI dependency.
+- **Fixture honesty**: pure mock suites are separated from real controlled
+  WebGL 2 suites that assert physical `cache.getVolumes()` outcomes; no
+  `|| true`; no mock-only PASS claim.
+
+## Remaining non-blocking debt carried into P3.4
+
+1. The `deferred` disposition (backend acquires below the required tier) has no
+   dedicated test; removing it would fail no test.
+2. `eviction-failed` via a `backend.release` throw during selective
+   `settle()`/`evictUnreferenced()` is only exercised through `dispose()`.
+3. `release === false` + enumeration still-present → `eviction-failed`
+   (`residency-budget.ts`) is implemented but untested.
+4. `budget-unverified` is per acquisition event: a later `settle()` early-returns
+   `resident` without re-checking the still-unmeasured axis.
+5. `settle()` eagerly evicts every zero-lease physical resource (no fast-reshow);
+   recorded policy, not a defect.
+6. Harness readiness can very occasionally exceed its 120 s bound under parallel
+   `node --test` cold start (observed 1 of 3 full runs, never a residency
+   assertion); fail-fast/retry hardening of `createRendererHarness` is
+   recommended before CI.
+7. Test sources remain outside the `tsc` graph (inherited P3.0 debt);
+   `resource-manager.ts` (283) and `residency-budget.ts` (289) are near the
+   300-line gate.
+
+## P3.4 entry conditions (addendum, still required before P3.4)
+
+1. P3.3 leaves volumes observably render-ready (`gpu-ready` + cached) — **met**.
+2. Close the `PetQuantitationResult.units` vs `asset.metadata.pet?.units`
+   discrepancy.
+3. Close the Bq/mL payload vs `g/mL` `valueSemantics` fixture discrepancy and
+   make the rendered scalar domain and quantitation guard explicit and tested.
+4. Give `@nuclear/rendering-presets` a declarative surface without silent
+   clinical fallbacks (currently an empty barrel).
+5. Create CT, PET and fusion `MedicalViewState` fixtures with provenance and
+   ratify the `suvFactor` translation before implementing D3.
+
+No code changes were made in P3.3-C; this section is the conclusive review/QA
+record. Phase 3 continues with P3.4.
