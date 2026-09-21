@@ -30,15 +30,33 @@ describe('NuClear P3.4-B.2.2.1 — spatial and transforms carried verbatim', () 
     });
     const { spatial } = mockMedicalView;
     assert.deepEqual(plan.spatial, {
+      frameOfReferenceUID: spatial.frameOfReferenceUID,
+      orientation: spatial.orientation,
       viewPlaneNormal: spatial.viewPlaneNormal,
       viewUp: spatial.viewUp,
       referenceLocation: spatial.referenceLocation,
       sliceOffsetMm: spatial.sliceOffsetMm,
     });
-    // Identity proves the vectors are carried, never normalized or derived.
+    // Identity proves the fields are carried verbatim, never normalized or derived.
+    assert.equal(plan.spatial.frameOfReferenceUID, spatial.frameOfReferenceUID);
+    assert.equal(plan.spatial.orientation, spatial.orientation);
     assert.equal(plan.spatial.viewPlaneNormal, spatial.viewPlaneNormal);
     assert.equal(plan.spatial.viewUp, spatial.viewUp);
     assert.equal(plan.spatial.referenceLocation, spatial.referenceLocation);
+    assert.equal(plan.spatial.patientPosition, undefined);
+  });
+
+  it('17b. a spatial patientPosition is carried verbatim when present', () => {
+    const state = {
+      ...mockMedicalView,
+      spatial: { ...mockMedicalView.spatial, patientPosition: 'HFS' },
+    };
+    const plan = compileMedicalViewApplication({
+      state,
+      volumeIds: CT_VOLUME_IDS,
+      petBindings: NO_BINDINGS,
+    });
+    assert.equal(plan.spatial.patientPosition, 'HFS');
   });
 
   it('18. a fusion plan carries the same CoordinateTransformSet verbatim', () => {
@@ -64,6 +82,8 @@ describe('NuClear P3.4-B.2.2.1 — spatial and transforms carried verbatim', () 
     );
     assert.equal(plan.transforms.viewportSizePx, transforms.viewportSizePx);
     assert.deepEqual(plan.spatial, {
+      frameOfReferenceUID: mockFusionView.spatial.frameOfReferenceUID,
+      orientation: mockFusionView.spatial.orientation,
       viewPlaneNormal: mockFusionView.spatial.viewPlaneNormal,
       viewUp: mockFusionView.spatial.viewUp,
       referenceLocation: mockFusionView.spatial.referenceLocation,

@@ -17,6 +17,8 @@ const {
   ViewApplicationError,
   compileMedicalViewApplication,
   toCornerstoneInterpolationType,
+  validateLayerGeometry,
+  validateViewportSize,
 } = await import('../../../packages/medical-engine/src/view-application/index.ts');
 
 const { suvRangeToBqml, resolvePetQuantitationBinding } = await import(
@@ -51,6 +53,8 @@ export {
   ViewApplicationError,
   compileMedicalViewApplication,
   toCornerstoneInterpolationType,
+  validateLayerGeometry,
+  validateViewportSize,
   suvRangeToBqml,
   resolvePetQuantitationBinding,
   PaletteResolutionError,

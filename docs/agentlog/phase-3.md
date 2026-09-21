@@ -10,9 +10,10 @@ P3.4-A.3bis accepted (representability precision); P3.4-B in progress —
 P3.4-B.1 accepted (ADR-007 DICOM palette catalog), P3.4-B.1.1 accepted
 (canonical colormap id, whole-LUT digest, registration dedupe), P3.4-B.2.1
 accepted (pure `MedicalViewState` → Cornerstone application compiler),
-P3.4-B.2.1.1 accepted (per-asset PET binding map) and P3.4-B.2.2.1 accepted
-(spatial/transform carrying and camera disposition); P3.4-B.2.2.2–P3.6 not
-started.
+P3.4-B.2.1.1 accepted (per-asset PET binding map), P3.4-B.2.2.1 accepted
+(spatial/transform carrying and camera disposition) and P3.4-B.2.2.1.1 accepted
+(full spatial identity + fail-closed geometry/FoR validation);
+P3.4-B.2.2.2–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -2525,3 +2526,136 @@ the carried slice positioning and validate `CoordinateTransformSet` against the
 real viewport. Assert via Cornerstone getters with CT/PT/fusion positives and the
 fail-closed negatives (non-resident/unbound volume, geometry/FoR mismatch,
 unresolved palette). Do not add `RenderTarget` (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.4-B.2.2.1.1: Full Spatial Identity & Fail-Closed Geometry Validation
+
+## 1. What Was Implemented
+
+A review found the B.2.2.1 claim "all three blocks are now represented" was
+inexact: `ViewSpatialApplication` dropped `SpatialState.frameOfReferenceUID`,
+`orientation` and `patientPosition`, so the adapter could not perform the
+mandatory co-reference (Frame-of-Reference) check. This pure correction fixes
+that.
+
+- **Full spatial identity carried.** `ViewSpatialApplication` now carries
+  `frameOfReferenceUID`, `orientation` (DICOM IOP, verbatim) and optional
+  `patientPosition`, copied by reference with no derivation.
+- **Pure, Node-testable geometry validation** (`view-application/geometry.ts`),
+  fail-closed with typed codes:
+  - no resident evidence for a layer's `assetId` → `VIEW_VOLUME_NOT_RESIDENT`;
+  - same FoR as the view plane → accepted (including an MPR reformat in a
+    different native acquisition plane — FoR equality is the DICOM-authoritative
+    co-reference signal);
+  - different FoR with no transform → `VIEW_FOR_MISMATCH`;
+  - a present transform that is not `isValid`, not `units === 'mm'`, or whose
+    frames do not bridge the volume/view frames in either direction →
+    `VIEW_TRANSFORM_INVALID`;
+  - a transformed layer whose IOP is not parallel to the view orientation, or a
+    malformed non-6-value IOP → `VIEW_GEOMETRY_INCOMPATIBLE`;
+  - `validateViewportSize(transforms, actualViewportSizePx)` →
+    `VIEW_VIEWPORT_SIZE_MISMATCH` when the mounted viewport differs from the
+    persisted `viewportSizePx`.
+  - Parallelism uses a one-sided dot (`>= 1 - 1e-5`), so anti-parallel axes are
+    refused rather than silently normalised; **no `Math.`** is used anywhere.
+- **ADR-008 addendum** corrects the false claim and records the geometry/FoR
+  rules and the orientation scope decision.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/medical-engine/src/view-application/geometry.ts` (177)
+- `tests/view-application/view-application-geometry.test.ts` (211)
+
+Modified:
+- `packages/medical-engine/src/view-application/types.ts` (124)
+- `packages/medical-engine/src/view-application/errors.ts` (44 — 5 new codes)
+- `packages/medical-engine/src/view-application/view-application.ts` (217)
+- `tests/view-application/view-application-state-blocks.test.ts` (151)
+- `tests/view-application/fixtures/view-application-fixtures.ts` (162)
+- `docs/decisions/ADR-008-medical-view-state-application.md`
+
+Unchanged: `@nuclear/shared-types`, the renderer, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- **Orientation scope decision (explicit):** parallelism is enforced only when a
+  transform bridges a different FoR. Same-FoR layers are accepted regardless of
+  their native acquisition plane, because FoR equality is the authoritative
+  co-reference signal and MPR reformat is legitimate. `orientation` is still
+  carried into the plan and available to the adapter for slice positioning — it
+  is not silently dropped.
+- The validator is pure and cannot observe GPU residency; B.2.2.2 must call it
+  with real resident evidence and the mounted viewport size.
+- Transform acceptance checks validity, units and frame bridging; matrix
+  singularity is not analysed (documented limitation, fail-closed-conservative).
+
+## 4. Tests Added & Executed
+
+Added: 9 geometry tests (22–28 + 17b/27b/27c) plus the extended spatial test.
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **201 pass / 0 fail** (44 suites; 191 prior + 10) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:renderer` | **45 pass / 0 fail** |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| P2.5 source integrity | **2/2** |
+
+Coverage: same-FoR fusion accepted; different-FoR without transform →
+`VIEW_FOR_MISMATCH`; valid mm transform bridging either direction accepted;
+invalid/non-mm/wrong-frame transform → `VIEW_TRANSFORM_INVALID`; missing
+evidence → `VIEW_VOLUME_NOT_RESIDENT`; non-parallel IOP and malformed IOP →
+`VIEW_GEOMETRY_INCOMPATIBLE`; same-FoR MPR accepted; viewport-size mismatch →
+`VIEW_VIEWPORT_SIZE_MISMATCH`. The reviewer mutation-tested the FoR/transform
+branch (accepted any FoR) and exactly tests 23/25/27/27b failed.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-008 addendum records the correction and rules; the reviewer's note that the
+  earlier B.2.2.1 wording was edited in place (its text survives only inside the
+  correction's quotation) is recorded as low-severity documentation debt.
+- This report satisfies the AgentLog Gate for P3.4-B.2.2.1.1.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: **PASS** (two low-severity notes: ADR in-place edit; transform
+  matrix semantics not analysed — both non-blocking and recorded).
+- QA verdict: **PASS** on all applicable gates (typecheck, Node 201/201,
+  view-application 31/31 by name, build, renderer 45/45, Python 178, mypy 45,
+  integrity 2/2); the only pending row was this report.
+
+## 6. Project Model Impact
+
+- `ViewSpatialApplication` gained three fields and a pure validation module;
+  no shared-types/`.ncp` change.
+
+## 7. Known Limitations & Technical Debt
+
+- Transform application is not implemented: a bridging transform is **validated**
+  but not applied; oblique transformed reslicing is out of scope and refused.
+- Matrix singularity/rotation correctness beyond validity/units/frames is not
+  analysed.
+- Camera remains neutral-only (apply-or-refuse); P3.4 is not complete until the
+  camera is faithfully applied or kept as an explicit refusal in the
+  capture/restore path.
+- ADR-008 B.2.2.1 in-place edit is documentation debt (the old wording is quoted
+  in the correction but no longer in its original section).
+- Test sources remain outside the `tsc` graph; intermittent renderer flake
+  remains (rerun green).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-B.2.2.2 — browser volume viewport**: empirically confirm the
+legacy `VolumeViewport` is created for `ViewportType.ORTHOGRAPHIC` (default
+`useGenericViewport` is false), enable it, register the ADR-007 palettes, and
+apply a compiled plan: `setVolumes` + per-volume `setProperties` (with
+`toCornerstoneInterpolationType`) + `setBlendMode`/`setSlabThickness` +
+`setOrientation` from the carried spatial vectors. Before applying, call
+`validateLayerGeometry` with real resident evidence and `validateViewportSize`
+with the mounted size; **apply or explicitly refuse** the carried slice
+positioning. Assert via Cornerstone getters with CT/PT/fusion positives and the
+fail-closed negatives (non-resident/unbound, FoR mismatch, invalid/missing
+transform, viewport-size mismatch, unresolved palette). Do not add `RenderTarget`
+(P3.5), UI or view-engine work.

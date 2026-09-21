@@ -54,8 +54,18 @@ export interface ViewProjectionApplication {
  * are copied by reference, never normalized and never combined: vector legality
  * is the contract validator's boundary (ADR-006), and P3.4-B.2.2 decides how to
  * position the slice. `sliceOffsetMm` is carried, not mapped.
+ *
+ * The identity fields (`frameOfReferenceUID`, `orientation`, `patientPosition`)
+ * are carried too, verbatim and never derived, so the browser adapter can run
+ * the mandatory fail-closed Frame-of-Reference / geometry validation
+ * (`validateLayerGeometry`, P3.4-B.2.2.1.1) against the view plane.
  */
 export interface ViewSpatialApplication {
+  readonly frameOfReferenceUID: string;
+  /** DICOM ImageOrientationPatient (IOP), 6 values: row then column cosines. */
+  readonly orientation: readonly number[];
+  /** DICOM PatientPosition (0018,5100), verbatim when present. */
+  readonly patientPosition?: string;
   readonly viewPlaneNormal: readonly [number, number, number];
   readonly viewUp: readonly [number, number, number];
   readonly referenceLocation: readonly [number, number, number];

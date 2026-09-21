@@ -11,6 +11,11 @@ export const VIEW_APPLICATION_ERROR_CODES = {
   projectionInvalid: 'VIEW_PROJECTION_INVALID',
   stateInvalid: 'VIEW_STATE_INVALID',
   cameraUnsupported: 'VIEW_CAMERA_UNSUPPORTED',
+  volumeNotResident: 'VIEW_VOLUME_NOT_RESIDENT',
+  forMismatch: 'VIEW_FOR_MISMATCH',
+  geometryIncompatible: 'VIEW_GEOMETRY_INCOMPATIBLE',
+  transformInvalid: 'VIEW_TRANSFORM_INVALID',
+  viewportSizeMismatch: 'VIEW_VIEWPORT_SIZE_MISMATCH',
 } as const;
 
 export type ViewApplicationErrorCode =

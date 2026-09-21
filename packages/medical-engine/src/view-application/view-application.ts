@@ -62,6 +62,14 @@ export {
   toCornerstoneInterpolationType,
 } from './types.js';
 export type { CornerstoneInterpolationType } from './types.js';
+export {
+  validateLayerGeometry,
+  validateViewportSize,
+} from './geometry.js';
+export type {
+  ResidentVolumeGeometry,
+  ViewGeometryEvidence,
+} from './geometry.js';
 
 /**
  * Returns the names (with values) of camera fields that differ from the single
@@ -106,9 +114,18 @@ function assertCameraSupported(camera: CameraState): void {
   }
 }
 
-/** Carries the view-plane vectors and slice offset verbatim, with no derivation. */
+/**
+ * Carries the spatial identity (frame of reference, IOP orientation, and
+ * patient position when present) and the view-plane vectors/slice offset
+ * verbatim, with no derivation.
+ */
 function resolveSpatial(spatial: SpatialState): ViewSpatialApplication {
   return {
+    frameOfReferenceUID: spatial.frameOfReferenceUID,
+    orientation: spatial.orientation,
+    ...(spatial.patientPosition === undefined
+      ? {}
+      : { patientPosition: spatial.patientPosition }),
     viewPlaneNormal: spatial.viewPlaneNormal,
     viewUp: spatial.viewUp,
     referenceLocation: spatial.referenceLocation,
