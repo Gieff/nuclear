@@ -10,6 +10,7 @@ export const VIEW_APPLICATION_ERROR_CODES = {
   colormapUnknown: 'VIEW_COLORMAP_UNKNOWN',
   projectionInvalid: 'VIEW_PROJECTION_INVALID',
   stateInvalid: 'VIEW_STATE_INVALID',
+  cameraUnsupported: 'VIEW_CAMERA_UNSUPPORTED',
 } as const;
 
 export type ViewApplicationErrorCode =

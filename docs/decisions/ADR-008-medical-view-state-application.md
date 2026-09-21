@@ -110,3 +110,26 @@ silently dropped. In particular, `CoordinateTransformSet` is the explicit
 coordinate-space bridge (patient LPS mm → view-plane mm → viewport render
 pixels), and `CameraState.panMm`/`focalPointMm` are measured in view-plane
 millimetres, never screen pixels.
+
+*(The scope note above is superseded by the P3.4-B.2.2.1 addendum below, which
+makes the disposition of all three blocks explicit in the pure plan.)*
+
+## Addendum — P3.4-B.2.2.1 (spatial/transform carrying and camera disposition)
+
+The pure plan now explicitly represents all three previously-missing state
+blocks. `SpatialState` and `CoordinateTransformSet` are carried verbatim and
+`CameraState` is applied only when neutral, otherwise refused as a typed,
+deliberate decision.
+
+| State | Disposition in the pure plan |
+| --- | --- |
+| `SpatialState` | **Carried.** `viewPlaneNormal`, `viewUp`, `referenceLocation` and `sliceOffsetMm` are copied verbatim into `ViewSpatialApplication` (vectors by reference; no normalization, no cross product). Slice positioning is not mapped; the browser adapter applies or refuses it. |
+| `CameraState` | **Applied only when neutral, otherwise refused.** Neutral is `{ zoom: 1, panMm: [0, 0], rotationDeg: 0, focalPointMm: [0, 0], fitMode: 'manual' }`, compared numerically (never by reference). Any other camera raises the typed `ViewApplicationError(VIEW_CAMERA_UNSUPPORTED)` whose message names the offending field(s) and states that faithful camera mapping is not yet implemented. `panMm`/`focalPointMm` remain view-plane millimetres, never screen pixels. |
+| `CoordinateTransformSet` | **Carried.** `patientToViewPlane`, `viewPlaneToViewport` and `viewportSizePx` are copied verbatim into `ViewTransformsApplication` for the adapter to validate against the real viewport. The compiler never composes or re-derives them. |
+
+The camera refusal is evaluated before any layer is compiled, so an unsupported
+camera cannot be masked by a later volume/binding or projection refusal. No
+camera or transform semantics are invented, and no block is silently dropped.
+`SpatialState`'s identity/annotation fields (`frameOfReferenceUID`,
+`patientPosition`, `orientation`) are consumed by contract validation and
+view-link compatibility (ADR-006), not carried into the renderer apply step.

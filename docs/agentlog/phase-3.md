@@ -9,8 +9,10 @@ contract), P3.4-A.3 accepted (corrective single-source PET overlay opacity) and
 P3.4-A.3bis accepted (representability precision); P3.4-B in progress —
 P3.4-B.1 accepted (ADR-007 DICOM palette catalog), P3.4-B.1.1 accepted
 (canonical colormap id, whole-LUT digest, registration dedupe), P3.4-B.2.1
-accepted (pure `MedicalViewState` → Cornerstone application compiler) and
-P3.4-B.2.1.1 accepted (per-asset PET binding map); P3.4-B.2.2–P3.6 not started.
+accepted (pure `MedicalViewState` → Cornerstone application compiler),
+P3.4-B.2.1.1 accepted (per-asset PET binding map) and P3.4-B.2.2.1 accepted
+(spatial/transform carrying and camera disposition); P3.4-B.2.2.2–P3.6 not
+started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -2410,3 +2412,116 @@ Assert the applied state via Cornerstone getters with CT/PT/fusion positives and
 the addendum's fail-closed negatives (non-resident/unbound volume, geometry/FoR
 mismatch, unresolved palette). Do not add `RenderTarget` (P3.5), UI or
 view-engine work.
+
+---
+
+# Handover Report — P3.4-B.2.2.1: Spatial/Transform Carrying & Camera Disposition
+
+## 1. What Was Implemented
+
+The B.2.2 requirement is that the viewport semantically apply the **whole**
+`MedicalViewState`, never silently dropping `SpatialState`, `CameraState` or
+`CoordinateTransformSet`. This pure extension makes those dispositions explicit
+in the plan before the browser step (B.2.2.2).
+
+- **`ViewApplicationPlan`** now carries `spatial`
+  (`viewPlaneNormal`, `viewUp`, `referenceLocation`, `sliceOffsetMm`) and
+  `transforms` (`patientToViewPlane`, `viewPlaneToViewport`, `viewportSizePx`),
+  copied verbatim with no normalization, cross product or re-derivation.
+- **Camera disposition is explicit and fail-closed.** Only the neutral
+  declaration `{ zoom: 1, panMm: [0, 0], rotationDeg: 0, focalPointMm: [0, 0],
+  fitMode: 'manual' }` is accepted (numeric comparison, never by reference);
+  anything else raises typed `ViewApplicationError(VIEW_CAMERA_UNSUPPORTED)`
+  naming the offending field(s). The guard runs **before** layer compilation,
+  so it cannot be masked by a later volume/binding/projection refusal.
+  `panMm`/`focalPointMm` remain view-plane millimetres, never screen pixels.
+- **No silent drop**: every code path builds `spatial` and `transforms`; the
+  camera is either neutral or refused. `SpatialState`'s identity/annotation
+  fields (`frameOfReferenceUID`, `patientPosition`, `orientation`) are consumed
+  by contract validation/linking, not the renderer apply step (documented).
+- **ADR-008 addendum** records the applied/carried/refused disposition table and
+  supersedes the earlier "not yet represented" scope note.
+
+## 2. Files Changed / Created
+
+Modified:
+- `packages/medical-engine/src/view-application/types.ts` (114)
+- `packages/medical-engine/src/view-application/errors.ts` (39 — `VIEW_CAMERA_UNSUPPORTED`)
+- `packages/medical-engine/src/view-application/view-application.ts` (200)
+- `docs/decisions/ADR-008-medical-view-state-application.md` (addendum)
+
+Created (tests):
+- `tests/view-application/view-application-state-blocks.test.ts` (131)
+
+Unchanged: `@nuclear/shared-types`, the renderer, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- "Neutral camera" is the exact numeric tuple above; `NaN` is non-neutral and
+  refused, `-0` compares equal to `0` (harmless).
+- Slice positioning (`referenceLocation`/`sliceOffsetMm`) is **carried, not
+  mapped** — B.2.2.2 applies or explicitly refuses it; no camera/transform
+  semantics are invented.
+- `ViewTransformsApplication` uses `readonly number[]` for the matrices so the
+  plan stays serializable without importing shared tuple types.
+
+## 4. Tests Added & Executed
+
+Added: 5 tests (17–21) in a focused suite.
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **191 pass / 0 fail** (42 suites; 186 prior + 5) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:renderer` | **45 pass / 0 fail** |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| P2.5 source integrity | **2/2** |
+
+Tests 17/18 assert verbatim carrying by `deepEqual` **and** reference identity;
+test 20 covers each non-neutral camera field naming it; test 21 proves the guard
+ordering with an empty `volumeIds`. The reviewer mutation-tested the guard
+(neutralized → tests 20/21 fail) and the ordering (guard moved after layer
+compilation → test 21 fails).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-008 addendum records the disposition table; the reviewer's one-line
+  clarification on the uncarried `SpatialState` identity fields was added.
+- This report satisfies the AgentLog Gate for P3.4-B.2.2.1.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: **PASS** (mutation-killed guard; one non-blocking doc note,
+  closed here).
+- QA verdict: **PASS** on all applicable gates (typecheck, Node 191/191,
+  view-application 21/21 by name, build, renderer 45/45, Python 178, mypy 45,
+  integrity 2/2); the only pending row was this report.
+
+## 6. Project Model Impact
+
+- `ViewApplicationPlan` gained two required blocks; no shared-types/`.ncp`
+  change.
+
+## 7. Known Limitations & Technical Debt
+
+- Non-neutral cameras are refused, not mapped; faithful camera translation to
+  Cornerstone remains unimplemented.
+- Slice positioning is carried, not applied (B.2.2.2 decides apply-or-refuse).
+- Certified `PresetError`/`PetBindingError` still propagate (ADR-008 declares
+  it).
+- Test sources remain outside the `tsc` graph; intermittent renderer flake
+  remains (rerun green).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-B.2.2.2 — browser volume viewport**: empirically confirm the
+viewport type in the controlled WebGL 2 harness (default `useGenericViewport`
+is false, so `ViewportType.ORTHOGRAPHIC` should yield the legacy
+`VolumeViewport` — verify, do not assume), enable it, register the ADR-007
+palettes, and apply a compiled plan: `setVolumes` + per-volume `setProperties`
+(with `toCornerstoneInterpolationType`) + `setBlendMode`/`setSlabThickness` +
+`setOrientation` from the carried spatial vectors; **apply or explicitly refuse**
+the carried slice positioning and validate `CoordinateTransformSet` against the
+real viewport. Assert via Cornerstone getters with CT/PT/fusion positives and the
+fail-closed negatives (non-resident/unbound volume, geometry/FoR mismatch,
+unresolved palette). Do not add `RenderTarget` (P3.5), UI or view-engine work.

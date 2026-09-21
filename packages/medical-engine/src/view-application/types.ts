@@ -49,10 +49,38 @@ export interface ViewProjectionApplication {
   readonly slabThicknessMm: number | undefined;
 }
 
+/**
+ * Spatial state carried verbatim from `MedicalViewState.spatial`. The vectors
+ * are copied by reference, never normalized and never combined: vector legality
+ * is the contract validator's boundary (ADR-006), and P3.4-B.2.2 decides how to
+ * position the slice. `sliceOffsetMm` is carried, not mapped.
+ */
+export interface ViewSpatialApplication {
+  readonly viewPlaneNormal: readonly [number, number, number];
+  readonly viewUp: readonly [number, number, number];
+  readonly referenceLocation: readonly [number, number, number];
+  readonly sliceOffsetMm: number;
+}
+
+/**
+ * Coordinate transforms carried verbatim from
+ * `MedicalViewState.coordinateTransforms`. The compiler never re-derives or
+ * composes them; P3.4-B.2.2 validates them against the real viewport.
+ */
+export interface ViewTransformsApplication {
+  /** Patient LPS mm → view-plane homogeneous coordinates (16 values). */
+  readonly patientToViewPlane: readonly number[];
+  /** View-plane mm → viewport render-pixel coordinates (16 values). */
+  readonly viewPlaneToViewport: readonly number[];
+  readonly viewportSizePx: readonly [number, number];
+}
+
 export interface ViewApplicationPlan {
   readonly viewId: string;
   readonly layers: readonly ViewLayerApplication[];
   readonly projection: ViewProjectionApplication;
+  readonly spatial: ViewSpatialApplication;
+  readonly transforms: ViewTransformsApplication;
 }
 
 export interface ViewApplicationInput {
