@@ -358,17 +358,22 @@ NuClear:
 - `tests/rendering/{volume-ingestion,volume-payload-validation,volume-construction,volume-load}.test.ts`;
 - `tests/contracts/{clinical-data-contracts,figure-contracts,view-contracts}.test.ts`.
 
-MedCanvas:
+Il materiale MedCanvas usato come oracle è ora disponibile nel mirror locale
+ignorato da Git sotto `oracle/`, con gli stessi percorsi relativi selezionati.
+Il mirror non è runtime, non è una dipendenza e non è evidenza NuClear finché
+un comportamento non viene riscritto in un contratto, fixture e test NuClear.
 
-- `AGENTS.md`;
-- `packages/medical-engine/src/{volumeRefRegistry,volumeCacheManager,cornerstoneVolumeCacheAdapter}.ts`;
-- `packages/medical-engine/src/{fusionBlender,rowRadiometry,mprManager,mprSlotEnumerator,mipController}.ts`;
-- `packages/medical-engine/src/{serializer,viewportSerializer,viewportRestorer}.ts`;
-- `packages/rendering-presets/src/{ct,pet,fusion}.ts`;
-- `packages/ui/src/components/canvas/export/{highResRasterizer,pdfVectorExporter}.ts`;
-- `tests/unit/{vram_selective_purge,study_row_volume_binding,multi_row_radiometric_independence,row_suv_scale_isolation,mpr_slot_enumerator,mip_rotation_and_palettes,dynamic_viewport_restore,pdf_export}.test.js`;
-- `docs/decisions/ADR-005-dynamic-clinical-grid-slot-pool-vram.md` e
-  `docs/agentlog/M4.md`/`M5.md`/`M6.1.md` per i comportamenti recuperati.
+Oracle mirror:
+
+- `oracle/AGENTS.md`;
+- `oracle/packages/medical-engine/src/{volumeRefRegistry,volumeCacheManager,cornerstoneVolumeCacheAdapter}.ts`;
+- `oracle/packages/medical-engine/src/{fusionBlender,rowRadiometry,mprManager,mprSlotEnumerator,mipController}.ts`;
+- `oracle/packages/medical-engine/src/{serializer,viewportSerializer,viewportRestorer}.ts`;
+- `oracle/packages/rendering-presets/src/{ct,pet,fusion}.ts`;
+- `oracle/packages/ui/src/components/canvas/export/{highResRasterizer,pdfVectorExporter}.ts`;
+- `oracle/tests/unit/{vram_selective_purge,study_row_volume_binding,multi_row_radiometric_independence,row_suv_scale_isolation,mpr_slot_enumerator,mip_rotation_and_palettes,dynamic_viewport_restore,pdf_export}.test.js`;
+- `oracle/docs/decisions/ADR-005-dynamic-clinical-grid-slot-pool-vram.md` e
+  `oracle/docs/agentlog/M4.md`/`M5.md`/`M6.1.md` per i comportamenti recuperati.
 
 ## Esito del recupero
 

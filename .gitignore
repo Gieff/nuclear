@@ -76,3 +76,5 @@ tests/rendering/.harness/
 .opencode/package-lock.json
 .opencode/bun.lock
 
+# Local MedCanvas recovery oracle (read-only working copy; never commit).
+oracle/
