@@ -31,9 +31,14 @@ context.
   `ViewLink`, `StateLock`, `LocalViewOverride`, `PreparedView`,
   `ResourceDemand`, `MedicalViewState`, `SpatialTransform`) are frozen and
   validated by `tests/contracts/view-validators.ts`.
-- `@nuclear/view-engine` currently exports an empty stub and depends on
-  `shared-types`, `rendering-presets` and `medical-engine`. No package may
-  reverse that dependency direction.
+- `@nuclear/view-engine` depends on `shared-types`, `rendering-presets` and
+  `medical-engine`. No package may reverse that dependency direction. P4.1
+  (workspace/slots) and P4.2 (prepared-view assembly) were implemented and
+  then **reopened** by review; the ratified corrective slices below must land
+  before P4.3.
+- Boundary decisions in `docs/decisions/ADR-010-…md` (including its §7
+  addendum) and `docs/decisions/ADR-011-prepared-view-immutability-and-shared-state-mutation.md`
+  are binding for the corrected implementation.
 - The curated Phase 3 volume fixtures
   (`tests/rendering/fixtures/volumes/{ct-axial,pt-axial,pt-axial-coreg}`)
   provide real geometry/FoR evidence for linking tests. `ct-axial` and
@@ -94,7 +99,10 @@ context.
 4. **One surface identity, one rendering engine.** Surfaces have stable
    identity independent of a WebGL context; the count of contexts is
    backend-owned and must not be hard-coded to 16.
-5. **Link modes are physically distinct.** Different
+5. **Link modes are physically distinct.** Co-reference requires the same
+   worker-verified `FrameOfReferenceUID`, one-to-one snapshot ↔ asset ↔
+   series ↔ fingerprint correlation, and **not** an identical
+   `geometricDigest` (native CT/PET in one FoR differ). Different
    `FrameOfReferenceUID`s are never treated as co-referenced without a valid
    transform; missing evidence fails closed.
 6. **Lock and override are separate contracts.** A lock guards named state;
@@ -105,6 +113,15 @@ context.
 8. **No invented placement defaults.** Viewport-to-panel framing belongs to
    `figure-engine`; the view engine only provides viewer/composer host
    rectangles.
+9. **Published DTOs are immutable; shared state is controlled.** Values
+   returned by a `view-engine` API are deep-frozen, and shared
+   `SpatialState`/`CameraState` live in a private holder mutated only by
+   explicit, atomically-replacing APIs (ADR-011). No free in-place mutation
+   and no indiscriminate freezing of P4.3-updatable objects.
+10. **Provenance is positionally one-to-one.** In `ViewProvenance`,
+    `sourceAssetIds[i]`, `sourceSeriesInstanceUIDs[i]` and
+    `sourceFingerprints[i]` describe the same source; lengths are equal and
+    every source shares `provenance.studyInstanceUID` (ADR-010 §7.3).
 
 ## Delivery Slices
 
@@ -112,7 +129,7 @@ context.
 | --- | --- | --- | --- |
 | P4.0 | orchestrator | Baseline, contract audit, plan/runbook and ADR-010 | Entry state recorded; slice boundaries and boundary decisions documented |
 | P4.1 | engine engineer | `ImagingWorkspace` core: asset/study registry + `ViewGroup`/`ViewSlot` allocation and bind/unbind/status | Pure Node tests for capacity (16), role/group invariants, bind/unbind/status transitions; 17th slot refused |
-| P4.2 | engine engineer | `PreparedView` assembly from a bound view + `ViewProvenance` | Assembly produces a valid `PreparedView`; assembly alone issues no residency retain; missing binding/provenance fails closed |
+| P4.2 | engine engineer | `PreparedView` assembly + `ViewProvenance` (a prepared view may exist without a slot); published DTOs immutable per ADR-011 | Assembly produces a valid **frozen** `PreparedView`; assembly alone issues no residency retain; missing/empty provenance or provenance↔asset↔series↔fingerprint mismatch fails closed; slot binding is a separate explicit, fail-closed operation (not an assembly prerequisite) |
 | P4.3 | engine engineer | Shared-state groups (`SharedStateGroup`) | Multiple views can reference one `SpatialState`/`CameraState`; identity is observable; no notify chains |
 | P4.4 | engine engineer | Link semantics (intra-study + inter-study) | Co-referenced link requires matching verified FoR/geometry; inter-study requires transform or differential + tolerance + out-of-domain; mismatches fail closed |
 | P4.5 | engine engineer | `LOCK` + `LocalViewOverride` | Lock blocks mutation of named state; override diverges, round-trips and leaves the source view unchanged |
@@ -130,11 +147,13 @@ is recorded.
   (no browser, no DOM). They may import the real Phase 3 fixture JSON
   geometry evidence to build valid/invalid link cases.
 - The curated fixtures are the only co-reference evidence: `ct-axial` +
-  `pt-axial-coreg` (same FoR `…5001.4`, same `geometricDigest
-  sha256:4195de76…c360a70`) for the positive intra-study case; `pt-axial`
-  (frame `…5002.4`) for the mismatch negative.
-- No numeric image tolerance applies in Phase 4; co-reference eligibility is
-  an exact digest/FoR equality check. Inter-study relative navigation
+  `pt-axial-coreg` (same FoR `…5001.4`) for the positive intra-study case;
+  `pt-axial` (frame `…5002.4`) for the mismatch negative. Fixture digests are
+  informational, **not** a co-reference eligibility criterion.
+- No numeric image tolerance applies in Phase 4. Co-reference eligibility is:
+  same worker-verified `FrameOfReferenceUID` + one-to-one snapshot ↔ asset ↔
+  series ↔ fingerprint correlation; **identical `geometricDigest` is not
+  required** and must not be enforced. Inter-study relative navigation
   carries an explicit `toleranceMm` and out-of-domain behavior; no implicit
   default is invented.
 - Every slice must include negative/fail-closed cases; a missing fixture or
@@ -154,6 +173,23 @@ is recorded.
 | Quality | Typecheck, Node tests, configured Python tests, build and source-integrity report actual results |
 | Review | `nuclear-reviewer` and `nuclear-qa` independently inspect the final Phase 4 diff and evidence before closure |
 
+## Reopened — Ratified Correction Slices (2026-09-22)
+
+An independent review reopened P4.0/P4.1/P4.2. The following corrective slices
+are ratified and must be completed **before P4.3**, in this order:
+`C8 → C1 → C5 → ADR-011 → C4 → C3 → C2 → C6 → C7`.
+
+| ID | Slice | Deliverable | Acceptance |
+| --- | --- | --- | --- |
+| C8 | P4.T | `tests/**` brought into the `tsc` graph | `npm run typecheck` compiles tests; an intended TS error in a test fails the gate |
+| C1 | P4.1.1 | Workspace input integrity: reject non-finite / non-JSON-safe values instead of JSON-normalising them | `NaN`/`±Infinity`/`Date`/`Map`/`Set`/`bigint` refused with a typed path-naming error; no mutation on refusal; valid payload round-trips |
+| C5 | P4.2.2 | Provenance ↔ registered-asset cross-validation (positional 1:1 per ADR-010 §7.3) | PET view + CT fingerprint / series mismatch / length mismatch refused; coherent pair accepted |
+| C4 | P4.2.1 | Published-DTO immutability + private controlled shared-state holder (ADR-011) | published DTOs deep-frozen; external mutation cannot alter canonical state; controlled replacement is atomic |
+| C3 | P4.0.1 | Co-reference contract honesty + snapshot↔asset↔series↔fingerprint check | negative series-mismatch test + positive different-digest/same-FoR test; ADR/piano wording corrected |
+| C2 | P4.1.2 | Slot/group rule 1–4 groups, default 4, ≥1 enforced | zero groups refused; reduced coherent layout accepted; ADR-010 §7.1 aligned |
+| C6 | P4.2.3 | Explicit fail-closed slot→PreparedView binding (view may exist unbound) | binding a registered view succeeds; unknown view / occupied slot refused |
+| C7 | Fixture hygiene | `mockMedicalView` asset id coherent with clinical fixtures | full suite green after coordinated fixture + P3 assertion + P4.2-case updates |
+
 ## Stop Conditions
 
 Stop the active slice as `BLOCKED` rather than guessing when:
@@ -170,6 +206,7 @@ Stop the active slice as `BLOCKED` rather than guessing when:
 
 ## Exact Next Step
 
-Start **P4.0** only: record the baseline, audit the existing view contracts
-for gaps, and fix the slice boundaries and ADR-010. Do not implement the
-workspace model in P4.0.
+Phase 4 is **reopened**. Start with **C8** (`tests/**` into the `tsc` graph),
+then **C1** (workspace input integrity), then C5, ADR-011, C4, C3, C2, C6, C7.
+Do not resume P4.3 until the corrective slices above are accepted, and do not
+reinterpret the ADR-011 shared-state model in P4.3.

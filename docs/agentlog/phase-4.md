@@ -1,9 +1,13 @@
 # Phase 4 — View Engine: Workspace, Link/Lock/Override & Persistent Surfaces
 
-Status: **IN PROGRESS** — P4.0 accepted (baseline, contract audit, plan,
-runbook and ADR-010); P4.1 accepted (workspace core, review **PASS**, QA
-**PASS**); P4.2 accepted (`PreparedView` assembly + provenance, review
-**PASS**, QA **PASS**). P4.3–P4.8 pending in declared dependency order.
+Status: **REOPENED** (2026-09-22). P4.0 (`72fbaee`), P4.1 (`8cdad35`) and
+P4.2 (`a70983c`) were accepted locally and then **reopened by an independent
+human review**; none of them is an approvable closed slice as committed. The
+ratified corrective slices must land before P4.3. See
+`docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` §“Reopened — Ratified Correction
+Slices”, `docs/decisions/ADR-010-…md` §7 and
+`docs/decisions/ADR-011-prepared-view-immutability-and-shared-state-mutation.md`.
+P4.3–P4.8 pending in declared dependency order.
 Baseline entry: Phase 3 closed and released (HEAD `30ef205`, annotated tag
 `v0.2.0`, monorepo 0.2.0).
 
@@ -406,3 +410,75 @@ view cannot silently change another. P4.3 must preserve the by-reference
 identity contract introduced in P4.2 and must not clone shared state objects.
 Do not add linking (P4.4), lock/override application (P4.5), surfaces (P4.6)
 or demand projection (P4.7) in P4.3.
+
+---
+
+# Reopened — Human Review & Ratified Correction Plan (2026-09-22)
+
+An independent human review inspected the exact checkouts `72fbaee`,
+`8cdad35` and `a70983c`. All executable gates were green
+(typecheck/build clean, `npm test` 283/283 / 60 suites, pytest 189, mypy 47,
+P4.1 11/11, P4.2 14/14, no React/DOM/Cornerstone/residency in `view-engine`),
+but the green tests did **not** cover the defects below. P4.0, P4.1 and P4.2
+are therefore **reopened**, not closed.
+
+## Confirmed defects
+
+| # | Slice | Defect | Evidence |
+| --- | --- | --- | --- |
+| 1 | P4.1 | `cloneValue` JSON stringify/parse silently normalises clinical data: `NaN`/`±Infinity` → `null` | `imaging-workspace.ts:39`, applied at `:65`/`:83` (write) and `:108-120` (read); `JSON.stringify(NaN)` → `null` |
+| 2 | P4.1 | ADR-010 §2 said “exactly four groups” while `assertValidLayout` accepts 0–4 and a test declares a 2-group layout valid | ADR-010 §2; `view-slot-registry.ts:108-118`; test 10 |
+| 3 | P4.1 | `ResourceDemand` mutator landed in P4.1 (scope creep before P4.7) | `view-slot-registry.ts:211-222` |
+| 4 | P4.0 | ADR-010 §3 / plan claimed co-reference requires an equal `geometricDigest`, which the shared validator does not (and must not) enforce | `view-validators.ts:78-82`; `mockIntraStudyLink` is same-FoR CT+PET with different digests and is valid evidence |
+| 5 | P4.2 | Registered `PreparedView` mutable from outside: registry returns the stored object, no runtime freeze | `prepared-view/registry.ts:22`; `view.state.camera.zoom = 77` alters stored state |
+| 6 | P4.2 | Provenance not correlated to registered assets (asset ↔ study ↔ series ↔ fingerprint) | `imaging-workspace.ts:87-97` checks existence only |
+| 7 | P4.2 | No slot-binding requirement despite the plan wording; spec/implementation incoherence | `registerPreparedView` never consults `ViewSlot` |
+| 8 | P4.2 | `ViewProvenance` shared by reference without an architectural need | `prepared-view/assemble.ts` |
+
+Carried transversal debt: `tests/**` outside the `tsc` graph;
+`renderer/adapter.ts` (300) and `renderer/medical-capture.ts` (299/300);
+Phase 1 fixture incoherence (`'asset-ct'` vs `'asset-ct-001'`).
+
+## Ratified decisions
+
+- **D1:** slot rule = **1–4 groups, default 4, max 16, lower bound ≥ 1**
+  (ADR-010 §7.1).
+- **D2:** co-reference = **same worker-verified `FrameOfReferenceUID` +
+  verified geometric compatibility + snapshot ↔ asset ↔ series ↔ fingerprint
+  correlation**. Identical `geometricDigest` is **not** required and must not
+  be enforced (ADR-010 §7.2).
+- **D3:** a `PreparedView` may exist **without** a slot; slot→prepared-view
+  binding is a separate explicit, fail-closed operation.
+- **D4:** published DTOs immutable; shared state in a **private holder with
+  controlled, atomically-replacing mutation**; no free in-place mutation and
+  no indiscriminate freezing (ADR-011).
+- **D5:** runtime integrity validation is **local to `view-engine`**; no new
+  package until a real second consumer exists.
+
+## Ratified corrective slices (before P4.3)
+
+`C8 → C1 → C5 → ADR-011 → C4 → C3 → C2 → C6 → C7`
+
+- **C8 (P4.T):** bring `tests/**` into the `tsc` graph.
+- **C1 (P4.1.1):** reject non-finite / non-JSON-safe input instead of
+  JSON-normalising it.
+- **C5 (P4.2.2):** provenance ↔ registered-asset cross-validation (positional
+  1:1).
+- **C4 (P4.2.1):** published-DTO immutability + private controlled shared-state
+  holder.
+- **C3 (P4.0.1):** co-reference contract honesty + snapshot ↔ asset ↔ series ↔
+  fingerprint check; negative series-mismatch and positive
+  different-digest/same-FoR tests.
+- **C2 (P4.1.2):** slot/group rule 1–4 with ≥ 1 enforced.
+- **C6 (P4.2.3):** explicit fail-closed slot→`PreparedView` binding.
+- **C7:** Phase 1 fixture hygiene.
+
+## Process status
+
+- P4.0/P4.1/P4.2 remain committed locally as the historical baseline; they are
+  **not** closed slices. Corrections land as **new commits on top** (no local
+  history rewrite without explicit request).
+- ADR-010 §7 addendum and ADR-011 are **Accepted** and binding.
+- `AGENTS.md` remains “Phase 3 Complete” until Phase 4 truly closes.
+- **Nothing pushed.** Push remains user-authorized only.
+

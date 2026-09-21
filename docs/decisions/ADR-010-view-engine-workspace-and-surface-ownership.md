@@ -45,8 +45,12 @@ residency. This ADR fixes the concrete NuClear contracts and invariants.
 
 ### 2. ViewSlot / ViewGroup model
 
-- A workspace offers exactly **four `ViewGroup`s of four `ViewSlot`s** (16
-  logical slots), in the role order `MIP`, `PET`, `GENERIC`, `FUSION`.
+- A workspace offers **between one and four `ViewGroup`s, each of exactly
+  four `ViewSlot`s** (at most 16 logical slots), in the role order `MIP`,
+  `PET`, `GENERIC`, `FUSION`. The default factory allocates four groups
+  (16 slots); an empty layout (zero groups) is not a meaningful workspace
+  and is refused. *(Corrected by the §7 addendum — previously worded
+  “exactly four”.)*
 - `ViewSlot.role` describes the slot’s role, not a renderer type. Capacity,
   role and group-membership invariants are enforced fail-closed (a 17th
   slot, a duplicate id, a foreign role or a mismatched group id is refused).
@@ -56,10 +60,16 @@ residency. This ADR fixes the concrete NuClear contracts and invariants.
 ### 3. Link semantics
 
 - **Intra-study / co-referenced**: two views may share absolute LPS
-  `SpatialState` only when their geometry evidence is accepted and matches —
-  equal `FrameOfReferenceUID` **and** equal `geometricDigest` with a verified
-  snapshot set. Co-reference eligibility is an exact equality check; no
-  numeric tolerance is invented.
+  `SpatialState` only when their geometry evidence is accepted and
+  **verified by the scientific worker** for the **same `FrameOfReferenceUID`**,
+  and each evidence snapshot is correlated one-to-one with a registered
+  asset, its `seriesInstanceUID` and its `SourceFingerprint`. Co-reference
+  does **not** require an equal `geometricDigest`: native CT and PET in one
+  Frame of Reference legitimately have different grids, spacing and
+  dimensions, therefore different digests. *(Corrected by the §7 addendum —
+  the previous “equal `geometricDigest`” wording was clinically wrong and
+  would have refused valid PET/CT fusion.)* No numeric tolerance is
+  invented; compatibility is the worker's verified assertion.
 - **Inter-study / relative or transformed**: different `FrameOfReferenceUID`s
   are never treated as co-referenced. The link must carry either an explicit
   `navigationDifferentialMm` (mode `relative`) or a valid `SpatialTransform`
@@ -125,3 +135,58 @@ residency. This ADR fixes the concrete NuClear contracts and invariants.
   accepted `SpatialTransform` contract.
 - If the `ResourceManager` lease model must change to express a demand the
   workspace cannot declare (would require a superseding ADR).
+
+## 7. Addendum — P4.0/P4.1 Reopened: Ratified Corrections
+
+**Date:** 2026-09-22 · **Status:** Accepted (corrects §2 and §3 above).
+
+An independent human review reopened P4.0, P4.1 and P4.2. The following
+corrections are ratified and supersede contradicted wording above.
+
+### 7.1 Slot/group rule (§2 correction)
+
+- A workspace allocates **1 to 4 `ViewGroup`s**, each with **exactly four
+  slots** in role order, for at most 16 slots. The default factory allocates
+  four groups.
+- Zero groups is refused (`WORKSPACE_SLOT_LAYOUT_INVALID`). More than four
+  groups, more than 16 slots, duplicate ids, foreign roles, undeclared groups
+  and group-membership mismatches remain refused.
+- Rationale: architecture v3 §8 says “up to 16 slots”, so a smaller coherent
+  workspace is legitimate; an empty workspace is not.
+
+### 7.2 Co-reference semantics (§3 correction)
+
+- Co-reference eligibility is: **same verified `FrameOfReferenceUID`** +
+  **worker-verified geometric compatibility** + **one-to-one correlation**
+  between every evidence snapshot and a registered `ImagingAsset`
+  (`assetId`, `seriesInstanceUID`, `SourceFingerprint`).
+- **Identical `geometricDigest` is explicitly NOT a requirement.** Evidence:
+  the accepted Phase 1 fixture `mockIntraStudyLink` models native CT
+  (`sha256:aabbcc1122334455`) and PET (`sha256:ccbbaa5544332211`) in the same
+  `MOCK_FOR_UID` and is valid; in Phase 3, `pt-axial-coreg` matches the CT
+  digest only because it is *resampled onto CT geometry*, while native
+  `pt-axial` does not.
+- The contract validator `isIntraStudyLink` must enforce the snapshot ↔
+  asset ↔ series ↔ fingerprint correlation (it currently does not) and gain
+  a negative test (snapshot fingerprint of a different series) **and** a
+  positive test locking in that different digests with the same verified FoR
+  are accepted.
+- Registration/transform validity remain worker/`medical-engine` concerns;
+  `view-engine` consumes them.
+
+### 7.3 Provenance association semantics (for C5)
+
+- `ViewProvenance.sourceAssetIds`, `sourceSeriesInstanceUIDs` and
+  `sourceFingerprints` are **positionally one-to-one**: equal lengths, index
+  `i` describes the same source, and every source asset shares
+  `provenance.studyInstanceUID`. Registration must validate this
+  fail-closed. A keyed association contract is a possible future revision
+  (would change a Phase 1 shape and require its own ADR).
+
+### 7.4 Immutability and shared-state mutation
+
+- See **ADR-011** (`PreparedView` immutability and controlled shared-state
+  mutation). §1/§6 of this ADR are refined by it: published DTOs are
+  immutable; shared `SpatialState`/`CameraState` are owned by a private
+  holder with atomic replacement, never exposed as freely mutable objects.
+

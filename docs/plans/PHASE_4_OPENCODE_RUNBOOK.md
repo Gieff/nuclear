@@ -1,5 +1,12 @@
 # Phase 4 — OpenCode Orchestration Runbook
 
+> **Phase 4 is REOPENED (2026-09-22).** P4.0/P4.1/P4.2 were accepted locally
+> and then reopened by independent review. Before P4.3, execute the ratified
+> corrective slices in `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md`
+> §“Reopened — Ratified Correction Slices”, in the order
+> `C8 → C1 → C5 → ADR-011 → C4 → C3 → C2 → C6 → C7`. Do not resume P4.3 in
+> parallel with the correctives.
+
 ## Start Command
 
 Run one bounded slice at a time:
@@ -15,7 +22,9 @@ Before delegation, the orchestrator must read:
   slots, surfaces, shared state, link/lock/override, prepared views,
   residency demand);
 - `docs/PROJECT_VADEMECUM.md` §4.1 (view-engine ownership, acyclic graph);
-- `docs/decisions/ADR-010-view-engine-workspace-and-surface-ownership.md`;
+- `docs/decisions/ADR-010-view-engine-workspace-and-surface-ownership.md`
+  (including its §7 reopened-corrections addendum);
+- `docs/decisions/ADR-011-prepared-view-immutability-and-shared-state-mutation.md`;
 - the accepted Phase 1 contracts in `packages/shared-types/src/` and their
   validators in `tests/contracts/view-validators.ts`;
 - the accepted Phase 3 `ResourceManager` contracts
@@ -84,8 +93,21 @@ Every delegation brief must include:
   optional cached-preview reference; it is not a raster.
 - Assembly alone must not call `ResourceManager.retain`. Only P4.7 declares
   demand.
-- Shared state is object identity shared across views, never an event chain
-  that prevents recursion.
+- **Published DTOs are immutable (ADR-011).** `PreparedView`, provenance,
+  links, locks and cached-preview references are deep-frozen at publication;
+  a consumer holding a reference from `get`/`list`/`snapshot` must not be
+  able to mutate canonical state. External mutation tests must prove this.
+- **Shared state is not a freely mutable published object (ADR-011).** Shared
+  `SpatialState`/`CameraState` are owned by a private holder and updated only
+  through explicit APIs that replace atomically; never an event chain, and
+  never a cloned state object that would break identity.
+- **Provenance is validated, positionally one-to-one (ADR-010 §7.3).** At the
+  workspace boundary, `sourceAssetIds[i]`, `sourceSeriesInstanceUIDs[i]` and
+  `sourceFingerprints[i]` must describe the same registered asset and share
+  `studyInstanceUID`; a mismatch fails closed.
+- **A prepared view may exist without a slot (ADR-010 §7 addendum).** Do not
+  require slot binding at assembly; slot→prepared-view binding is a separate
+  explicit, fail-closed operation.
 
 ### P4.4 — Link Semantics
 
