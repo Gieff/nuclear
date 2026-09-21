@@ -7,5 +7,6 @@
  * Cornerstone, figure-engine or resource-residency code lives here.
  */
 export * from './errors.js';
+export * from './value-integrity.js';
 export * from './view-slot-registry.js';
 export * from './imaging-workspace.js';

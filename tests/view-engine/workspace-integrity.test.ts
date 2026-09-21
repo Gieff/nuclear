@@ -1,0 +1,282 @@
+/**
+ * NuClear P4.1.1 / C1 — workspace input integrity tests.
+ *
+ * Pure Node, real public API. Proves `ImagingWorkspace` refuses non-finite and
+ * non-JSON-safe input with a typed, path-naming `WorkspaceError` and never
+ * mutates state on refusal, while valid payloads still round-trip losslessly.
+ */
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import type {
+  AssetId,
+  ImagingAsset,
+  StudyReference,
+} from '../../packages/shared-types/src/index.js';
+import {
+  ImagingWorkspace,
+  WorkspaceError,
+  mockCtAsset,
+  mockPetAsset,
+  mockStudyReference,
+  type WorkspaceErrorCode,
+} from './fixtures/workspace-fixtures.ts';
+
+// The fixture module registers the `.ts` resolve hook before this dynamic
+// import, so the real product sources are imported by value.
+const { assertSerializableValue, cloneSerializableValue } = await import(
+  '../../packages/view-engine/src/workspace/index.ts'
+);
+
+/**
+ * Deliberately invalid clinical payloads must bypass the compile-time
+ * contract; each value is freshly constructed from the fixture (never a
+ * pre-existing fixture escape) and widened once, locally, to reach the API.
+ */
+function invalidAsset(overrides: Record<string, unknown>): ImagingAsset {
+  return { ...mockCtAsset, ...overrides } as unknown as ImagingAsset;
+}
+
+function invalidStudy(overrides: Record<string, unknown>): StudyReference {
+  return { ...mockStudyReference, ...overrides } as unknown as StudyReference;
+}
+
+/** Asserts the exact code and that the message names the offending path. */
+function expectRefusal(
+  run: () => unknown,
+  code: WorkspaceErrorCode,
+  pathFragment: string,
+): void {
+  assert.throws(run, (error: unknown) => {
+    assert.ok(error instanceof WorkspaceError, `expected WorkspaceError, got ${String(error)}`);
+    assert.equal(error.code, code);
+    assert.ok(
+      error.message.includes(pathFragment),
+      `expected message to name '${pathFragment}', got: ${error.message}`,
+    );
+    return true;
+  });
+}
+
+/** `ImagingWorkspace` arrives as a value, so derive its instance type here. */
+type Workspace = InstanceType<typeof ImagingWorkspace>;
+
+/** Stable fingerprint of the whole workspace used for no-mutation assertions. */
+function snapshotJson(workspace: Workspace): string {
+  return JSON.stringify(workspace.snapshot());
+}
+
+function registeredWorkspace(): Workspace {
+  const workspace = new ImagingWorkspace();
+  workspace.registerStudy(mockStudyReference);
+  workspace.registerAsset(mockCtAsset);
+  return workspace;
+}
+
+describe('NuClear P4.1.1 — workspace input integrity', () => {
+  it('1. valid study and assets register; snapshot deep-equals its JSON round-trip', () => {
+    const workspace = new ImagingWorkspace();
+    workspace.registerStudy(mockStudyReference);
+    workspace.registerAsset(mockCtAsset);
+    workspace.registerAsset(mockPetAsset);
+
+    const snapshot = workspace.snapshot();
+    assert.deepEqual(snapshot, JSON.parse(JSON.stringify(snapshot)));
+    assert.deepEqual(snapshot.studies, [mockStudyReference]);
+    assert.deepEqual(snapshot.assets, [mockCtAsset, mockPetAsset]);
+  });
+
+  it('2. getAsset returns an equal copy; mutating it never touches stored state', () => {
+    const workspace = registeredWorkspace();
+    const returned = workspace.getAsset(mockCtAsset.id);
+    assert.deepEqual(returned, mockCtAsset);
+
+    const mutable = returned as { metadata: { rescaleSlope: number } };
+    mutable.metadata.rescaleSlope = 999;
+    assert.equal(workspace.getAsset(mockCtAsset.id).metadata.rescaleSlope, 1.0);
+    assert.equal(mockCtAsset.metadata.rescaleSlope, 1.0);
+  });
+
+  it('3. NaN in geometry.origin[0] is refused without mutating state', () => {
+    const workspace = registeredWorkspace();
+    const before = snapshotJson(workspace);
+    const invalid = invalidAsset({
+      id: 'asset-ct-nan-origin' as AssetId,
+      geometry: { ...mockCtAsset.geometry, origin: [Number.NaN, -249.51171875, -500] },
+    });
+
+    expectRefusal(
+      () => workspace.registerAsset(invalid),
+      'WORKSPACE_NON_FINITE_NUMBER',
+      'geometry.origin[0]',
+    );
+    assert.equal(snapshotJson(workspace), before);
+    assert.equal(workspace.listAssets().length, 1);
+  });
+
+  it('4. NaN and ±Infinity in metadata/geometry are refused with the exact path', () => {
+    const workspace = registeredWorkspace();
+    const before = snapshotJson(workspace);
+
+    const nanSlope = invalidAsset({
+      id: 'asset-nan-slope' as AssetId,
+      metadata: { ...mockCtAsset.metadata, rescaleSlope: Number.NaN },
+    });
+    expectRefusal(
+      () => workspace.registerAsset(nanSlope),
+      'WORKSPACE_NON_FINITE_NUMBER',
+      'metadata.rescaleSlope',
+    );
+
+    const positive = invalidAsset({
+      id: 'asset-pos-inf' as AssetId,
+      metadata: { ...mockCtAsset.metadata, rescaleIntercept: Number.POSITIVE_INFINITY },
+    });
+    expectRefusal(
+      () => workspace.registerAsset(positive),
+      'WORKSPACE_NON_FINITE_NUMBER',
+      'metadata.rescaleIntercept',
+    );
+
+    const negative = invalidAsset({
+      id: 'asset-neg-inf' as AssetId,
+      geometry: { ...mockCtAsset.geometry, spacing: [4, 4, Number.NEGATIVE_INFINITY] },
+    });
+    expectRefusal(
+      () => workspace.registerAsset(negative),
+      'WORKSPACE_NON_FINITE_NUMBER',
+      'geometry.spacing[2]',
+    );
+
+    assert.equal(snapshotJson(workspace), before);
+  });
+
+  it('5. a nested Date is refused as an unsupported value', () => {
+    const workspace = registeredWorkspace();
+    const before = snapshotJson(workspace);
+    const invalid = invalidAsset({
+      id: 'asset-date' as AssetId,
+      metadata: {
+        ...mockCtAsset.metadata,
+        seriesDescription: new Date('2026-09-20T10:00:00Z'),
+      },
+    });
+
+    expectRefusal(
+      () => workspace.registerAsset(invalid),
+      'WORKSPACE_UNSUPPORTED_VALUE',
+      'metadata.seriesDescription',
+    );
+    assert.equal(snapshotJson(workspace), before);
+  });
+
+  it('6. nested Map, Set, bigint and function are refused', () => {
+    const workspace = registeredWorkspace();
+    const before = snapshotJson(workspace);
+    const metadata = mockCtAsset.metadata;
+
+    const map = invalidAsset({
+      id: 'asset-map' as AssetId,
+      metadata: { ...metadata, extra: new Map() },
+    });
+    expectRefusal(() => workspace.registerAsset(map), 'WORKSPACE_UNSUPPORTED_VALUE', 'metadata.extra');
+
+    const set = invalidAsset({
+      id: 'asset-set' as AssetId,
+      metadata: { ...metadata, extra: new Set() },
+    });
+    expectRefusal(() => workspace.registerAsset(set), 'WORKSPACE_UNSUPPORTED_VALUE', 'metadata.extra');
+
+    const bigint = invalidAsset({
+      id: 'asset-bigint' as AssetId,
+      metadata: { ...metadata, instanceCount: 200n },
+    });
+    expectRefusal(
+      () => workspace.registerAsset(bigint),
+      'WORKSPACE_UNSUPPORTED_VALUE',
+      'metadata.instanceCount',
+    );
+
+    const fn = invalidAsset({
+      id: 'asset-function' as AssetId,
+      metadata: { ...metadata, extra: () => 1 },
+    });
+    expectRefusal(() => workspace.registerAsset(fn), 'WORKSPACE_UNSUPPORTED_VALUE', 'metadata.extra');
+
+    assert.equal(snapshotJson(workspace), before);
+  });
+
+  it('7. a cyclic asset is refused as WORKSPACE_CYCLIC_VALUE', () => {
+    const workspace = registeredWorkspace();
+    const before = snapshotJson(workspace);
+    const cyclic: Record<string, unknown> = { ...mockCtAsset };
+    cyclic.self = cyclic;
+
+    expectRefusal(
+      () => workspace.registerAsset(cyclic as unknown as ImagingAsset),
+      'WORKSPACE_CYCLIC_VALUE',
+      'self',
+    );
+    assert.equal(snapshotJson(workspace), before);
+  });
+
+  it('8. study inputs are validated: non-finite weight and bad values are refused', () => {
+    const workspace = new ImagingWorkspace();
+    const before = snapshotJson(workspace);
+
+    const nanWeight = invalidStudy({
+      patient: { ...mockStudyReference.patient, patientWeightKg: Number.NaN },
+    });
+    expectRefusal(
+      () => workspace.registerStudy(nanWeight),
+      'WORKSPACE_NON_FINITE_NUMBER',
+      'patient.patientWeightKg',
+    );
+
+    const dateField = invalidStudy({
+      patient: { ...mockStudyReference.patient, patientSex: new Date('2026-09-20T10:00:00Z') },
+    });
+    expectRefusal(
+      () => workspace.registerStudy(dateField),
+      'WORKSPACE_UNSUPPORTED_VALUE',
+      'patient.patientSex',
+    );
+
+    assert.equal(snapshotJson(workspace), before);
+    assert.equal(workspace.listStudies().length, 0);
+  });
+});
+
+describe('NuClear P4.1.1 — value-integrity guarantees', () => {
+  it('preserves -0, which is finite and must not be normalised', () => {
+    const cloned = cloneSerializableValue({ value: -0 }, "probe 'negative-zero'");
+    assert.ok(Object.is(cloned.value, -0));
+  });
+
+  it('allows shared non-cyclic references and keeps their identity inside the clone', () => {
+    const shared = { voxel: 7 };
+    const cloned = cloneSerializableValue({ a: shared, b: shared }, "probe 'shared'");
+    assert.notEqual(cloned.a, shared);
+    assert.equal(cloned.a, cloned.b);
+  });
+
+  it('refuses symbol values and symbol-keyed properties by path', () => {
+    assert.throws(
+      () => assertSerializableValue({ a: Symbol('x') }, "probe 'symbol-value'"),
+      (error: unknown) =>
+        error instanceof WorkspaceError &&
+        error.code === 'WORKSPACE_UNSUPPORTED_VALUE' &&
+        error.message.includes('a'),
+    );
+
+    const withSymbolKey: Record<string, unknown> & { [key: symbol]: unknown } = { ok: true };
+    withSymbolKey[Symbol('secret')] = 1;
+    assert.throws(
+      () => assertSerializableValue(withSymbolKey, "probe 'symbol-key'"),
+      (error: unknown) =>
+        error instanceof WorkspaceError &&
+        error.code === 'WORKSPACE_UNSUPPORTED_VALUE' &&
+        error.message.includes('Symbol(secret)'),
+    );
+  });
+});

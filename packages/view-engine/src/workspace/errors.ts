@@ -16,7 +16,10 @@ export type WorkspaceErrorCode =
   | 'WORKSPACE_UNKNOWN_GROUP'
   | 'WORKSPACE_SLOT_LAYOUT_INVALID'
   | 'WORKSPACE_ILLEGAL_SLOT_TRANSITION'
-  | 'WORKSPACE_DEMAND_REQUIRES_BINDING';
+  | 'WORKSPACE_DEMAND_REQUIRES_BINDING'
+  | 'WORKSPACE_NON_FINITE_NUMBER'
+  | 'WORKSPACE_UNSUPPORTED_VALUE'
+  | 'WORKSPACE_CYCLIC_VALUE';
 
 /** Optional underlying failure preserved for diagnostics. */
 export interface WorkspaceErrorOptions {

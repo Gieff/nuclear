@@ -2,8 +2,10 @@
 
 Status: **REOPENED** (2026-09-22). P4.0 (`72fbaee`), P4.1 (`8cdad35`) and
 P4.2 (`a70983c`) were accepted locally and then **reopened by an independent
-human review**; none of them is an approvable closed slice as committed. The
-ratified corrective slices must land before P4.3. See
+human review**; none of them is an approvable closed slice as committed.
+Corrective progress: **C8 complete** (`db4ba42`, corrected by `f71d609`) and
+**C1 complete**. Remaining ratified correctives before P4.3:
+`C5 → C4 → C3 → C2 → C6 → C7`. See
 `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` §“Reopened — Ratified Correction
 Slices”, `docs/decisions/ADR-010-…md` §7 and
 `docs/decisions/ADR-011-prepared-view-immutability-and-shared-state-mutation.md`.
@@ -629,5 +631,140 @@ exercise the **real public workspace API** using freshly constructed
 path-naming error with no mutation on refusal. Do not route the negatives
 through the pre-existing `as unknown as` fixture escapes. Do not start C5 or
 C4 in the same slice.
+
+---
+
+# Handover Report — C1 (P4.1.1): Workspace Input Integrity
+
+## 1. What Was Implemented
+
+C1 removed the silent JSON normalization from `ImagingWorkspace`. Previously
+`JSON.parse(JSON.stringify(value))` turned `NaN`/`±Infinity` into `null` and
+mangled `Date`/`Map`/`Set`/`bigint`/`symbol`. Registration and reads now use a
+**fail-closed validation + safe clone** that refuses invalid input with a
+typed error naming the exact path, **before any workspace mutation**.
+
+- **`value-integrity.ts`**: `assertSerializableValue(value, context)` walks the
+  graph and throws on the first unsafe node; `cloneSerializableValue` =
+  assert then `structuredClone`. Rejects:
+  - non-finite numbers (`NaN`, `±Infinity`) → `WORKSPACE_NON_FINITE_NUMBER`;
+  - `bigint`, `function`, `symbol`, symbol-keyed properties and non-plain
+    objects (`Date`/`Map`/`Set`/class instances) → `WORKSPACE_UNSUPPORTED_VALUE`;
+  - true cycles (an object that is its own ancestor) → `WORKSPACE_CYCLIC_VALUE`.
+  Allows strings, finite numbers, booleans, `undefined`, `null`, plain
+  objects, arrays, `-0`, and **shared non-cyclic references** (cycle detection
+  uses an ancestor set, not a global visited set). No `Math.` is used
+  (`Number.isFinite`).
+- **`errors.ts`**: added the three codes with the existing actionable-message
+  style.
+- **`imaging-workspace.ts`**: JSON `cloneValue` deleted. `registerStudy` /
+  `registerAsset` validate the **caller's original object** before touching
+  any `Map`/`Set`, so a refusal leaves the workspace byte-identical. Reads
+  return `structuredClone` copies of the already-validated stored value.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/view-engine/src/workspace/value-integrity.ts` (141 lines)
+- `tests/view-engine/workspace-integrity.test.ts` (282 lines, 11 tests)
+
+Modified:
+- `packages/view-engine/src/workspace/errors.ts` (45 lines, +3 codes)
+- `packages/view-engine/src/workspace/imaging-workspace.ts` (162 lines)
+- `packages/view-engine/src/workspace/index.ts` (12 lines)
+
+Unchanged: `packages/shared-types/**`, every other package, `python/**`,
+plans/ADRs, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- **Error precedence: integrity → duplicate/unknown → (future) correlation.**
+  Integrity is validated first; a payload that is both invalid and a duplicate
+  reports the integrity error. This is deterministic, both outcomes leave
+  state identical, and it is now recorded here. C5 must slot its provenance
+  correlation into this precedence deliberately (see §8).
+- **Published reads remain mutable clones.** C1 only guarantees refusal and
+  copy isolation; deep-freezing published DTOs is **C4/ADR-011**, out of scope
+  here.
+- **Dates must stay ISO strings.** The workspace now refuses `Date`
+  instances; contracts already carry timestamps as ISO strings (fixtures
+  comply — test 1 proves the JSON round-trip). Future fixture authors must not
+  introduce `new Date(...)`.
+- `structuredClone` runs only after validation; it is typed through the
+  configured DOM lib and is a real global on Node 24 / Chromium-Electron.
+
+## 4. Tests Added & Executed
+
+Added `tests/view-engine/workspace-integrity.test.ts` (11 tests, 2 suites).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npx tsc -p tsconfig.test.json` | exit 0 |
+| `npm test` | **298 pass / 0 fail / 63 suites** (0 skipped/todo) = C8-corrective baseline 287/61 + 11 tests / +2 suites |
+| `npm run build` | clean (exit 0) |
+| `node --test tests/view-engine/workspace-integrity.test.ts` | 11/11 |
+| `node --test tests/view-engine/workspace-core.test.ts` | 11/11 (regression intact) |
+| `node --test tests/view-engine/prepared-view.test.ts` | 14/14 (regression intact) |
+| `npm run test:python` | 189 passed (unchanged) |
+| `npm run typecheck:python` | 47 files clean (unchanged) |
+
+Coverage: valid registration + JSON round-trip; copy isolation; `NaN` in
+`geometry.origin[0]`; `NaN`/`±Infinity` in metadata/geometry paths; nested
+`Date`; `Map`/`Set`/`bigint`/function; true cycle; symbol value and
+symbol-keyed property; `-0` preservation; shared-reference preservation; the
+study boundary. Every negative asserts the exact `error.code`, a message
+naming the path, and that `listAssets()`/`listStudies()`/`snapshot()` are
+unchanged after refusal. No `skip`/`todo`/`|| true` and no vacuous assertions.
+
+Independent verdicts: `nuclear-reviewer` **CONCERNS** on the (then-missing)
+AgentLog gate, with the code itself **PASS** on all nine checks; `nuclear-qa`
+**PASS** for the executable scope. This report resolves the gate.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- No ADR change needed: C1 implements the C1 row of the ratified plan and
+  ADR-010 §7.4’s “runtime integrity validation local to `view-engine`”.
+- This report satisfies the AgentLog Gate for C1.
+- `CHANGELOG.md` untouched; release notes are compiled later via
+  `/promote-changelog 4` only on explicit request.
+
+## 6. Project Model Impact
+
+- None. The workspace still stores plain JSON-domain values; the refusal
+  boundary is stricter, but no persisted schema changed.
+
+## 7. Known Limitations & Technical Debt
+
+- **Snapshot claim scope (C1 review N2).** `snapshot()` still deep-equals its
+  JSON round-trip only for payloads without `-0` or explicit
+  `undefined`-valued properties (`JSON.stringify` maps `-0 → 0` and drops
+  `undefined` keys). The read path itself is lossless.
+- **Residual edge normalizations (N3).** Custom-prototype *arrays*, null-
+  prototype objects and getter properties are not covered by the ratified C1
+  list; they remain JSON-domain-equivalent.
+- **Test escapes disclosed (N5).** The new suite uses two **local**
+  `as unknown as` widenings (`invalidAsset`/`invalidStudy`) to construct
+  deliberately-invalid values per call; they are not the pre-existing fixture
+  escapes C8 forbade reusing. Zero `@ts-ignore`/`@ts-expect-error`.
+- **Fingerprint sensitivity (N4).** The no-mutation check uses
+  `JSON.stringify(snapshot)`; a structural fingerprint would be stronger.
+- **Path rendering (N6).** Non-identifier keys render as `metadata.my key`
+  rather than bracket notation (cosmetic).
+- `value-integrity.test.ts` is 282 lines (tests are outside the Rule 02
+  source gate); all source files are ≤162 lines.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **C5 (P4.2.2) — provenance ↔ registered-asset cross-validation**:
+require equal lengths of `sourceAssetIds`/`sourceSeriesInstanceUIDs`/
+`sourceFingerprints`, positional one-to-one correspondence, matching
+`studyInstanceUID`, matching asset `seriesInstanceUID`, and a deep-equal
+`sourceFingerprint`, all against the **stored, validated clones** (never the
+caller’s mutable object), mutating nothing before every correlation check
+passes. Place its errors explicitly into the C1 precedence
+(integrity → duplicate/unknown → correlation) and record it. Do not add C4
+freezing or C2 slot-rule changes in C5.
+
 
 

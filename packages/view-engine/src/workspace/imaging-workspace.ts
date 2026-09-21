@@ -4,8 +4,10 @@
  * Owns semantic references only: studies, imaging assets and the logical
  * `ViewGroup`/`ViewSlot` layout. It is not React state, a DOM tree or a
  * Cornerstone `RenderingEngine`, and it never pins RAM or VRAM (ADR-010 §1).
- * Outputs are JSON-serializable deep copies; unknown or duplicate ids fail
- * closed with a typed `WorkspaceError`.
+ * Registration validates the caller's original value fail-closed before any
+ * state changes (C1); reads and `snapshot()` return JSON-serializable deep
+ * copies, while unknown or duplicate ids fail closed with a typed
+ * `WorkspaceError`.
  */
 import type {
   AssetId,
@@ -21,6 +23,7 @@ import type {
 import { WorkspaceError } from './errors.js';
 import { ViewSlotRegistry } from './view-slot-registry.js';
 import { PreparedViewRegistry } from '../prepared-view/registry.js';
+import { cloneSerializableValue } from './value-integrity.js';
 
 export interface ImagingWorkspaceSnapshot {
   readonly studies: readonly StudyReference[];
@@ -28,16 +31,6 @@ export interface ImagingWorkspaceSnapshot {
   readonly groups: readonly ViewGroup[];
   readonly slots: readonly ViewSlot[];
   readonly preparedViews: readonly PreparedView[];
-}
-
-/**
- * JSON-serializable deep copy of a value object. NuClear value contracts are
- * plain JSON (strings, numbers, booleans, arrays and plain objects); callers
- * must not register a payload containing `Date`, `Map`, `Set`, `bigint`,
- * `NaN` or `-0`, which this copy would silently alter.
- */
-function cloneValue<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 export class ImagingWorkspace {
@@ -56,18 +49,24 @@ export class ImagingWorkspace {
   }
 
   registerStudy(study: StudyReference): void {
+    // Validate the caller's original value before touching any map/Set, so a
+    // refusal leaves the workspace exactly as it was (C1, fail-closed).
+    const registered = cloneSerializableValue(study, `study '${study.id}'`);
     if (this.studyById.has(study.id)) {
       throw new WorkspaceError(
         'WORKSPACE_DUPLICATE_STUDY',
         `Study id '${study.id}' is already registered. Remediation: reuse the registered study or register it under a distinct StudyId.`,
       );
     }
-    this.studyById.set(study.id, cloneValue(study));
+    this.studyById.set(study.id, registered);
     this.studyOrder.push(study.id);
     this.studyInstanceUIDs.add(study.studyInstanceUID);
   }
 
   registerAsset(asset: ImagingAsset): void {
+    // Validate the caller's original value before touching any map, so a
+    // refusal leaves the workspace exactly as it was (C1, fail-closed).
+    const registered = cloneSerializableValue(asset, `asset '${asset.id}'`);
     if (this.assetById.has(asset.id)) {
       throw new WorkspaceError(
         'WORKSPACE_DUPLICATE_ASSET',
@@ -80,7 +79,7 @@ export class ImagingWorkspace {
         `Asset '${asset.id}' references study instance UID '${asset.studyInstanceUID}', which has no registered study. Remediation: register the owning StudyReference before its assets.`,
       );
     }
-    this.assetById.set(asset.id, cloneValue(asset));
+    this.assetById.set(asset.id, registered);
     this.assetOrder.push(asset.id);
   }
 
@@ -104,20 +103,24 @@ export class ImagingWorkspace {
     return this.preparedViews.list();
   }
 
+  // Stored studies/assets were validated and cloned at registration, so a
+  // plain `structuredClone` is sufficient here and keeps the JSON-serializable
+  // semantics without re-walking the graph on every read.
+
   getStudy(studyId: StudyId): StudyReference {
-    return cloneValue(this.requireStudy(studyId));
+    return structuredClone(this.requireStudy(studyId));
   }
 
   getAsset(assetId: AssetId): ImagingAsset {
-    return cloneValue(this.requireAsset(assetId));
+    return structuredClone(this.requireAsset(assetId));
   }
 
   listStudies(): readonly StudyReference[] {
-    return this.studyOrder.map((studyId) => cloneValue(this.requireStudy(studyId)));
+    return this.studyOrder.map((studyId) => structuredClone(this.requireStudy(studyId)));
   }
 
   listAssets(): readonly ImagingAsset[] {
-    return this.assetOrder.map((assetId) => cloneValue(this.requireAsset(assetId)));
+    return this.assetOrder.map((assetId) => structuredClone(this.requireAsset(assetId)));
   }
 
   snapshot(): ImagingWorkspaceSnapshot {
