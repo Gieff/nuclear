@@ -11,6 +11,9 @@ Run one bounded slice at a time:
 Before delegation, the orchestrator must read:
 
 - `docs/plans/PHASE_3_MEDICAL_ENGINE_PLAN.md`;
+- `docs/plans/PHASE_3_MEDCANVAS_RECOVERY_ADDENDUM.md`; for P3.3–P3.5,
+  evaluate only the addendum section scoped to the active slice and record
+  the translation from recovered behaviour to NuClear contract/test;
 - `docs/NUCLEAR_ARCHITECTURE_V3.md` and `docs/PROJECT_VADEMECUM.md` sections
   on `medical-engine`, residency and temporary RenderTargets;
 - `.agents/skills/nuclear-rendering/SKILL.md` and
@@ -20,7 +23,10 @@ Before delegation, the orchestrator must read:
 ## Delegation Sequence
 
 1. The orchestrator validates the exact P3.x slice and its entry conditions.
-   It must not delegate all of Phase 3 in one request.
+   It must not delegate all of Phase 3 in one request. For P3.3–P3.5 it must
+   explicitly state whether the MedCanvas recovery addendum contributes a
+   behaviour, a test invariant, or no applicable guidance; a source reference
+   alone is not an implementation instruction.
 2. `nuclear-engine-engineer` implements exactly the bounded adapter,
    residency or target work specified by that slice. It must not stage,
    commit or push.

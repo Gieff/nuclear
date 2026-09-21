@@ -28,6 +28,18 @@ When `$1` is `2`, also read
 named P2.x slice at a time; do not start a later slice until the required
 review and QA evidence for its predecessor is recorded.
 
+When `$1` is `3`, also read
+`docs/plans/PHASE_3_MEDICAL_ENGINE_PLAN.md`,
+`docs/plans/PHASE_3_OPENCODE_RUNBOOK.md`, and
+`docs/plans/PHASE_3_MEDCANVAS_RECOVERY_ADDENDUM.md`. Before planning or
+delegating a P3.x slice, evaluate the addendum sections whose scope includes
+that slice and record which recovered behaviours are being translated into
+NuClear contracts/tests. Treat the addendum as recovery guidance subordinate
+to `AGENTS.md`, the Vademecum, Architecture v3 and the normative P3 plans;
+never import MedCanvas APIs, UI, controller state or legacy abstractions.
+Do not apply P3.3–P3.5 recovery decisions while executing P3.0–P3.2 unless
+the active slice explicitly requires a contract correction.
+
 Implement only work within the requested phase. For non-trivial edits,
 obtain `nuclear-reviewer` and `nuclear-qa` reports, inspect the real
 diff, and persist the complete 8-point Handover Report in
