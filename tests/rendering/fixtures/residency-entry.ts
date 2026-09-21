@@ -13,64 +13,31 @@
 
 import { cache } from '@cornerstonejs/core';
 
-import type {
-  AssetAvailabilityStatus,
-  AssetResidencyTier,
-  ResourceDemand,
-} from '../../../packages/shared-types/src/index.ts';
+import type { AssetAvailabilityStatus } from '../../../packages/shared-types/src/index.ts';
 import {
-  buildVolumeIngestionPlan,
   CornerstoneRendererAdapter,
   createCornerstoneVolumeResidencyBackend,
-  RendererError,
-  VolumeIngestionError,
 } from '../../../packages/medical-engine/src/renderer/index.ts';
-import type { VolumeIngestionPlan } from '../../../packages/medical-engine/src/renderer/index.ts';
-import {
-  ResidencyError,
-  ResourceManager,
-} from '../../../packages/medical-engine/src/residency/index.ts';
-import type { ResourceRetention } from '../../../packages/medical-engine/src/residency/index.ts';
-import {
-  buildAsset,
-  decodeBase64,
-  readTypedArray,
-  requireComputed,
-} from './volume-fixture.ts';
+import { ResourceManager } from '../../../packages/medical-engine/src/residency/index.ts';
 import type { VolumeProbeInput } from './volume-fixture.ts';
 import { createBrowserHost, probeWebGL2 } from './adapter-host.ts';
+import {
+  describeError,
+  makeRetention,
+  planFromInput,
+  type FusionProbeInput,
+  type ResidencyAck,
+} from './residency-plan.ts';
 
 const ENGINE_ID = 'nuclear-residency-probe';
-
-/** NuClear declares `gpu-ready`; `gpu-resident` is not observable in P3.3. */
-const REQUIRED_TIERS: readonly AssetResidencyTier[] = ['gpu-ready'];
-
-interface FusionProbeInput {
-  ct: VolumeProbeInput;
-  pet: VolumeProbeInput;
-}
-
-interface ResidencyAck {
-  ok: boolean;
-  name?: string;
-  code?: string;
-  message?: string;
-  volumeId?: string;
-  reloadedVolumeId?: string;
-  tier?: string;
-  ctTier?: string;
-  petTier?: string;
-  cacheVolumeIds?: string[];
-  residualCacheVolumeIds?: string[];
-  acquired?: boolean;
-  released?: boolean;
-}
 
 interface NuclearResidencyProbe {
   share(input: VolumeProbeInput): ResidencyAck;
   reload(input: VolumeProbeInput): ResidencyAck;
   fusion(input: FusionProbeInput): ResidencyAck;
   availability(input: VolumeProbeInput, state: AssetAvailabilityStatus['state']): ResidencyAck;
+  strictReload(input: VolumeProbeInput): ResidencyAck;
+  disposeAfterSettle(input: VolumeProbeInput): ResidencyAck;
   teardown(): ResidencyAck;
 }
 
@@ -101,62 +68,6 @@ function ensureManager(): ResourceManager {
 /** The real Cornerstone cache enumeration, used as the residency witness. */
 function cacheVolumeIds(): string[] {
   return cache.getVolumes().map((volume) => volume.volumeId);
-}
-
-function makeRetention(
-  leaseId: string,
-  plan: VolumeIngestionPlan,
-  state: AssetAvailabilityStatus['state'] = 'online',
-): ResourceRetention {
-  const demand: ResourceDemand = {
-    assetId: plan.assetId,
-    priority: 'visible-interactive',
-    requiredTiers: REQUIRED_TIERS,
-  };
-  return { leaseId, plan, demand, availability: { state } };
-}
-
-/** Builds the plan through the same Node-safe planner the product uses. */
-function planFromInput(input: VolumeProbeInput): VolumeIngestionPlan {
-  const evidence = requireComputed(input.expectedGeometry);
-  const pixel = input.pixels;
-  return buildVolumeIngestionPlan({
-    asset: buildAsset(input.fixture, evidence.assetGeometry, pixel, evidence.geometricDigest),
-    availability: { state: input.fixture.availability as AssetAvailabilityStatus['state'] },
-    classification: {
-      supported: input.fixture.classification.supported,
-      modality: input.fixture.modality,
-      reason: input.fixture.classification.reason,
-    },
-    geometryEvidence: evidence,
-    pixels: {
-      dtype: pixel.dtype,
-      signedness: pixel.signedness,
-      samplesPerPixel: pixel.samplesPerPixel,
-      bitsAllocated: pixel.bitsAllocated,
-      bitsStored: pixel.bitsStored,
-      highBit: pixel.highBit,
-      photometricInterpretation: pixel.photometricInterpretation,
-      scalarDataDomain: pixel.scalarDataDomain,
-      ...(pixel.rescale ? { rescale: pixel.rescale } : {}),
-      dimensions: pixel.dimensions,
-      scalarData: readTypedArray(decodeBase64(pixel.values), pixel.dtype),
-    },
-  });
-}
-
-function describeError(error: unknown): ResidencyAck {
-  if (
-    error instanceof VolumeIngestionError ||
-    error instanceof RendererError ||
-    error instanceof ResidencyError
-  ) {
-    return { ok: false, name: error.name, code: error.code, message: error.message };
-  }
-  if (error instanceof Error) {
-    return { ok: false, name: error.name, code: 'UNKNOWN', message: error.message };
-  }
-  return { ok: false, name: 'Error', code: 'UNKNOWN', message: String(error) };
 }
 
 /** Two leases share one volume; eviction happens only after both release. */
@@ -213,6 +124,54 @@ function reload(input: VolumeProbeInput): ResidencyAck {
   }
 }
 
+/** Strict adapter load -> release -> load on the same volumeId must survive. */
+function strictReload(input: VolumeProbeInput): ResidencyAck {
+  try {
+    const plan = planFromInput(input);
+    const renderer = ensureAdapter();
+    renderer.loadVolume(plan);
+    const first = cacheVolumeIds();
+    renderer.releaseVolume(plan.volumeId);
+    const residual = cacheVolumeIds();
+    renderer.loadVolume(plan);
+    const recached = cacheVolumeIds();
+    return {
+      ok: true,
+      volumeId: plan.volumeId,
+      reloadedVolumeId: recached[0],
+      acquired: first.includes(plan.volumeId),
+      released: residual.length === 0,
+      cacheVolumeIds: recached,
+      residualCacheVolumeIds: residual,
+    };
+  } catch (error) {
+    return describeError(error);
+  }
+}
+
+/** Terminal dispose must release the real volume and empty the snapshot. */
+function disposeAfterSettle(input: VolumeProbeInput): ResidencyAck {
+  try {
+    const plan = planFromInput(input);
+    const resident = ensureManager();
+    resident.retain(makeRetention('residency-dispose-live', plan));
+    const settled = resident.settle();
+    const disposal = resident.dispose();
+    const snapshot = resident.snapshot();
+    return {
+      ok: true,
+      volumeId: plan.volumeId,
+      acquired: settled.settlements[0]?.disposition === 'resident',
+      released: disposal.evictedVolumeIds.includes(plan.volumeId),
+      cacheVolumeIds: cacheVolumeIds(),
+      snapshotVolumeIds: snapshot.resources.map((resource) => resource.volumeId),
+      snapshotLeaseCount: snapshot.leases.length,
+    };
+  } catch (error) {
+    return describeError(error);
+  }
+}
+
 /** A fusion retains CT and PET separately; evicting CT leaves PET resident. */
 function fusion(input: FusionProbeInput): ResidencyAck {
   try {
@@ -253,7 +212,7 @@ function availability(
 
 function teardown(): ResidencyAck {
   try {
-    manager?.reset();
+    manager?.dispose();
     manager = undefined;
     adapter?.stop();
     adapter = undefined;
@@ -264,5 +223,13 @@ function teardown(): ResidencyAck {
 }
 
 globalThis.__nuclearRendererProbe = { webgl2: probeWebGL2 };
-globalThis.__nuclearResidencyProbe = { share, reload, fusion, availability, teardown };
+globalThis.__nuclearResidencyProbe = {
+  share,
+  reload,
+  fusion,
+  availability,
+  strictReload,
+  disposeAfterSettle,
+  teardown,
+};
 globalThis.__nuclearRendererProbeReady = true;

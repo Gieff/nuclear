@@ -13,6 +13,8 @@ export const RESIDENCY_ERROR_CODES = {
   sourceUnavailable: 'RESIDENCY_SOURCE_UNAVAILABLE',
   invalidDemand: 'RESIDENCY_INVALID_DEMAND',
   invalidBudget: 'RESIDENCY_INVALID_BUDGET',
+  disposeIncomplete: 'RESIDENCY_DISPOSE_INCOMPLETE',
+  disposed: 'RESIDENCY_DISPOSED',
 } as const;
 
 /** String-union mirror of `RESIDENCY_ERROR_CODES` values. */

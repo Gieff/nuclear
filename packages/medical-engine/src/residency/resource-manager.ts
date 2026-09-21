@@ -3,42 +3,31 @@
  * Node-safe. See `residency-budget.ts` for the internal budget/eviction engine.
  */
 import {
+  applyMeasurement,
   assertValidBudget,
   attemptEviction,
-  budgetFieldForTier,
-  bytesForTier,
-  declaredBudget,
-  measureSafely,
-  applyMeasurement,
   evictionOrder,
   leaseSnapshot,
   leaseSnapshots,
-  makeRoom,
-  projectedUsage,
   recordEviction,
   registrationOrder,
   resourceSnapshot,
-  settlementOf,
   type EvictionContext,
   type LeaseRecord,
   type ResourceRecord,
 } from './residency-budget.js';
+import { disposeResources } from './residency-disposal.js';
+import { settleResource } from './residency-settlement.js';
 import { RESIDENCY_ERROR_CODES, ResidencyError } from './residency-errors.js';
-import {
-  isPhysicalTier,
-  priorityRank,
-  requiredTierOf,
-  residencyRank,
-  tierRank,
-} from './residency-tier.js';
+import { isPhysicalTier, priorityRank, requiredTierOf, tierRank } from './residency-tier.js';
 import type { VolumeIngestionPlan } from '../renderer/volume-types.js';
 import type {
+  ResidencyDisposalResult,
   ResidencySettlementResult,
   ResourceBudget,
   ResourceLeaseSnapshot,
   ResourceResidencySnapshot,
   ResourceRetention,
-  ResourceSettlement,
   StableResidencyTier,
   VolumeResidencyBackend,
 } from './residency-types.js';
@@ -49,6 +38,7 @@ export class ResourceManager {
   private readonly resources = new Map<string, ResourceRecord>();
   private readonly leaseIndex = new Map<string, string>();
   private nextSequence = 0;
+  private disposed = false;
   constructor(backend: VolumeResidencyBackend, options: { budget?: ResourceBudget } = {}) {
     assertValidBudget(options.budget);
     this.backend = backend;
@@ -56,6 +46,7 @@ export class ResourceManager {
   }
   /** Registers or refreshes one lease. Never acquires physically. */
   retain(retention: ResourceRetention): void {
+    this.assertNotDisposed('retain');
     const requiredTier = this.assertRetention(retention);
     const resource = this.ensureResource(retention.plan);
     if (!isPhysicalTier(resource.tier) && resource.tier !== 'source-available') {
@@ -85,6 +76,7 @@ export class ResourceManager {
   }
   /** Validates next, retains new, releases removed, then settles. */
   reconcile(next: readonly ResourceRetention[]): ResidencySettlementResult {
+    this.assertNotDisposed('reconcile');
     const bindings = new Map<string, string>();
     for (const retention of next) {
       const prior = bindings.get(retention.leaseId);
@@ -108,6 +100,7 @@ export class ResourceManager {
   }
   /** Acquires leased resources, then evicts every zero-lease physical one. */
   settle(): ResidencySettlementResult {
+    this.assertNotDisposed('settle');
     const context: EvictionContext = { evictedVolumeIds: [], settlements: [] };
     const ordered = registrationOrder(this.resources);
     for (const resource of ordered) {
@@ -117,7 +110,9 @@ export class ResourceManager {
     }
     for (const resource of ordered) {
       if (resource.leases.size > 0) {
-        context.settlements.push(this.settleResource(resource, context));
+        context.settlements.push(
+          settleResource(this.backend, this.resources, this.budget, resource, context),
+        );
       }
     }
     for (const resource of evictionOrder(this.resources)) {
@@ -134,6 +129,7 @@ export class ResourceManager {
   }
   /** Selective eviction of zero-lease physical resources; confirmed ids only. */
   evictUnreferenced(): readonly string[] {
+    this.assertNotDisposed('evictUnreferenced');
     const confirmed: string[] = [];
     for (const resource of evictionOrder(this.resources)) {
       if (resource.leases.size > 0 || !isPhysicalTier(resource.tier)) {
@@ -166,11 +162,51 @@ export class ResourceManager {
     const lease = volumeId === undefined ? undefined : this.resources.get(volumeId)?.leases.get(leaseId);
     return lease === undefined || volumeId === undefined ? undefined : leaseSnapshot(lease, volumeId);
   }
-  /** Clears manager state. Not an eviction: the backend owner tears it down. */
-  reset(): void {
+  /**
+   * Terminal teardown: releases every resource still occupying a physical
+   * tier, including resources with live leases, then clears all state.
+   *
+   * Fail-closed: if any per-volume release fails, it throws
+   * `RESIDENCY_DISPOSE_INCOMPLETE` naming the failed volume ids and leaves
+   * state intact so the orphan stays visible and a retry can finish the job.
+   * Idempotent: a second call after success is a no-op that never touches the
+   * backend. This is never a purge-all; it drives the same per-volume
+   * `attemptEviction`/`recordEviction` path as selective eviction.
+   */
+  dispose(): ResidencyDisposalResult {
+    if (this.disposed) {
+      return { disposed: true, evictedVolumeIds: [], settlements: [] };
+    }
+    const context: EvictionContext = { evictedVolumeIds: [], settlements: [] };
+    const outcome = disposeResources(this.backend, this.resources, context);
+    if (outcome.failures.length > 0) {
+      const failedVolumeIds = outcome.failures.map((settlement) => settlement.volumeId);
+      const details = outcome.failures
+        .map((settlement) => settlement.message ?? settlement.disposition)
+        .join(' ');
+      throw new ResidencyError(
+        RESIDENCY_ERROR_CODES.disposeIncomplete,
+        `ResourceManager.dispose() could not release volume(s) ${failedVolumeIds.join(', ')}: ${details} No manager state was cleared, so the failed entries remain visible for a retry; resolve the backend release/enumeration failure and call dispose() again.`,
+      );
+    }
     this.resources.clear();
     this.leaseIndex.clear();
     this.nextSequence = 0;
+    this.disposed = true;
+    return {
+      disposed: true,
+      evictedVolumeIds: outcome.evictedVolumeIds,
+      settlements: outcome.settlements,
+    };
+  }
+  /** Fail-closed guard: a disposed manager rejects all further lifecycle work. */
+  private assertNotDisposed(operation: string): void {
+    if (this.disposed) {
+      throw new ResidencyError(
+        RESIDENCY_ERROR_CODES.disposed,
+        `ResourceManager.${operation}() cannot run: the manager has been disposed. Create a new manager for further residency work.`,
+      );
+    }
   }
   private conflict(
     leaseId: string,
@@ -243,56 +279,5 @@ export class ResourceManager {
     if (required !== null) {
       resource.requiredTier = required;
     }
-  }
-  private settleResource(
-    resource: ResourceRecord,
-    context: EvictionContext,
-  ): ResourceSettlement {
-    const required = resource.requiredTier;
-    if (residencyRank(resource.tier) >= tierRank(required)) {
-      applyMeasurement(this.backend, resource);
-      return settlementOf(resource, 'resident', required);
-    }
-    const field = budgetFieldForTier(required);
-    if (field === null) {
-      applyMeasurement(this.backend, resource);
-      return settlementOf(resource, 'resident', required);
-    }
-    const measurement = measureSafely(this.backend, resource.plan, required);
-    const needed = bytesForTier(measurement, required);
-    const ceiling = declaredBudget(this.budget, field);
-    // A declared budget with no backend measurement is not enforceable: acquire honestly, but never claim verified residency.
-    const budgetUnverified = ceiling !== undefined && needed === undefined;
-    if (ceiling !== undefined && needed !== undefined) {
-      makeRoom(this.backend, this.resources, resource, needed, ceiling, context);
-      if (projectedUsage(this.resources.values(), resource, needed) > ceiling) {
-        return settlementOf(
-          resource,
-          'budget-exhausted',
-          required,
-          `Needs ${needed} ${field} for '${required}' but the declared budget of ${ceiling} cannot be met after evicting every zero-lease resource; residency remains '${resource.tier}'. Raise the budget or reduce demand.`,
-        );
-      }
-    }
-    let achieved: StableResidencyTier;
-    try {
-      achieved = this.backend.acquire(resource.plan, required);
-    } catch (error) {
-      return settlementOf(
-        resource,
-        'loader-failed',
-        required,
-        `Backend acquire threw: ${error instanceof Error ? error.message : String(error)}. Volume identity preserved at '${resource.tier}'.`,
-      );
-    }
-    resource.tier = achieved;
-    applyMeasurement(this.backend, resource);
-    if (tierRank(achieved) < tierRank(required)) {
-      return settlementOf(resource, 'deferred', required, `Backend reached only '${achieved}' for required '${required}'; the volume is partially resident.`);
-    }
-    if (budgetUnverified) {
-      return settlementOf(resource, 'budget-unverified', required, `Declared budget field '${field}' is set but the residency backend exposes no '${field}' measurement for '${required}'; '${resource.volumeId}' was acquired without a verifiable budget guarantee, which is not proof of sufficiency.`);
-    }
-    return settlementOf(resource, 'resident', required);
   }
 }

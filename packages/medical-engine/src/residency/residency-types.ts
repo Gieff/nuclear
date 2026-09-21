@@ -155,3 +155,17 @@ export interface ResidencySettlementResult {
   readonly resources: readonly ResourceResidencySnapshot[];
   readonly leases: readonly ResourceLeaseSnapshot[];
 }
+
+/**
+ * Terminal result of `ResourceManager.dispose()`.
+ *
+ * Unlike eviction, disposal is not selective: it releases every resource that
+ * still occupies a physical tier, whether or not it holds a live lease. On an
+ * incomplete release it never resolves — it throws and leaves state intact so
+ * the failed entries stay visible and a retry is possible.
+ */
+export interface ResidencyDisposalResult {
+  readonly disposed: true;
+  readonly evictedVolumeIds: readonly string[];
+  readonly settlements: readonly ResourceSettlement[];
+}

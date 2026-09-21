@@ -40,6 +40,8 @@ interface ResidencyAck {
   petTier?: string;
   cacheVolumeIds?: string[];
   residualCacheVolumeIds?: string[];
+  snapshotVolumeIds?: string[];
+  snapshotLeaseCount?: number;
   acquired?: boolean;
   released?: boolean;
 }
@@ -163,6 +165,48 @@ describe('NuClear P3.3-B — Cornerstone residency backend', () => {
         assert.equal(ack.code, 'RESIDENCY_SOURCE_UNAVAILABLE');
         assert.deepEqual(ack.cacheVolumeIds, [], `availability '${state}' must not create a volume`);
       }
+      assert.deepEqual(harness.pageErrors, []);
+      assert.deepEqual(harness.consoleErrors, []);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('5. strict adapter load -> release -> load on the same volumeId succeeds', async () => {
+    const harness = await createRendererHarness({ entryPath: RESIDENCY_ENTRY_PATH });
+    try {
+      const ack = await callProbe(harness.page, 'strictReload', readFixture('ct-axial'));
+      assert.equal(ack.ok, true, describeAck(ack));
+      assert.equal(ack.acquired, true, 'the first strict load must cache the volume');
+      assert.equal(ack.released, true, 'releaseVolume must drop the volume and its derived images');
+      assert.deepEqual(ack.residualCacheVolumeIds, [], 'release must leave no residual cache entry');
+      assert.equal(
+        ack.reloadedVolumeId,
+        ack.volumeId,
+        'the strict reload must reconstruct the same volumeId',
+      );
+      assert.deepEqual(
+        ack.cacheVolumeIds,
+        [ack.volumeId],
+        'the cache must hold exactly the reloaded volume',
+      );
+      assert.deepEqual(harness.pageErrors, []);
+      assert.deepEqual(harness.consoleErrors, []);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('6. real dispose() after a retained+settled volume evicts it and clears the snapshot', async () => {
+    const harness = await createRendererHarness({ entryPath: RESIDENCY_ENTRY_PATH });
+    try {
+      const ack = await callProbe(harness.page, 'disposeAfterSettle', readFixture('ct-axial'));
+      assert.equal(ack.ok, true, describeAck(ack));
+      assert.equal(ack.acquired, true, 'the retained demand must reach gpu-ready before disposal');
+      assert.equal(ack.released, true, 'dispose must release the resident volume');
+      assert.deepEqual(ack.cacheVolumeIds, [], 'dispose must leave no Cornerstone volume cached');
+      assert.deepEqual(ack.snapshotVolumeIds, [], 'dispose must empty the resource snapshot');
+      assert.equal(ack.snapshotLeaseCount, 0, 'dispose must clear every lease');
       assert.deepEqual(harness.pageErrors, []);
       assert.deepEqual(harness.consoleErrors, []);
     } finally {

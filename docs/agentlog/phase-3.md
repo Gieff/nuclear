@@ -2,10 +2,11 @@
 
 Status: **IN PROGRESS** — P3.0–P3.2.1 accepted (P3.1 closed via corrective
 P3.1.1, P3.2 closed via corrective P3.2.1); P3.3-A accepted (pure
-`ResourceManager` residency core) and P3.3-B accepted (real Cornerstone
-residency backend + controlled WebGL 2 evidence); P3.3-C–P3.6 not started.
+`ResourceManager` residency core), P3.3-B accepted (real Cornerstone residency
+backend + controlled WebGL 2 evidence) and P3.3.1 accepted (corrective
+`dispose()` lifecycle + unified release path); P3.3-C–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
-P3.2 `0cec49e`; P3.2.1, P3.3-A and P3.3-B commits recorded below.
+P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
 `b793631`.
 
@@ -1076,3 +1077,147 @@ P3.4 preconditions (PET `units`/Bq/mL-vs-g/mL coherence, a declarative
 `@nuclear/rendering-presets` surface, and CT/PET/fusion `MedicalViewState`
 fixtures with provenance). Do not add state application (P3.4), `RenderTarget`
 (P3.5), UI or view-engine work in P3.3-C.
+
+---
+
+# Handover Report — P3.3.1: Lifecycle Disposal & Unified Release (corrective)
+
+## 1. What Was Implemented
+
+The user rejected closing P3.3 after P3.3-A/P3.3-B because two lifecycle
+defects remained. `3fbc011` remains the P3.3-B baseline; this is a focused,
+atomic corrective.
+
+- **Defect 1 — `ResourceManager.reset()` orphaned physical resources.**
+  `reset()` cleared the resource/lease maps without releasing anything, so a
+  resident Cornerstone volume became an orphan the manager could no longer
+  evict, reload or account for. `reset()` is **removed** and replaced by a
+  terminal, fail-closed `dispose()`:
+  - it releases every resource still holding a physical tier (`cpu-cached`,
+    `gpu-ready`, `gpu-resident`), including resources pinned by a live lease,
+    strictly per-volume through the existing `attemptEviction`/`recordEviction`
+    path — never a purge-all;
+  - on any `eviction-failed`/`enumeration-failed` it throws the new typed
+    `RESIDENCY_DISPOSE_INCOMPLETE` (naming the failed volume ids and the retry
+    remediation) and **does not clear state**, so the orphan stays visible and
+    a retry can finish;
+  - on full success it clears resources/leases/sequence, marks the manager
+    disposed and returns `{ disposed: true, evictedVolumeIds, settlements }`;
+  - it is idempotent, and after disposal `retain`/`reconcile`/`settle`/
+    `evictUnreferenced` throw the new typed `RESIDENCY_DISPOSED`.
+- **Defect 2 — the strict release path skipped derived-image cleanup.**
+  `releaseBoundVolume`/`adapter.releaseVolume` removed only the volume load
+  object, so `releaseVolume → loadVolume` on the same `volumeId` failed typed
+  (`putImageSync: imageId already in cache`). All three cleanup paths now share
+  one private `removeVolumeArtifacts`: the volume load object first, then that
+  volume's own `${volumeId}_slice_<i>` images. `releaseBoundVolume` keeps its
+  throw-on-absence contract, `releaseBoundVolumeIfPresent` returns `false` for
+  absence, and the best-effort residual cleanup delegates too. Still strictly
+  per-volume.
+- **Decomposition:** the private `settleResource` moved verbatim to
+  `residency-settlement.ts` and the disposal pass to `residency-disposal.ts`,
+  keeping every source under the 300-line gate.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/medical-engine/src/residency/residency-settlement.ts` (90 lines)
+- `packages/medical-engine/src/residency/residency-disposal.ts` (57 lines)
+- `tests/rendering/fixtures/residency-plan.ts` (115 lines — shared probe
+  types/helpers extracted to keep the browser entry under 300 lines)
+
+Modified:
+- `packages/medical-engine/src/residency/resource-manager.ts` (283 lines —
+  `reset()` removed, `dispose()` + disposed guard added, `settleResource`
+  extracted)
+- `packages/medical-engine/src/residency/residency-types.ts` (171 lines —
+  `ResidencyDisposalResult`)
+- `packages/medical-engine/src/residency/residency-errors.ts` (41 lines —
+  `RESIDENCY_DISPOSED`, `RESIDENCY_DISPOSE_INCOMPLETE`)
+- `packages/medical-engine/src/renderer/volume-binding.ts` (131 lines —
+  unified `removeVolumeArtifacts`)
+- `tests/residency/resource-manager-findings.test.ts` (160 lines — tests 20–22)
+- `tests/rendering/resource-residency.test.ts` (216 lines — tests 5/6)
+- `tests/rendering/fixtures/residency-entry.ts` (235 lines — `strictReload`,
+  `disposeAfterSettle` probes; teardown now calls `dispose()`)
+
+Unchanged: `shared-types`, `src/index.ts`, the Python worker, the plans,
+`CHANGELOG.md`, the version. `reset()` no longer exists anywhere in `src/`.
+
+## 3. Architectural Assumptions Made
+
+- `dispose()` is **terminal**: it is the only operation allowed to release a
+  resource that still has a live lease, because the manager itself is being
+  destroyed. Selective eviction (`settle`/`evictUnreferenced`) still never
+  evicts a leased resource. This is documented on the method.
+- `resource-manager.ts:283` and `residency-budget.ts:289` are near the 300-line
+  ceiling; the two extracted residency modules are internal and not re-exported
+  from `residency/index.ts` (only `ResidencyDisposalResult` is public).
+- The order dependency in `removeVolumeArtifacts` (volume load object first,
+  then its `imageIds`) is required by Cornerstone 5.10.7 and is encoded in the
+  gotcha memory and locked by harness test 5.
+- No new ADR: this enforces the residency/semantic-lifetime contract already
+  recorded for P3.3.
+
+## 4. Tests Added & Executed
+
+Added: pure tests 20–22 (`tests/residency/resource-manager-findings.test.ts`)
+and real-harness tests 5–6 (`tests/rendering/resource-residency.test.ts`).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **119 pass / 0 fail** (26 suites; 114 prior + 5 new) |
+| `npm run test:renderer` | **43 pass / 0 fail** (41 prior + 2 new) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| P2.5 source integrity | **2/2 pass** |
+
+Evidence: `dispose()` releases a live-leased and an idle volume exactly once
+and clears the snapshot; an injected release throw yields
+`RESIDENCY_DISPOSE_INCOMPLETE` with state retained and a successful retry;
+post-dispose `retain` throws `RESIDENCY_DISPOSED` and a second `dispose()` is a
+no-op; the strict real-harness `load → release → load` reconstructs the same
+`volumeId` with the cache holding exactly it; the real `dispose()` empties
+`cache.getVolumes()` and the snapshot. All harness tests assert empty
+`pageErrors`/`consoleErrors`. No `|| true`.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- No new ADR required.
+- This report satisfies the AgentLog Gate for P3.3.1.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: **CONCERNS → resolved** — both defects fixed and
+  fail-closed, extraction byte-faithful, tests discriminating; the only
+  blocking item was this AgentLog entry, and the sole non-blocking item (test
+  numbering) was applied (`23/24` → `5/6`).
+- QA verdict: **PASS** on all 14 gates (7 command + 7 static), zero
+  FAIL/BLOCKED; it independently re-ran the renderer suite twice and confirmed
+  the reported readiness timeout was an environment flake, not a regression.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema, shared contract, fixture semantics or Python change.
+  The only new public type is `ResidencyDisposalResult`, in-package.
+
+## 7. Known Limitations & Technical Debt
+
+- `dispose()` intentionally does not touch non-physical tiers
+  (`metadata-only`/`source-available`/`evicted`), which hold no RAM/VRAM; the
+  docstring says exactly that.
+- `release()` on a disposed manager remains a typed no-op `{released:false}`;
+  only the four mutating lifecycle operations are guarded.
+- `resource-manager.ts` (283) and `residency-budget.ts` (289) are close to the
+  300-line gate; further growth needs another extraction.
+- Test sources remain outside the `tsc` graph (inherited P3.0 debt).
+- All renderer evidence is the software SwiftShader backend; hardware GPU
+  remains `NOT YET APPLICABLE`.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.3-C — conclusive phase review/QA**: independently confirm no
+semantic asset is deleted by eviction and that no global purge exists anywhere
+in the tree, re-run the full gate pipeline over the committed P3.3-A/B/1 state,
+and record the Phase 4/P3.4 entry conditions. Do not add state application
+(P3.4), `RenderTarget` (P3.5), UI or view-engine work in P3.3-C.

@@ -84,4 +84,77 @@ describe('NuClear P3.3-B — residency review findings', () => {
       'a confirmed-absent volume is not an eviction failure',
     );
   });
+  it('20. dispose() releases every physical resource including a live lease exactly once', () => {
+    const backend = new MockResidencyBackend();
+    const manager = new ResourceManager(backend);
+    const leased = makePlan('asset-dispose-leased', 'digest-20a');
+    const idle = makePlan('asset-dispose-idle', 'digest-20b');
+    manager.retain(makeRetention('lease-dispose-live', leased));
+    manager.retain(makeRetention('lease-dispose-idle', idle));
+    manager.settle();
+    // Zero leases must NOT protect the idle volume from terminal disposal.
+    manager.release('lease-dispose-idle');
+    const result = manager.dispose();
+    assert.equal(result.disposed, true);
+    assert.deepEqual(
+      [...result.evictedVolumeIds].sort(),
+      [leased.volumeId, idle.volumeId].sort(),
+      'both physical volumes must be released',
+    );
+    assert.deepEqual(result.settlements, [], 'a clean disposal produces no failure settlement');
+    for (const plan of [leased, idle]) {
+      assert.equal(
+        backend.releaseLog.filter((id) => id === plan.volumeId).length,
+        1,
+        `'${plan.volumeId}' must be released exactly once`,
+      );
+    }
+    assert.deepEqual(manager.snapshot().resources, [], 'dispose must clear the resource snapshot');
+    assert.deepEqual(manager.snapshot().leases, [], 'dispose must clear every lease');
+  });
+  it('21. dispose() fails closed on a release throw and succeeds on retry after it clears', () => {
+    const backend = new MockResidencyBackend();
+    const manager = new ResourceManager(backend);
+    const plan = makePlan('asset-dispose-fail', 'digest-21');
+    manager.retain(makeRetention('lease-dispose-fail', plan));
+    manager.settle();
+    backend.releaseThrows = new Error('release exploded');
+    assert.throws(() => manager.dispose(), (error: unknown) => {
+      assert.ok(error instanceof ResidencyError, `expected ResidencyError, got ${String(error)}`);
+      assert.equal(error.code, RESIDENCY_ERROR_CODES.disposeIncomplete);
+      assert.ok(error.message.includes(plan.volumeId), 'message must name the failed volume');
+      assert.ok(/retry/i.test(error.message), 'message must state the remediation');
+      return true;
+    });
+    assert.ok(
+      manager.getResource(plan.volumeId) !== undefined,
+      'an incomplete dispose must not clear state',
+    );
+    assert.equal(resourceOf(manager, plan.volumeId).tier, 'gpu-resident');
+    backend.releaseThrows = undefined;
+    const retried = manager.dispose();
+    assert.deepEqual(retried.evictedVolumeIds, [plan.volumeId]);
+    assert.equal(manager.getResource(plan.volumeId), undefined);
+  });
+  it('22. after dispose() retain throws RESIDENCY_DISPOSED and a second dispose() is a no-op', () => {
+    const backend = new MockResidencyBackend();
+    const manager = new ResourceManager(backend);
+    const plan = makePlan('asset-disposed', 'digest-22');
+    manager.retain(makeRetention('lease-disposed', plan));
+    manager.settle();
+    const disposal = manager.dispose();
+    assert.deepEqual(disposal.evictedVolumeIds, [plan.volumeId]);
+    const releases = backend.releaseLog.length;
+    const again = manager.dispose();
+    assert.deepEqual(again, { disposed: true, evictedVolumeIds: [], settlements: [] });
+    assert.equal(backend.releaseLog.length, releases, 'a disposed manager must not touch the backend');
+    expectResidencyCode(
+      () => manager.retain(makeRetention('lease-after', makePlan('asset-after', 'digest-22b'))),
+      RESIDENCY_ERROR_CODES.disposed,
+    );
+    assert.deepEqual(manager.snapshot().resources, []);
+    assert.deepEqual(manager.snapshot().leases, []);
+    assert.equal(manager.getResource(plan.volumeId), undefined);
+    assert.equal(manager.getLease('lease-disposed'), undefined);
+  });
 });

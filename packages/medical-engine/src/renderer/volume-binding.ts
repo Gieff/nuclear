@@ -46,14 +46,39 @@ export function assertVolumeUncached(volumeId: string): void {
 /** Removes a half-registered volume; never masks the original construction cause. */
 function removeResidualVolume(volumeId: string): void {
   try {
-    if (cache.getVolume(volumeId) !== undefined) {
-      cache.removeVolumeLoadObject(volumeId);
-    }
+    removeVolumeArtifacts(volumeId);
   } catch {
     // Documented benign fallback: residual cleanup is best-effort. A cleanup
     // failure must never replace the actionable construction error below,
     // whose `cause` preserves the original Cornerstone failure.
   }
+}
+
+/**
+ * Removes one cached volume and every derived image it owns.
+ *
+ * Cornerstone's `removeVolumeLoadObject`/`_decacheVolume` clears the derived
+ * slice images' `sharedCacheKey` but leaves each `${volumeId}_slice_<i>` entry
+ * in the image cache. `createLocalVolume` re-registers those ids with
+ * `cache.putImageSync` and throws "imageId already in cache" on a second load,
+ * so a per-volume release must also drop this volume's own derived images or
+ * the documented evict -> reload path cannot reconstruct the same `volumeId`.
+ * This stays strictly per-volume: only `volume.imageIds` is touched.
+ *
+ * @returns `false` when the volume is not cached, `true` once it is cleaned.
+ */
+function removeVolumeArtifacts(volumeId: string): boolean {
+  const volume = cache.getVolume(volumeId);
+  if (volume === undefined) {
+    return false;
+  }
+  cache.removeVolumeLoadObject(volumeId);
+  for (const imageId of volume.imageIds) {
+    if (cache.getImage(imageId) !== undefined) {
+      cache.removeImageLoadObject(imageId);
+    }
+  }
+  return true;
 }
 
 /**
@@ -83,15 +108,14 @@ export function bindVolume(plan: VolumeIngestionPlan): LoadedVolume {
   return describeLoadedVolume(plan);
 }
 
-/** Releases a cached volume; an unknown id fails closed. */
+/** Releases a cached volume and its derived images; an unknown id fails closed. */
 export function releaseBoundVolume(volumeId: string): void {
-  if (cache.getVolume(volumeId) === undefined) {
+  if (!removeVolumeArtifacts(volumeId)) {
     throw new VolumeIngestionError(
       VOLUME_INGESTION_ERROR_CODES.payloadInvalid,
       `Volume '${volumeId}' is not cached; nothing to release.`,
     );
   }
-  cache.removeVolumeLoadObject(volumeId);
 }
 
 /**
@@ -101,25 +125,7 @@ export function releaseBoundVolume(volumeId: string): void {
  * already be gone when the manager confirms release. `false` therefore means
  * "not cached", never "failed"; callers that need a hard error use
  * `releaseBoundVolume`. There is deliberately no purge-all variant.
- *
- * Cornerstone's `removeVolumeLoadObject`/`_decacheVolume` clears the derived
- * slice images' `sharedCacheKey` but leaves each `${volumeId}_slice_<i>` entry
- * in the image cache. `createLocalVolume` re-registers those ids with
- * `cache.putImageSync` and throws "imageId already in cache" on a second load,
- * so a per-volume release must also drop this volume's own derived images or
- * the documented evict -> reload path cannot reconstruct the same `volumeId`.
- * This stays strictly per-volume: only `volume.imageIds` is touched.
  */
 export function releaseBoundVolumeIfPresent(volumeId: string): boolean {
-  const volume = cache.getVolume(volumeId);
-  if (volume === undefined) {
-    return false;
-  }
-  cache.removeVolumeLoadObject(volumeId);
-  for (const imageId of volume.imageIds) {
-    if (cache.getImage(imageId) !== undefined) {
-      cache.removeImageLoadObject(imageId);
-    }
-  }
-  return true;
+  return removeVolumeArtifacts(volumeId);
 }
