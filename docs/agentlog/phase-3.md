@@ -3676,9 +3676,12 @@ renderer. Nothing was staged or committed at the time of writing.
 - **P3.5-A — browser temporary target**
   (`renderer/temporary-render-target.ts`, browser-only, exported solely from
   `renderer/index.ts`): `captureTemporaryRenderTarget(input, options)` starts a
-  **separate temporary `CornerstoneRendererAdapter`** on a caller-supplied host
-  sized exactly to the computed pixels, applies the same semantic state through
-  the ordinary `applyViewApplication`, obtains the raster through the ordinary
+  **separate temporary `CornerstoneRendererAdapter`** (a distinct physical
+  target that shares the rendering path and state — the `RenderTarget` name is
+  retained from the Phase 3 contract/architecture and does **not** denote an
+  internal WebGL framebuffer, ADR-009) on a caller-supplied host sized exactly
+  to the computed pixels, applies the same semantic state through the ordinary
+  `applyViewApplication`, obtains the raster through the ordinary
   `captureMedicalRaster` path (provenance and spec §6 checks included), then
   stops the adapter and removes its container in a `finally`. Allocation
   failures are wrapped as `RENDER_TARGET_ALLOCATION_FAILED`; a cleanup failure

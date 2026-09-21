@@ -57,6 +57,17 @@ it silently.
    no preview upscaling and no Canvas re-rasterization of medical data is
    introduced.
 
+   **Terminology.** In P3 the term `RenderTarget` denotes this **separate
+   temporary Cornerstone engine/surface** — a distinct physical target that
+   shares the rendering path and state — **not an internal WebGL framebuffer**.
+   The name is retained from the Phase 3 contract
+   (`TemporaryRenderTargetSpec`) and the architecture, which leaves the
+   physical realization open ("un canvas offscreen, un target interno al
+   backend o un'altra superficie temporanea"); a future backend may replace
+   this mechanism with a true offscreen/internal target while preserving the
+   state/provenance/disposal contract (see "Conditions That Might Warrant a
+   Revision").
+
 3. **The same semantic state is carried; only the target pixel size is
    retargeted.** `deriveTemporaryRenderTargetPlan(plan, pixelDimensions)`
    copies the compiled plan verbatim except for
@@ -73,9 +84,9 @@ it silently.
 4. **A separate host factory keeps the DOM gateway injected.**
    `captureTemporaryRenderTarget(input, { createHost })` receives a
    `createHost(pixelDimensions) => RendererRuntimeHost` factory. The primitive
-   never reaches for `document`; the harness supplies an offscreen host (or the
-   controlled test host) and the desktop shell will supply the production one
-   (ADR-003).
+   never reaches for `document`; the harness supplies a target-sized host
+   (positioned offscreen where the host supports it) and the desktop shell will
+   supply the production one (ADR-003).
 
 5. **Fail-closed with no fallback.** Engine/container allocation failure is
    wrapped as `RENDER_TARGET_ALLOCATION_FAILED` (cause preserved); a render or
