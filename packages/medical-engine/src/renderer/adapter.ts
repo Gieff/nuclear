@@ -1,8 +1,6 @@
 /**
- * @nuclear/medical-engine — narrow Cornerstone adapter: P3.1 engine lifecycle
- * and P3.2 local volume loading via `createLocalVolume`.
- *
- * Residency, state application and RenderTargets (P3.3–P3.5) are out of scope.
+ * @nuclear/medical-engine — narrow Cornerstone adapter: P3.1 lifecycle, P3.2
+ * local volume loading and P3.4-B viewport resolution (stack or orthographic).
  * Direct `@cornerstonejs/core` imports stay confined to this adapter and the
  * browser bundle entry (ADR-003); `src/index.ts` never re-exports it.
  */
@@ -14,6 +12,7 @@ import {
   init,
   isCornerstoneInitialized,
   RenderingEngine,
+  type Types,
 } from '@cornerstonejs/core';
 
 import {
@@ -43,6 +42,11 @@ export const DEFAULT_RENDERER_VIEWPORT_ID = 'nuclear-renderer-viewport';
 export interface CornerstoneAdapterStartOptions {
   readonly engineId?: string;
   readonly viewportId?: string;
+  /**
+   * Cornerstone viewport type for the enabled viewport. Defaults to `'stack'`
+   * (preserving P3.1); `'orthographic'` yields a volume viewport for P3.4-B.
+   */
+  readonly viewportType?: 'stack' | 'orthographic';
 }
 
 /** Maps a detected capability payload onto the NuClear-owned contract explicitly. */
@@ -67,24 +71,22 @@ function bestEffortRelease(host: RendererRuntimeHost, engineId: string): void {
   try {
     getRenderingEngine(engineId)?.destroy();
   } catch {
-    // Documented benign fallback: destroy() can throw when Cornerstone never
-    // finished registering the engine. Releasing the container below is still
-    // meaningful, and the caller receives the original error regardless.
+    // Documented benign fallback: destroy() can throw before registration; the
+    // caller still receives the original initialization error.
   }
   try {
     host.removeEngineContainer(engineId);
   } catch {
-    // Documented benign fallback: container removal is host-owned. A failure
-    // here must not replace the actionable initialization error.
+    // Documented benign fallback: container removal is host-owned and must not
+    // replace the actionable initialization error.
   }
 }
 
 /**
- * Owns one Cornerstone `RenderingEngine` for one injected host.
- *
- * Lifecycle: `idle` -> `started` -> `idle`. A teardown that does not fully
- * release physical state enters the retryable `teardown-failed` state; a clean
- * `stop()` from `idle` is a lifecycle violation, not a no-op.
+ * Owns one Cornerstone `RenderingEngine` for one injected host. Lifecycle:
+ * `idle` -> `started` -> `idle`. A teardown that does not fully release enters
+ * the retryable `teardown-failed` state; a clean `stop()` from `idle` is a
+ * lifecycle violation, not a no-op.
  */
 export class CornerstoneRendererAdapter {
   readonly #host: RendererRuntimeHost;
@@ -100,10 +102,9 @@ export class CornerstoneRendererAdapter {
   }
 
   /**
-   * Starts a renderer adapter against `host`.
-   *
-   * Fail-closed order: probe WebGL 2, reject a taken engine id, initialize
-   * Cornerstone, create the host container, then create and enable the engine.
+   * Starts a renderer adapter against `host`. Fail-closed order: probe WebGL 2,
+   * reject a taken engine id, initialize Cornerstone, create the host container,
+   * then create and enable the engine.
    */
   static start(
     host: RendererRuntimeHost,
@@ -159,7 +160,10 @@ export class CornerstoneRendererAdapter {
       const engine = new RenderingEngine(engineId);
       engine.enableElement({
         viewportId,
-        type: Enums.ViewportType.STACK,
+        type:
+          options.viewportType === 'orthographic'
+            ? Enums.ViewportType.ORTHOGRAPHIC
+            : Enums.ViewportType.STACK,
         element: container,
       });
     } catch (error) {
@@ -186,6 +190,21 @@ export class CornerstoneRendererAdapter {
     return this.#viewportId;
   }
 
+  /**
+   * The live Cornerstone viewport, resolved from the registered engine.
+   * Fail-closed: a non-started adapter or a missing/destroyed viewport throws.
+   */
+  getViewport(): Types.IViewport {
+    this.#assertStarted('resolve its viewport');
+    const viewport = getRenderingEngine(this.#engineId)?.getViewport(this.#viewportId);
+    if (viewport === undefined) {
+      throw new RendererLifecycleError(
+        `Renderer adapter '${this.#engineId}' has no viewport '${this.#viewportId}' registered in Cornerstone; the engine may have been destroyed.`,
+      );
+    }
+    return viewport;
+  }
+
   /** Current lifecycle state. */
   get state(): RendererAdapterState {
     return this.#state;
@@ -198,14 +217,11 @@ export class CornerstoneRendererAdapter {
   }
 
   /**
-   * Tears the adapter down and unregisters its engine.
-   *
-   * Engine destruction and container removal are attempted independently, and
-   * container removal always runs even when `destroy()` throws. `idle` is only
-   * reported when no operation failed AND the engine is confirmed unregistered;
-   * otherwise the retryable `teardown-failed` state throws so a transient
-   * failure can self-heal on a retry. `resetInitialization()` is deliberately
-   * NOT called: initialization is global and engines may coexist (Phase 4).
+   * Tears the adapter down and unregisters its engine. Destruction and container
+   * removal run independently; `idle` is only reported when nothing failed AND
+   * the engine is confirmed unregistered, otherwise the retryable
+   * `teardown-failed` state throws. `resetInitialization()` is deliberately NOT
+   * called: initialization is global and engines may coexist (Phase 4).
    */
   stop(): void {
     if (this.#state === 'idle') {
@@ -252,10 +268,7 @@ export class CornerstoneRendererAdapter {
     );
   }
 
-  /**
-   * Loads a validated plan as a real local Cornerstone volume, verbatim.
-   * Fail-closed: adapter must be `started` and `plan.volumeId` must be uncached.
-   */
+  /** Loads a validated plan verbatim; fails closed unless started and uncached. */
   loadVolume(plan: VolumeIngestionPlan): LoadedVolume {
     this.#assertStarted(`load volume '${plan.volumeId}'`);
     return bindVolume(plan);
@@ -268,9 +281,8 @@ export class CornerstoneRendererAdapter {
   }
 
   /**
-   * Releases a cached volume when present, returning `false` instead of
-   * throwing for absence. Per-volume only (never a global purge); the
-   * non-started lifecycle guard still fails closed.
+   * Releases a cached volume when present, returning `false` for absence. Per
+   * volume only (never a global purge); the lifecycle guard still fails closed.
    */
   releaseVolumeIfPresent(volumeId: string): boolean {
     this.#assertStarted(`release volume '${volumeId}' if present`);

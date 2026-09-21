@@ -57,6 +57,7 @@ export type {
   ViewSpatialApplication,
   ViewTransformsApplication,
 } from './types.js';
+export { resolveViewColormapName } from './colormap.js';
 export {
   CORNERSTONE_INTERPOLATION_TYPES,
   toCornerstoneInterpolationType,
@@ -145,6 +146,35 @@ function resolveTransforms(
 }
 
 /**
+ * Cornerstone applies `invert` and `interpolationType` viewport-globally:
+ * `BaseVolumeViewport.setProperties` writes `viewportProperties.invert` and
+ * calls `setInterpolationType(interpolationType)` with no `volumeId`; only
+ * `voiRange`/`colormap` are per-volume. A multi-layer plan whose layers
+ * disagree would therefore silently take the last layer's value, so it is
+ * refused by name instead. A single-layer plan is unaffected.
+ */
+const GLOBAL_LAYER_PROPERTIES = ['invert', 'interpolationType'] as const;
+
+function assertHomogeneousGlobalProperties(
+  layers: readonly ViewLayerApplication[],
+): void {
+  if (layers.length < 2) {
+    return;
+  }
+  for (const property of GLOBAL_LAYER_PROPERTIES) {
+    const values = [
+      ...new Set(layers.map((layer) => String(layer.properties[property]))),
+    ];
+    if (values.length > 1) {
+      refuse(
+        VIEW_APPLICATION_ERROR_CODES.perLayerPropertyUnsupported,
+        `layers disagree on '${property}' (${values.join(', ')}); Cornerstone applies '${property}' viewport-globally, so a per-layer value cannot be submitted faithfully`,
+      );
+    }
+  }
+}
+
+/**
  * Compiles a `MedicalViewState` into a serializable Cornerstone application
  * plan. Refuses fail-closed on an unbound asset, a PET layer whose own
  * `assetId` has no ADR-005 binding in `petBindings` (no cross-asset fallback),
@@ -206,6 +236,8 @@ export function compileMedicalViewApplication(
       );
     }
   }
+
+  assertHomogeneousGlobalProperties(layers);
 
   return {
     viewId: state.id,

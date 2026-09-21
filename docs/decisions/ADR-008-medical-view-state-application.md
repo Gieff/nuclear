@@ -184,3 +184,133 @@ New refusal codes: `VIEW_VOLUME_NOT_RESIDENT`, `VIEW_FOR_MISMATCH`,
 `VIEW_VIEWPORT_SIZE_MISMATCH`. The browser adapter (P3.4-B.2.2) must call these
 pure validators with real residency/transform evidence before applying a plan;
 the pure module cannot itself observe the GPU residency.
+
+## Addendum — P3.4-B.2.2.2 (browser volume viewport and state application)
+
+`packages/medical-engine/src/renderer/view-application-adapter.ts` (browser-only,
+exported solely from `renderer/index.ts`) applies a compiled plan to a real
+Cornerstone viewport. Empirically in `@cornerstonejs/core@5.10.7` with the
+default `useGenericViewport === false`, `Enums.ViewportType.ORTHOGRAPHIC`
+resolves to the legacy `VolumeViewport` (`constructor.name === 'VolumeViewport'`,
+`type === 'orthographic'`, all volume methods present). The adapter gained an
+optional `viewportType: 'stack' | 'orthographic'` (default `'stack'`,
+preserving P3.1) plus a `getViewport(): IViewport` accessor.
+
+`applyViewApplication(adapter, input)` is fail-closed before any mutation:
+
+1. `registerDicomPalettes()` (ADR-007).
+2. `validateLayerGeometry` + `validateViewportSize`.
+3. Every layer's colormap must resolve via
+   `utilities.colormap.resolveColormap`, else `VIEW_COLORMAP_UNKNOWN`.
+4. The carried slice must be the neutral reference (`referenceLocation` all zero
+   and `sliceOffsetMm === 0`, with any `slicePosition` input likewise neutral),
+   otherwise `VIEW_SLICE_POSITION_UNSUPPORTED` — faithful slice positioning is
+   not implemented and is refused, never silently ignored.
+
+It then calls `setVolumes({ volumeId })`, per-volume `setProperties` (voiRange,
+colormap name/opacity/opacityMapping, invert,
+`toCornerstoneInterpolationType`), `setBlendMode(Enums.BlendModes[...])`,
+`setSlabThickness` (only when declared) and
+`setOrientation(viewPlaneNormal, viewUp)`. The returned `AppliedViewState` is the
+actual `getProperties(volumeId)` read-back plus `getBlendMode()`, the requested
+orientation and `getCamera()` — the legacy `VolumeViewport` has no
+`getOrientation()`, so the camera is the orientation getter that exists.
+
+### Empirical `gray` gap (resolved in the pure compiler)
+
+The pure compiler declares the NuClear built-in id `gray`, but the legacy
+`VolumeViewport.setColormap` resolves via `utilities.colormap.resolveColormap`,
+and vtk.js exposes no exact `gray` preset (only `Grayscale`/`gray_Matlab`), so a
+plan carrying `gray` was unresolvable and was refused fail-closed with
+`VIEW_COLORMAP_UNKNOWN`. P3.4-B.2.2.2.2 closes the gap in the pure compiler by
+mapping the NuClear id to the renderer's real preset name (see the addendum
+below); the controlled-harness CT positives use the fixture's persisted `gray`
+id and read back `Grayscale`.
+
+### Local-volume image loader bridge
+
+`createLocalVolume` materialises slices as `<volumeId>_slice_<i>` (scheme
+`nuclear-volume`), but Cornerstone's `createVolumeActor` default-VOI path calls
+`loadAndCacheImage(..., { ignoreCache: true })`, bypassing the cache and
+requiring a registered image loader. The adapter registers a loader for the
+volume's own scheme that returns the already-cached slice; it fabricates no
+pixel data and fails loudly on a missing slice.
+
+New refusal codes: `VIEW_SLICE_POSITION_UNSUPPORTED`,
+`VIEW_VIEWPORT_READBACK_FAILED`.
+
+## Addendum — P3.4-B.2.2.2.2 (NuClear id → Cornerstone preset mapping)
+
+`packages/medical-engine/src/view-application/colormap.ts` maps every declared
+NuClear built-in id to the Cornerstone/vtk preset name it denotes:
+
+```ts
+const BUILTIN_VIEW_COLORMAPS: Readonly<Record<string, string>> = { gray: 'Grayscale' };
+```
+
+`resolveViewColormapName` returns the mapped preset name, so a persisted `gray`
+compiles to `colormap.name === 'Grayscale'` and the browser-side
+`assertColormapsResolvable` (`utilities.colormap.resolveColormap`) finds the
+real vtk preset directly. No alias is registered and no LUT is derived or
+resampled. An id absent from the map and not a `dicom-*` catalog id is still
+refused with `VIEW_COLORMAP_UNKNOWN`; a missing id is refused as required, and
+no default palette is ever substituted.
+
+The persisted `MedicalViewState.presentation.colormapId` remains the NuClear id
+`gray`; only the compiled, renderer-facing `colormap.name` is the Cornerstone
+preset name. This is the same id→name pattern ADR-007 already uses for DICOM
+palettes (`dicom-pet` → `PET`). It supersedes the P3.4-B.2.2.2.1 browser-side
+alias and its 256-entry resampling of vtk's control points, which is deleted
+along with `renderer/builtin-colormap-registration.ts`.
+
+`applyViewApplication` registers DICOM palettes (ADR-007) and then validates
+geometry, viewport size and colormap resolvability before any viewport
+mutation; there is no built-in registration step.
+
+The local-volume image-loader bridge is unchanged in behaviour and rationale:
+`createLocalVolume` materialises slices as `<volumeId>_slice_<i>` (scheme
+`nuclear-volume`), but Cornerstone's `createVolumeActor` default-VOI path calls
+`loadAndCacheImage(..., { ignoreCache: true })`, bypassing the cache and
+requiring a registered image loader. The adapter registers a loader for the
+volume's own scheme that returns the already-cached slice; it fabricates no
+pixel data and fails loudly on a missing slice. P3.4-B.2.2.2.1 makes that
+registration once per scheme (a module-level set), removing duplicate loader
+churn across repeated applies.
+
+## Addendum — P3.4-B.2.2.2.3 (viewport-global properties, observed slab, scheme allowlist)
+
+Three review-hardening corrections to the uncommitted P3.4-B.2.2.2 slice.
+
+**Cornerstone applies `invert`/`interpolationType` viewport-globally.**
+Verified in `@cornerstonejs/core@5.10.7`: `BaseVolumeViewport.setProperties`
+compares `invert` against the viewport-global `viewportProperties.invert` and
+calls `setInterpolationType(interpolationType)` with **no `volumeId`**; only
+`voiRange` and `colormap` are per-volume. A plan whose layers declare divergent
+`invert` or `interpolationType` therefore cannot be applied per-layer
+faithfully and would silently take the last layer's value. The pure compiler now
+refuses any multi-layer plan whose layers disagree, after building the layers
+and before returning, with the new typed code
+`VIEW_PER_LAYER_PROPERTY_UNSUPPORTED` naming the property and the conflicting
+values. A single-layer plan (and a homogeneous multi-layer plan) is unaffected.
+
+**Slab thickness is observed, not echoed.**
+`AppliedViewState.slabThicknessMm` is now read from
+`viewport.getSlabThickness()` when `plan.projection.slabThicknessMm` is
+declared, and reported as `undefined` when it is not; it is no longer an echo of
+the plan. Note that Cornerstone clamps a declared slab below 0.1 mm to
+`RENDERING_DEFAULTS.MINIMUM_SLAB_THICKNESS` (0.05), so the observed value is the
+renderer's actual slab, not necessarily the declared one.
+
+**The local-volume image-loader bridge is scheme-allowlisted.**
+`ensureLocalVolumeImageLoader` previously derived the scheme from each volume-id
+prefix and registered a loader for *any* scheme. It now serves only
+`nuclear-volume`, NuClear's sole local-volume scheme, and `applyViewApplication`
+refuses — before any viewport mutation and before any loader registration — a
+plan layer whose `volumeId` is not a `nuclear-volume:` id, with the new typed
+code `VIEW_VOLUME_SCHEME_UNSUPPORTED`. The loader remains idempotent (registered
+at most once for that single scheme) and still fails loudly on a missing cached
+slice. This supersedes the per-volume-scheme derivation described in the
+P3.4-B.2.2.2 and P3.4-B.2.2.2.1 addenda.
+
+New refusal codes: `VIEW_PER_LAYER_PROPERTY_UNSUPPORTED`,
+`VIEW_VOLUME_SCHEME_UNSUPPORTED`.

@@ -16,6 +16,10 @@ export const VIEW_APPLICATION_ERROR_CODES = {
   geometryIncompatible: 'VIEW_GEOMETRY_INCOMPATIBLE',
   transformInvalid: 'VIEW_TRANSFORM_INVALID',
   viewportSizeMismatch: 'VIEW_VIEWPORT_SIZE_MISMATCH',
+  slicePositionUnsupported: 'VIEW_SLICE_POSITION_UNSUPPORTED',
+  viewportReadbackFailed: 'VIEW_VIEWPORT_READBACK_FAILED',
+  perLayerPropertyUnsupported: 'VIEW_PER_LAYER_PROPERTY_UNSUPPORTED',
+  volumeSchemeUnsupported: 'VIEW_VOLUME_SCHEME_UNSUPPORTED',
 } as const;
 
 export type ViewApplicationErrorCode =

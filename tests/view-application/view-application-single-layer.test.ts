@@ -23,11 +23,13 @@ import {
   mockMedicalView,
   mockPetAsset,
   mockPetView,
+  resolveViewColormapName,
   toCornerstoneInterpolationType,
 } from './fixtures/view-application-fixtures.ts';
 
 describe('NuClear P3.4-B.2.1 — single-layer view application', () => {
-  it('1. a single CT view compiles VOI, gray colormap, opacity, invert and interpolation, and a COMPOSITE slice', () => {
+  it('1. a single CT view compiles VOI, the gray→Grayscale preset name, opacity, invert and interpolation, and a COMPOSITE slice', () => {
+    assert.equal(resolveViewColormapName('gray'), 'Grayscale');
     const plan = compileMedicalViewApplication({
       state: mockMedicalView,
       volumeIds: CT_VOLUME_IDS,
@@ -40,7 +42,7 @@ describe('NuClear P3.4-B.2.1 — single-layer view application', () => {
     assert.equal(layer.volumeId, 'volume-ct');
     assert.equal(layer.role, 'base');
     assert.deepEqual(layer.properties.voiRange, { lower: -1000, upper: 1000 });
-    assert.deepEqual(layer.properties.colormap, { name: 'gray', opacity: 1 });
+    assert.deepEqual(layer.properties.colormap, { name: 'Grayscale', opacity: 1 });
     assert.equal(layer.properties.invert, false);
     assert.equal(layer.properties.interpolationType, 'linear');
     assert.deepEqual(plan.projection, {

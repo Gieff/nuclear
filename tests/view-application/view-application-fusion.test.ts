@@ -49,7 +49,7 @@ describe('NuClear P3.4-B.2.1 — fusion application (ADR-006)', () => {
     assert.equal(base.assetId, mockCtAsset.id);
     assert.equal(base.role, 'base');
     assert.deepEqual(base.properties.voiRange, { lower: -160, upper: 240 });
-    assert.deepEqual(base.properties.colormap, { name: 'gray', opacity: 1 });
+    assert.deepEqual(base.properties.colormap, { name: 'Grayscale', opacity: 1 });
     assert.equal(base.properties.invert, false);
     assert.equal(base.properties.interpolationType, 'linear');
 

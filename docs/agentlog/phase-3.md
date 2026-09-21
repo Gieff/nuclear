@@ -10,10 +10,10 @@ P3.4-A.3bis accepted (representability precision); P3.4-B in progress —
 P3.4-B.1 accepted (ADR-007 DICOM palette catalog), P3.4-B.1.1 accepted
 (canonical colormap id, whole-LUT digest, registration dedupe), P3.4-B.2.1
 accepted (pure `MedicalViewState` → Cornerstone application compiler),
-P3.4-B.2.1.1 accepted (per-asset PET binding map), P3.4-B.2.2.1 accepted
-(spatial/transform carrying and camera disposition) and P3.4-B.2.2.1.1 accepted
-(full spatial identity + fail-closed geometry/FoR validation);
-P3.4-B.2.2.2–P3.6 not started.
+P3.4-B.2.1.1 accepted (per-asset PET binding map), P3.4-B.2.2.1 accepted (spatial/transform carrying and
+camera disposition), P3.4-B.2.2.1.1 accepted (full spatial identity +
+fail-closed geometry/FoR validation) and P3.4-B.2.2.2 accepted (browser volume
+viewport application); P3.4-C–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -2659,3 +2659,508 @@ positioning. Assert via Cornerstone getters with CT/PT/fusion positives and the
 fail-closed negatives (non-resident/unbound, FoR mismatch, invalid/missing
 transform, viewport-size mismatch, unresolved palette). Do not add `RenderTarget`
 (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.4-B.2.2.2: Browser Volume Viewport & State Application
+
+## 1. What Was Implemented
+
+The first real application of a compiled `ViewApplicationPlan` to a live
+Cornerstone viewport, with controlled WebGL 2 evidence.
+
+- **Adapter viewport capability (Task 1).** `CornerstoneAdapterStartOptions`
+  gained `viewportType?: 'stack' | 'orthographic'` (default `'stack'`, so all
+  P3.1 behaviour/tests are preserved); `enableElement` maps it to
+  `Enums.ViewportType.STACK`/`ORTHOGRAPHIC`. A `getViewport(): IViewport`
+  accessor resolves the live viewport from the registered engine and throws
+  fail-closed for a non-started adapter or a destroyed engine.
+- **Browser apply module (Task 2).** New
+  `renderer/view-application-adapter.ts` (exported only from `renderer/index.ts`)
+  implements `applyViewApplication(adapter, input): Promise<AppliedViewState>`.
+  Fail-closed order before any mutation: (1) `registerDicomPalettes()`;
+  (2) `validateLayerGeometry` + `validateViewportSize`; (3) the palette guard
+  (`utilities.colormap.resolveColormap`, else `VIEW_COLORMAP_UNKNOWN`);
+  (4) the slice guard (`referenceLocation` all zero and `sliceOffsetMm === 0`, or
+  else `VIEW_SLICE_POSITION_UNSUPPORTED`). Only then `setVolumes`,
+  per-volume `setProperties` (voiRange/colormap/invert/
+  `toCornerstoneInterpolationType`), `setBlendMode`/`setSlabThickness` and
+  `setOrientation`. The returned `AppliedViewState` is the **actual** read-back:
+  `getProperties(volumeId)`, `getBlendMode()`, requested orientation and
+  `getCamera()` (there is no `getOrientation()` on the legacy viewport).
+- **Local-volume image loader bridge.** `createVolumeActor`'s default-VOI path
+  calls `loadAndCacheImage(..., { ignoreCache: true })`, which bypasses
+  Cornerstone's cache and demands an image loader for the `nuclear-volume`
+  scheme. The adapter registers a loader for the volume's own scheme that returns
+  the already-materialised cached slice; it fabricates no pixels and fails loudly
+  on a missing slice.
+- **Harness probe + tests (Task 3).** `fixtures/application-fixture.ts` (sized
+  512×512 host, fixture plans, resident evidence, PET→CT bridge, CT/fusion state
+  builders), `fixtures/application-entry.ts` (probe with positives + six
+  negatives) and `tests/rendering/view-application.test.ts`.
+
+## 2. Empirically Observed Viewport Type
+
+With `@cornerstonejs/core@5.10.7` and the default `useGenericViewport === false`:
+
+- `constructor.name === 'VolumeViewport'`, `viewport.type === 'orthographic'`,
+  `getUseGenericViewport() === false`, mounted element `[512, 512]` px.
+- Method surface present: `setVolumes`, `setProperties`, `setBlendMode`,
+  `setOrientation`, `getCamera`, `getActors`, plus `getBlendMode`,
+  `getSlabThickness` and per-volume `getProperties(volumeId)`.
+
+## 3. Files Changed / Created
+
+Modified:
+- `packages/medical-engine/src/renderer/adapter.ts` (288 → 300)
+- `packages/medical-engine/src/renderer/index.ts` (15 → 16)
+- `packages/medical-engine/src/view-application/errors.ts` (44 → 46)
+- `docs/decisions/ADR-008-medical-view-state-application.md` (addendum)
+
+Created:
+- `packages/medical-engine/src/renderer/view-application-adapter.ts` (266)
+- `tests/rendering/fixtures/application-fixture.ts` (278)
+- `tests/rendering/fixtures/application-entry.ts` (296)
+- `tests/rendering/view-application.test.ts` (245)
+
+Unchanged: `@nuclear/shared-types`, `CHANGELOG.md`, the version.
+
+## 4. Tests Added & Executed
+
+Added: 9 real-harness tests
+(`tests/rendering/view-application.test.ts`):
+
+1. `1. ORTHOGRAPHIC creates a real volume viewport with the volume method surface`
+2. `2. a single CT view applies voiRange, palette name, invert, linear interpolation and COMPOSITE`
+3. `3. a CT+PET fusion applies the PET palette, 0.5^0.42 opacity, mapping and orientation`
+4. `4.missing-resident refuses with VIEW_VOLUME_NOT_RESIDENT and leaves the viewport unmodified`
+5. `4.for-mismatch refuses with VIEW_FOR_MISMATCH and leaves the viewport unmodified`
+6. `4.invalid-transform refuses with VIEW_TRANSFORM_INVALID and leaves the viewport unmodified`
+7. `4.viewport-size-mismatch refuses with VIEW_VIEWPORT_SIZE_MISMATCH and leaves the viewport unmodified`
+8. `4.unresolved-palette refuses with VIEW_COLORMAP_UNKNOWN and leaves the viewport unmodified`
+9. `4.slice-position refuses with VIEW_SLICE_POSITION_UNSUPPORTED and leaves the viewport unmodified`
+
+Asserted read-back: single CT `voiRange [-1000, 1000]`, `colormap.name 'Hot
+Iron'`, `invert false`, `interpolationType 1`; fusion PET `colormap.name 'PET'`,
+`voiRange [0, 8/suvFactor]`, opacity `0.5^0.42` within `1e-12`, a non-empty
+opacity mapping; `blendMode 'COMPOSITE'`; orientation `[0,0,1]`/`[0,1,0]` via
+`getCamera()`; every negative returns its exact code with `getActors().length === 0`;
+all tests assert empty `pageErrors`/`consoleErrors`.
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **210 pass / 0 fail** (45 suites; 201 prior + 9) |
+| `npm run test:renderer` | **54 pass / 0 fail** (12 suites; 45 prior + 9) |
+| `npm run build` | clean (exit 0) |
+| P2.5 source integrity | passed inside `npm test` |
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-008 addendum records the adapter/apply contract, the empirical `gray` gap,
+  the local-volume image-loader bridge and the two new refusal codes.
+- This report satisfies the AgentLog Gate for P3.4-B.2.2.2.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+
+## 6. Project Model Impact
+
+- No shared-types/`.ncp` change. New browser-only renderer public surface
+  (`applyViewApplication`, `ApplyViewApplicationInput`, `AppliedViewState`,
+  `AppliedLayerState`) adds no Node-visible export.
+
+## 7. Architectural Assumptions & Limitations
+
+- **`gray` is unresolvable in the legacy viewport (open decision).** The compiler
+  allowlists `gray` as a built-in, but vtk.js has no exact `gray` preset (only
+  `Grayscale`/`gray_Matlab`), so the adapter refuses it with
+  `VIEW_COLORMAP_UNKNOWN`; the harness CT positives use the ratified DICOM
+  `Hot Iron` palette. This is surfaced, not silently patched.
+- **Slice positioning is refused, not mapped** (neutral reference only).
+- **The PET→CT transform is validated but not applied** (carried from
+  B.2.2.1.1); the harness PET overlay uses an identity `mm` bridge because the
+  committed CT/PT fixtures have different Frame-of-Reference UIDs but identical
+  aligned IOPs.
+- **The rendering-engine harness is CPU SwiftShader WebGL 2**, reported honestly
+  as software rasterization; GPU behaviour remains unverified.
+- The local-volume image loader is registered per apply for the plan's own
+  volume-id scheme; it is a bridge for Cornerstone's `ignoreCache` default-VOI
+  lookup, not a second renderer.
+- Test sources remain outside the `tsc` graph; the intermittent renderer-harness
+  startup flake remains (rerun green).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-C — raster capture** (out of scope here): capture the real
+viewport render into a serializable artifact using the same applied state, with
+no `RenderTarget` (P3.5), UI or view-engine work.
+
+# Handover Report — P3.4-B.2.2.2.1: NuClear `gray` Built-in Alias
+
+## 1. What Was Implemented
+
+Corrective micro-slice closing the `gray` built-in colormap gap surfaced by
+P3.4-B.2.2.2. The pure compiler's allowlist and the fixtures' `colormapId:
+'gray'` are unchanged; the mapping is declared browser-side.
+
+- New browser-only module `builtin-colormap-registration.ts` is the single,
+  documented place that maps the NuClear id `gray` onto vtk.js: it resolves
+  vtk's own `Grayscale` preset via `utilities.colormap.resolveColormap`, fails
+  closed with a typed `BuiltinColormapRegistrationError` if that preset is
+  unavailable, and otherwise registers it under `gray`. Registration is
+  idempotent (module-level flag; `registerColormap` overwrites same-named
+  entries).
+- The alias resamples vtk's own control points onto NuClear's canonical
+  256-entry grid. Rationale: Cornerstone's read-back
+  (`utilities.colormap.findMatchingColormap`) matches RGB values AND array
+  length, checking vtk presets before NuClear's registered colormaps, so a
+  verbatim two-entry copy of `Grayscale` reads back as `Grayscale`, not `gray`.
+  Sampling vtk's own linear transfer function introduces no new colour and makes
+  the round-trip report the NuClear id.
+- `applyViewApplication` calls `registerBuiltinColormaps()` immediately after
+  `registerDicomPalettes()` (ADR-007) and before `assertColormapsResolvable`.
+- `ensureLocalVolumeImageLoader` now registers its bridge loader once per scheme
+  (module-level set) instead of once per volume per apply, removing loader
+  registry churn. Rationale and fail-loud behaviour are unchanged: the
+  default-VOI path calls `loadAndCacheImage(..., { ignoreCache: true })`, the
+  loader serves already-materialised cached slices, and a missing slice throws.
+- Harness: the CT positive now uses the fixture's own `gray` id and asserts
+  read-back `colormap.name === 'gray'`; the `unresolved-palette` negative uses
+  the genuinely unknown id `'not-a-palette'` (refused by the pure compiler with
+  `VIEW_COLORMAP_UNKNOWN`, still leaving zero actors set).
+
+Not touched: pure compiler allowlist (`view-application/colormap.ts`), fixtures'
+`colormapId`, capture (P3.4-C), `RenderTarget` (P3.5), UI, view-engine, and the
+`adapter.ts` 300-line file. Nothing staged or committed.
+
+## 2. Files Changed / Created
+
+| File | Lines | Change |
+| --- | --- | --- |
+| `packages/medical-engine/src/renderer/builtin-colormap-registration.ts` | 150 | new |
+| `packages/medical-engine/src/renderer/index.ts` | 17 | +1 export |
+| `packages/medical-engine/src/renderer/view-application-adapter.ts` | 273 | call built-in registration; once-per-scheme loader |
+| `tests/rendering/fixtures/application-fixture.ts` | 278 | `CT_COLORMAP_ID = 'gray'` + comment |
+| `tests/rendering/fixtures/application-entry.ts` | 298 | negative id `'not-a-palette'`; actor count on compile-level refusal |
+| `tests/rendering/view-application.test.ts` | 245 | test 2 name/assertion, test 3 assertion |
+| `docs/decisions/ADR-008-medical-view-state-application.md` | 277 | addendum + closure note |
+| `docs/agentlog/phase-3.md` | this | handover |
+
+## 3. Architectural Assumptions Made
+
+- Only Cornerstone observes a colormap registry, so the `gray` → vtk
+  `Grayscale` mapping is browser-side; the persisted/compiled id stays `gray`.
+- NuClear's registered palette resolution is 256 entries (ADR-007 convention);
+  the alias adopts it so read-back is deterministic under Cornerstone's
+  RGB-and-length matching.
+- Resampling vtk's own linear transfer function is reuse, not invented pixel
+  data; no colour outside vtk's preset is introduced.
+- `resolveColormap('Grayscale')` being absent is an environment/version failure
+  and must fail closed, never fall back to a default grayscale.
+
+## 4. Tests Added & Executed
+
+Updated test names:
+- `2. the single CT built-in gray applies voiRange, gray name, invert, linear
+  interpolation and COMPOSITE` (asserts read-back `colormap.name === 'gray'`).
+- Test 3 (`CT+PET fusion`) now asserts the CT base reads back as `gray`.
+- `4.unresolved-palette refuses with VIEW_COLORMAP_UNKNOWN and leaves the
+  viewport unmodified` now compiles `'not-a-palette'`.
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **210 pass / 0 fail** (45 suites) |
+| `npm run test:renderer` | **54 pass / 0 fail** (12 suites) |
+| `npm run build` | clean (exit 0) |
+| P2.5 source integrity | passed inside `npm test` |
+
+Focused run `node --test tests/rendering/view-application.test.ts`: 9 pass / 0
+fail, including the `gray` positive and the unknown-palette negative.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-008 gains an addendum recording the browser-side `gray` → vtk `Grayscale`
+  alias, the unchanged pure allowlist id, the 256-entry resampling rationale,
+  and the local-volume image-loader bridge (and its once-per-scheme
+  registration).
+- The earlier "Empirical `gray` gap" section is marked resolved by this slice.
+- This report satisfies the AgentLog Gate for P3.4-B.2.2.2.1.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+
+## 6. Project Model Impact
+
+- No `@nuclear/shared-types` / `.ncp` change. New browser-only renderer export
+  (`registerBuiltinColormaps`, `NUCLEAR_GRAY_COLORMAP_ID`,
+  `VTK_GRAYSCALE_PRESET_NAME`, `BuiltinColormapRegistrationError`) adds no
+  Node-visible export.
+
+## 7. Known Limitations & Technical Debt
+
+- The alias is a resampled representation of vtk's `Grayscale`, not a verbatim
+  copy, because Cornerstone's `findMatchingColormap` would otherwise canonicalise
+  the read-back name to `Grayscale`. The transfer function is identical (linear
+  black→white) but the registered table is 256 entries.
+- `assertColormapsResolvable` remains as defence-in-depth but is no longer
+  reachable from the harness with an allowlisted id, since `gray` now resolves;
+  the negative uses a compiler-level unknown id.
+- Slice positioning remains refused (neutral reference only); the rendering
+  harness remains CPU SwiftShader WebGL 2 (software rasterization); the
+  intermittent renderer-harness startup flake remains (rerun green).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-C — raster capture** (out of scope here): capture the real
+viewport render into a serializable artifact using the same applied state, with
+no `RenderTarget` (P3.5), UI or view-engine work.
+
+# Handover Report — P3.4-B.2.2.2.3: Viewport-Global Property Reality, Observed Slab, Loader Scheme Allowlist
+
+## 1. What Was Implemented
+
+Three review-hardening corrections on the uncommitted P3.4-B.2.2.2 slice,
+before its first commit. Capture (P3.4-C), `RenderTarget` (P3.5), UI, view-engine
+and `@nuclear/shared-types` were not touched.
+
+- **C2 — viewport-global `invert`/`interpolationType` divergence refusal.**
+  Verified in `@cornerstonejs/core@5.10.7`: `BaseVolumeViewport.setProperties`
+  compares `invert` against the viewport-global `viewportProperties.invert` and
+  calls `setInterpolationType(interpolationType)` with **no `volumeId`**; only
+  `voiRange`/`colormap` are per-volume. A multi-layer plan whose layers disagree
+  would silently take the last layer's value. The pure compiler now calls
+  `assertHomogeneousGlobalProperties(layers)` after building the layers and
+  refuses with the new typed code `VIEW_PER_LAYER_PROPERTY_UNSUPPORTED`, naming
+  the property and the conflicting values. Single-layer plans and homogeneous
+  multi-layer plans are unaffected; the check stays pure/Node-testable.
+- **C3 — slab read-back observed, not echoed.** `AppliedViewState.slabThicknessMm`
+  is now `viewport.getSlabThickness()` when `plan.projection.slabThicknessMm` is
+  declared (and `undefined` when it is not), instead of echoing the plan.
+- **C4 — local-volume loader bridge scheme allowlist.** `ensureLocalVolumeImageLoader`
+  now serves only the `nuclear-volume` scheme, and `applyViewApplication` refuses,
+  before any mutation and before any loader registration, a plan layer whose
+  `volumeId` is not a `nuclear-volume:` id with the new typed code
+  `VIEW_VOLUME_SCHEME_UNSUPPORTED`. Registration remains idempotent (at most once
+  for the single scheme) and the loader still fails loudly on a missing cached
+  slice.
+
+## 2. Files Changed / Created
+
+| File | Lines | Change |
+| --- | --- | --- |
+| `packages/medical-engine/src/view-application/errors.ts` | 48 | +2 codes: `perLayerPropertyUnsupported`, `volumeSchemeUnsupported` |
+| `packages/medical-engine/src/view-application/view-application.ts` | 249 | `GLOBAL_LAYER_PROPERTIES` + `assertHomogeneousGlobalProperties` + call |
+| `packages/medical-engine/src/renderer/view-application-adapter.ts` | 290 | `LOCAL_VOLUME_SCHEME`/`assertLocalVolumeScheme`; single-scheme loader; observed slab |
+| `tests/view-application/view-application-per-layer-properties.test.ts` | 87 | new (tests 22–24) |
+| `tests/rendering/fixtures/application-fixture.ts` | 299 | `buildCtState`/`compileCt` optional `slabThicknessMm`; `nonLocalFusionPlan` |
+| `tests/rendering/fixtures/application-entry.ts` | 299 | `applyCt(input, colormapId?, slabThicknessMm?)`; `unsupported-scheme` negative |
+| `tests/rendering/view-application.test.ts` | 271 | slab constant, `unsupported-scheme` scenario, test 5 |
+| `docs/decisions/ADR-008-medical-view-state-application.md` | 316 | P3.4-B.2.2.2.3 addendum |
+| `docs/agentlog/phase-3.md` | this | handover |
+
+Untouched: `packages/medical-engine/src/renderer/adapter.ts` (still exactly 300
+lines), `@nuclear/shared-types`, capture, `RenderTarget`, UI, view-engine.
+
+## 3. Architectural Assumptions Made
+
+- The divergence refusal belongs in the pure plan because the plan is the
+  renderer-agnostic contract; enforcing it at compile time makes an unfaithful
+  multi-layer plan impossible to construct, rather than relying on the adapter
+  to detect it after building.
+- `nuclear-volume` is NuClear's only local-volume scheme
+  (`createLocalVolume` slice ids); the bridge cannot serve any other scheme, and
+  `registerImageLoader` is process-global, so an unknown scheme is refused
+  before registration rather than tolerated.
+- Slab observation is a read-back only when the plan declares a slab; a slice
+  plan reports `undefined` rather than Cornerstone's `MINIMUM_SLAB_THICKNESS`
+  default, because no slab was requested.
+- Cornerstone clamps a declared slab `< 0.1` mm to
+  `RENDERING_DEFAULTS.MINIMUM_SLAB_THICKNESS` (0.05); the observed value is the
+  renderer's actual slab, which may differ from the declared one below that
+  threshold. This is documented, not worked around.
+
+## 4. Tests Added & Executed
+
+New pure tests (`tests/view-application/view-application-per-layer-properties.test.ts`):
+- `22. a fusion whose base and overlay differ on invert refuses with VIEW_PER_LAYER_PROPERTY_UNSUPPORTED naming invert and both values`
+- `23. a fusion whose base and overlay differ on interpolationType refuses with VIEW_PER_LAYER_PROPERTY_UNSUPPORTED naming interpolationType and both values`
+- `24. the homogeneous fixture fusion still compiles every layer (control)`
+
+New/updated renderer harness tests (`tests/rendering/view-application.test.ts`):
+- `4.unsupported-scheme refuses with VIEW_VOLUME_SCHEME_UNSUPPORTED and leaves the viewport unmodified`
+- `5. a MIP plan with a 12 mm slab applies MAXIMUM_INTENSITY_BLEND and reads the slab back from the viewport`
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **215 pass / 0 fail** (46 suites) |
+| `node --test --test-concurrency=1 "tests/rendering/**/*.test.ts"` | **56 pass / 0 fail** (12 suites) |
+| `npm run build` | clean (exit 0) |
+| P2.5 source integrity | passed inside `npm test` (no `Math.`/`enum `/`namespace ` added) |
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-008 gains an addendum `P3.4-B.2.2.2.3` recording the Cornerstone
+  viewport-global `invert`/`interpolationType` reality and the divergence
+  refusal, the observed slab read-back (and the `< 0.1` mm clamp), and the
+  `nuclear-volume` scheme allowlist for the local-volume image-loader bridge.
+- This report satisfies the Agentlog Gate for P3.4-B.2.2.2.3. The earlier
+  P3.4-B.2.2.2.1 handover describes the superseded browser-side `gray` alias and
+  is not current state; the shipped P3.4-B.2.2.2 mapping is `gray → Grayscale`
+  in the pure `view-application/colormap.ts`, per the ADR-008 P3.4-B.2.2.2.2
+  addendum.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+
+## 6. Project Model Impact
+
+- No `@nuclear/shared-types` / `.ncp` change. Two new Node-visible error codes on
+  the `view-application` barrel (`VIEW_PER_LAYER_PROPERTY_UNSUPPORTED`,
+  `VIEW_VOLUME_SCHEME_UNSUPPORTED`); the apply module remains exported only from
+  `renderer/index.ts`, never `src/index.ts`.
+
+## 7. Known Limitations & Technical Debt
+
+- The divergence refusal rejects a whole multi-layer plan; it does not add
+  per-layer `invert`/`interpolationType` capability. Faithful divergent layers
+  would require Cornerstone actor-level support.
+- A declared slab `< 0.1` mm reads back as 0.05; the harness uses 12 mm.
+- `application-entry.ts` and `application-fixture.ts` are at 299 lines (one line
+  of headroom) after the new negative; further harness cases need decomposition.
+- The rendering harness remains CPU SwiftShader WebGL 2 (software
+  rasterization); the intermittent renderer-harness startup flake remains
+  (rerun green).
+- The uncommitted P3.4-B.2.2.2 slice still lacks its own handover; this report
+  covers only the 2.2.2.3 hardening on top of it.
+
+## 8. Exact Next Recommended Task
+
+Commit the uncommitted P3.4-B.2.2.2 slice together with these P3.4-B.2.2.2.3
+hardening changes (selective `git add`, never `git add .`), then proceed to
+**P3.4-C — raster capture** as previously recommended.
+
+---
+
+# Handover Report — P3.4-B.2.2.2 (consolidated): Volume Viewport Application — Final Shipped State
+
+This consolidated report describes the **final shipped** B.2.2.2 state and
+**supersedes** the intermediate B.2.2.2.1 report above (the `gray` alias built by
+resampling vtk control points). That approach was replaced by a pure
+NuClear-id → Cornerstone-preset mapping; no alias registration or resampling
+exists in the tree.
+
+## 1. What Was Implemented
+
+- **Volume-viewport capability.** `CornerstoneAdapterStartOptions.viewportType`
+  (`'stack' | 'orthographic'`, default `'stack'`) selects
+  `Enums.ViewportType.STACK`/`ORTHOGRAPHIC`; `adapter.getViewport()` resolves the
+  live viewport and throws `RendererLifecycleError` when not started. Empirically
+  (real harness) `ORTHOGRAPHIC` yields the legacy `VolumeViewport`
+  (`getUseGenericViewport() === false`).
+- **`applyViewApplication(adapter, input)`** (browser-only, exported solely from
+  `renderer/index.ts`): fail-closed pre-mutation order — local-volume scheme
+  allowlist → `registerDicomPalettes()` → `validateLayerGeometry` →
+  `validateViewportSize` → colormap resolvability → slice neutrality — then
+  `setVolumes`, per-volume `setProperties` (with
+  `toCornerstoneInterpolationType`), `setBlendMode`/`setSlabThickness`,
+  `setOrientation`. It returns an `AppliedViewState` **read back from the
+  viewport** (`getProperties`/`getBlendMode`/`getSlabThickness`/`getCamera`), not
+  from hoped-for values.
+- **Colormap id mapping (supersedes the .1 alias):** the pure compiler maps the
+  NuClear built-in id `gray` → Cornerstone preset `Grayscale`
+  (`BUILTIN_VIEW_COLORMAPS`), the same id→name pattern already used for
+  `dicom-*`. The persisted id stays `gray`; unknown ids refuse
+  `VIEW_COLORMAP_UNKNOWN`.
+- **Hardening (P3.4-B.2.2.2.3):** Cornerstone writes `invert`/`interpolationType`
+  viewport-globally, so a multi-layer plan with divergent values is refused
+  (`VIEW_PER_LAYER_PROPERTY_UNSUPPORTED`) rather than silently last-wins; slab is
+  read back from `getSlabThickness()`; the local-volume image-loader bridge is
+  restricted to the `nuclear-volume` scheme (`VIEW_VOLUME_SCHEME_UNSUPPORTED`
+  otherwise).
+- **Local-volume image-loader bridge:** `createVolumeActor`'s default-VOI path
+  calls `loadAndCacheImage(..., { ignoreCache: true })`, bypassing the slices
+  `createLocalVolume` already cached; the bridge serves those exact cached
+  slices (fabricating nothing, failing loudly if absent), once per scheme.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/medical-engine/src/renderer/view-application-adapter.ts` (290)
+- `tests/rendering/view-application.test.ts` (271)
+- `tests/rendering/fixtures/application-entry.ts` (299)
+- `tests/rendering/fixtures/application-fixture.ts` (299)
+- `tests/view-application/view-application-per-layer-properties.test.ts` (87)
+
+Modified:
+- `packages/medical-engine/src/renderer/adapter.ts` (300 — at the gate ceiling)
+- `packages/medical-engine/src/renderer/index.ts` (16)
+- `packages/medical-engine/src/view-application/{colormap.ts,errors.ts,view-application.ts}`
+- `tests/view-application/{view-application-single-layer.test.ts,view-application-fusion.test.ts,fixtures/view-application-fixtures.ts}`
+- `docs/decisions/ADR-008-medical-view-state-application.md`
+
+Deleted (corrective): `packages/medical-engine/src/renderer/builtin-colormap-registration.ts`.
+
+Unchanged: `@nuclear/shared-types`, the Python worker, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- `nuclear-volume` is NuClear's sole local-volume scheme; any other is refused
+  before mutation.
+- Cornerstone's per-actor property support is `voiRange`/`colormap` only;
+  `invert`/`interpolationType` are global and therefore must be homogeneous.
+- The slice reference remains neutral-only; camera remains neutral-only; a
+  bridging transform is validated but not applied.
+
+## 4. Tests Added & Executed
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **215 pass / 0 fail** (46 suites) |
+| renderer (`--test-concurrency=1`) | **56 pass / 0 fail** (12 suites) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| P2.5 source integrity | **2/2** |
+
+The new renderer suite (9 tests) asserts the empirical `VolumeViewport`, CT
+`Grayscale` read-back, fusion PET opacity `0.5^0.42` within `1e-12`, `COMPOSITE`,
+observed slab, and each fail-closed negative leaving `getActors().length === 0`.
+The reviewer mutation-tested the fail-closed ordering (moving
+`validateLayerGeometry` after `setVolumes` fails three geometry negatives).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-008 carries addenda for the application contract, per-asset bindings,
+  spatial/geometry validation, the `gray → Grayscale` mapping, and the .2.2.2.3
+  hardening.
+- This consolidated report satisfies the AgentLog Gate for P3.4-B.2.2.2 and
+  supersedes the intermediate B.2.2.2.1 alias/resampling description.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: **CONCERNS** — no code defect; C1 (stale agentlog) closed by
+  this report; C2/C3/C4 closed by P3.4-B.2.2.2.3.
+- QA verdict: **PASS** on all gates (typecheck, Node 210/210 at QA time, renderer
+  54/54 at both concurrency modes, Python 178, mypy 45, integrity 2/2);
+  the final tree is 215/215 after the hardening tests.
+
+## 6. Project Model Impact
+
+- New browser-only application surface + `viewportType` option; no
+  shared-types/`.ncp` change.
+
+## 7. Known Limitations & Technical Debt
+
+- Faithful camera mapping and slice positioning are **refused**, not applied;
+  P3.4 is not complete until camera is faithfully applied or kept as an explicit
+  refusal in the capture/restore path.
+- Transforms are validated but not applied; transformed reslicing is refused.
+- `adapter.ts` is exactly 300 lines and `application-entry.ts`/
+  `application-fixture.ts` are 299 — the next additions must split.
+- The renderer-harness startup flake remains (reruns green); renderer evidence is
+  SwiftShader only.
+- Test sources remain outside the `tsc` graph.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-C — ordinary raster capture**: capture the medical raster from
+the applied volume viewport through the adapter (no screen-pixel state
+persisted), verify provenance and dimensions, prove state isolation between two
+views, and keep the camera refusal explicit in the capture path. Do not add the
+temporary high-resolution `RenderTarget` (P3.5), UI or view-engine work.
