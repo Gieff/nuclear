@@ -24,8 +24,11 @@ semantics:
 
 Applying such a state would force `@nuclear/medical-engine` to invent missing
 clinical parameters, violating the project's no-invented-behaviour and
-no-implicit-fallback rules. The fusion contract must make an incomplete fusion
-**unrepresentable**, not merely discouraged.
+no-implicit-fallback rules. The fusion contract must make the dangerous
+incomplete shapes **unrepresentable** where the type system can (layer count
+and order, required transfer, single opacity source) and fail closed by
+validation for the rest (binding roles and cross-field completeness), rather
+than leaving either to convention.
 
 ## Decision
 
@@ -104,3 +107,20 @@ omits `opacity`, `FusionCompositionState` is a tuple of one `CompositionLayer`
 underlay followed by `FusionOverlayLayer` overlays, and the validator rejects any
 overlay presentation that declares `opacity`. The CT underlay keeps
 `PresentationState`, whose opacity still has a single source.
+
+## Addendum — P3.4-A.3bis: Representability Precision
+
+The fusion layer tuple was tightened to
+`readonly [CompositionLayer, FusionOverlayLayer, ...FusionOverlayLayer[]]`: a
+fusion with no overlay, or with any layer after the first underlay that is a
+plain `CompositionLayer`, is now a compile-time error rather than only a
+validator refusal. The overlay presentation has no `opacity` field, so
+`blendSlider` is structurally the sole PET opacity source.
+
+What remains validator-enforced is role correctness (`binding.role === 'base'`
+for the underlay and `'overlay'` for each overlay) and the cross-field range
+rules, because `DataBinding.role` is a shared union that also serves
+single/multi-layer views. The word "unrepresentable" in the Context section is
+therefore scoped to the structural facts; the validator is the mandatory
+boundary for the rest. `tests/presets/radiometry-presets.test.ts` additionally
+pins the fusion fixture's `blendSlider: 50` to `getFusionOpacity` (`0.5^0.42`).

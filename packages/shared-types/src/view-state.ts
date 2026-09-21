@@ -101,7 +101,7 @@ export interface FusionCompositionState {
   readonly mode: 'fusion';
   readonly blend: FusionBlendMode;
   /** Exactly one underlay (`CompositionLayer`) followed by one or more overlays. */
-  readonly layers: readonly [CompositionLayer, ...FusionOverlayLayer[]];
+  readonly layers: readonly [CompositionLayer, FusionOverlayLayer, ...FusionOverlayLayer[]];
 }
 
 export interface SingleCompositionState {

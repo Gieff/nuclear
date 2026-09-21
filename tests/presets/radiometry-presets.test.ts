@@ -26,6 +26,8 @@ const {
   getPETOpacityMapping,
 } = await import('../../packages/rendering-presets/src/index.ts');
 
+const { mockFusionView } = await import('../fixtures/view-contracts.fixture.ts');
+
 /** Named tolerance for the canonical power/mid-point curves. */
 const TOLERANCE = 1e-12;
 
@@ -234,5 +236,14 @@ describe('NuClear P3.4-A — CT Soft Tissue preset (spec §5)', () => {
       { value: -1024, opacity: 1 },
       { value: 3071, opacity: 1 },
     ]);
+  });
+
+  it('17. the fusion fixture blendSlider is the sole PET opacity source (50 -> 0.5^0.42)', () => {
+    const composition = mockFusionView.composition as unknown as {
+      layers: Array<{ fusion?: { blendSlider: number } }>;
+    };
+    const slider = composition.layers[1].fusion?.blendSlider;
+    assert.equal(slider, 50, 'the fusion fixture must carry the slider, not a presentation opacity');
+    assert.ok(Math.abs(getFusionOpacity(slider as number) - Math.pow(0.5, 0.42)) <= TOLERANCE);
   });
 });

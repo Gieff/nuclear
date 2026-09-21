@@ -5,8 +5,8 @@ P3.1.1, P3.2 closed via corrective P3.2.1); P3.3 closed (P3.3-A `16c40b4`,
 P3.3-B `3fbc011`, P3.3.1 corrective `9ede6d7`, conclusive P3.3-C review/QA
 **PASS**); P3.4-A accepted, P3.4-A.1 accepted (corrective radiometry hardening
 under ADR-005), P3.4-A.2 accepted (ADR-006 per-layer fusion `MedicalViewState`
-contract) and P3.4-A.3 accepted (corrective single-source PET overlay opacity);
-P3.4-B–P3.6 not started.
+contract) and P3.4-A.3 accepted (corrective single-source PET overlay opacity),
+plus P3.4-A.3bis (representability precision); P3.4-B–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -1821,3 +1821,101 @@ solely `(blendSlider/100)^0.42`, `highlighted`/`alpha` transfer), with CT/PT/
 fusion positives and the addendum's fail-closed negatives, plus real-harness
 evidence. The contract now has no dual PET-opacity source. Do not add
 `RenderTarget` (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.4-A.3bis: Representability Precision (corrective)
+
+## 1. What Was Implemented
+
+The user's P3.4-A.2 review arrived after P3.4-A.3 had already been implemented,
+so most of it was addressed by A.3. This addendum closes the remainder:
+
+| Review point | Status |
+| --- | --- |
+| `blendSlider` sole PET opacity authority | **done in A.3** |
+| Fusion overlay presentation must not have `opacity`; CT base may keep it | **done in A.3** |
+| Distinct base/overlay types + tuple enforcing order and a single base | **strengthened here** |
+| Negatives for overlay `opacity`; test `blendSlider: 50 → 0.5^0.42` | negatives in A.3; **formula test added here** |
+| ADR-006 wrongly says `presentation.opacity` is the unique authority | **fixed in A.3** (Decision 5 amended) |
+| "unrepresentable" overstated while layers was a generic array | **corrected here** |
+
+- **Tuple tightened** to
+  `readonly [CompositionLayer, FusionOverlayLayer, ...FusionOverlayLayer[]]`:
+  a fusion with no overlay, or with a non-overlay layer after the first
+  underlay, is now a compile-time error, not only a validator refusal.
+- **Formula test added** (`tests/presets/radiometry-presets.test.ts` #17): the
+  fusion fixture's `blendSlider: 50` is fed to `getFusionOpacity` and asserted
+  equal to `0.5^0.42` within `1e-12`, tying the contract fixture to the
+  canonical spec §2 curve.
+- **ADR-006 wording scoped:** the Context sentence now says the type system
+  makes the structural facts unrepresentable (count, order, required transfer,
+  single opacity source) while binding roles and cross-field completeness are
+  fail-closed by validation, because `DataBinding.role` is a shared union. A
+  P3.4-A.3bis addendum records this precisely.
+
+## 2. Files Changed / Created
+
+Modified:
+- `packages/shared-types/src/view-state.ts` (tuple strengthening)
+- `tests/presets/radiometry-presets.test.ts` (+1 formula test)
+- `docs/decisions/ADR-006-per-layer-fusion-presentation.md` (Context wording + A.3bis addendum)
+
+Unchanged: everything else.
+
+## 3. Architectural Assumptions Made
+
+- `DataBinding.role` remains a shared union (`base`/`overlay`/`reference`), so
+  role correctness cannot be expressed purely in the type without splitting the
+  binding contract; the validator stays the mandatory boundary for role and
+  cross-field rules.
+- `blendSlider` is the only PET overlay opacity input; the CT underlay's
+  overall opacity remains its single `PresentationState.opacity`.
+
+## 4. Tests Added & Executed
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **156 pass / 0 fail** (31 suites; 155 prior + 1) |
+| `npm run build` | clean (exit 0) |
+| `tests/presets + tests/contracts` | **27 pass / 0 fail** |
+
+A.3bis is a bounded precision/test/doc correction; the substantive A.3 contract
+change already carries its reviewer PASS and QA PASS. The full gate pipeline was
+re-run here after the tuple tightening, because the tuple is a compile-time
+contract change.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-006 Context wording corrected; a P3.4-A.3bis addendum records the tuple
+  strengthening and the precise representability scope.
+- This report satisfies the AgentLog Gate for P3.4-A.3bis.
+- `CHANGELOG.md` untouched.
+
+## 6. Project Model Impact
+
+- Persisted contract change (tuple shape only). Ratified by ADR-006 + addendum;
+  no `.ncp` schema bump.
+
+## 7. Known Limitations & Technical Debt
+
+- Binding roles remain validator-enforced (documented); a future split of
+  `DataBinding` into role-specific types would move that check to compile time.
+- `multi-layer` validation remains shallow; `LocalViewOverride` presentation
+  overrides remain view-level (Phase 4 follow-up).
+- Test sources remain outside the `tsc` graph; intermittent renderer-harness
+  startup flake remains (rerun green).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-B — `MedicalViewState` application**, and additionally include
+the two scope items the user requested for B: a **declared DICOM palette
+catalog in `@nuclear/rendering-presets`** and its **typed registration in
+`@nuclear/medical-engine`** (so PET colormaps become ratified, typed inputs
+rather than caller strings). Apply the `Single`/`Composed` union and the ADR-005
+binding to the Cornerstone viewport (CT underlay + PET overlay; `setProperties`
+per spec §7, overall PET opacity solely `(blendSlider/100)^0.42`,
+`highlighted`/`alpha` transfer), with CT/PT/fusion positives and the addendum's
+fail-closed negatives, plus real-harness evidence. Do not add `RenderTarget`
+(P3.5), UI or view-engine work.
