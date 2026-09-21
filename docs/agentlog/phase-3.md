@@ -7,7 +7,9 @@ P3.3-B `3fbc011`, P3.3.1 corrective `9ede6d7`, conclusive P3.3-C review/QA
 under ADR-005), P3.4-A.2 accepted (ADR-006 per-layer fusion `MedicalViewState`
 contract), P3.4-A.3 accepted (corrective single-source PET overlay opacity) and
 P3.4-A.3bis accepted (representability precision); P3.4-B in progress —
-P3.4-B.1 accepted (ADR-007 DICOM palette catalog); P3.4-B.2–P3.6 not started.
+P3.4-B.1 accepted (ADR-007 DICOM palette catalog) and P3.4-B.1.1 accepted
+(canonical colormap id, whole-LUT digest, registration dedupe);
+P3.4-B.2–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -1917,8 +1919,129 @@ catalog in `@nuclear/rendering-presets`** and its **typed registration in
 rather than caller strings). Apply the `Single`/`Composed` union and the ADR-005
 binding to the Cornerstone viewport (CT underlay + PET overlay; `setProperties`
 per spec §7, overall PET opacity solely `(blendSlider/100)^0.42`,
-`highlighted`/`alpha` transfer), with CT/PT/fusion positives and the addendum's
-fail-closed negatives, plus real-harness evidence. Do not add `RenderTarget`
+`highlighted`/`alpha` transfer), with CT/PT/fusion
+positives and the addendum's fail-closed negatives, plus real-harness evidence.
+Do not add `RenderTarget` (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.4-B.1.1: Palette Canonicalisation, LUT Digest & Dedupe
+
+## 1. What Was Implemented
+
+The user accepted P3.4-B.1 and imposed two mandatory requirements for P3.4-B.2,
+plus a minor dedupe. This bounded preflight implements all three; it does **not**
+implement the volume-viewport/`MedicalViewState` application.
+
+1. **Canonical persisted `colormapId` + typed resolution.** The catalog gained
+   `findDicomPaletteById`; the persisted PET/fusion-overlay
+   `presentation.colormapId` is now the stable NuClear id `dicom-pet` (not the
+   ambiguous `'PET'`, whose name and content label coincide). A new Node-safe
+   `@nuclear/medical-engine/src/palette/palette-resolution.ts` resolves that id
+   to the Cornerstone registration name and throws typed
+   `PaletteResolutionError(PALETTE_NOT_FOUND)` for unknown/empty ids — before
+   any `setProperties`, with no default substitution. The CT underlay keeps
+   `'gray'` with the documented built-in caveat (its fail-closed resolution is
+   P3.4-B.2).
+2. **Whole-LUT regression digest.** `tests/presets/dicom-palettes.test.ts` now
+   computes SHA-256 over the 1024 quantised bytes
+   (`clamp(round(v*255), 0, 255)`) of each palette and compares to four pinned
+   digests. A single byte mutation or a length change fails the test.
+3. **Registration dedupe.** `registerDicomPalettes()` registers a palette whose
+   `name === contentLabel` (PET) once and returns the seven unique registry
+   names in catalog order; idempotence and rethrow-on-failure are unchanged.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/medical-engine/src/palette/palette-resolution.ts` (75)
+- `packages/medical-engine/src/palette/index.ts` (9)
+- `tests/palette/palette-resolution.test.ts` (81)
+
+Modified:
+- `packages/rendering-presets/src/dicom-palettes.ts` (632 — pure data table +
+  `findDicomPaletteById`)
+- `packages/medical-engine/src/renderer/dicom-palette-registration.ts` (96)
+- `packages/medical-engine/src/index.ts` (5 — exports the Node-safe palette barrel)
+- `tests/presets/dicom-palettes.test.ts` (155)
+- `tests/rendering/dicom-palette-registration.test.ts` (116)
+- `tests/rendering/fixtures/palette-entry.ts` (100)
+- `tests/fixtures/view-contracts.fixture.ts` (161)
+- `docs/decisions/ADR-007-dicom-palette-catalog.md` (addendum)
+
+Unchanged: `@nuclear/shared-types`, the worker, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- The persisted `colormapId` canonical form is always the NuClear stable id
+  (`dicom-*`); the DICOM content label and the Cornerstone registration name
+  are registration details resolved internally.
+- `PaletteResolutionError` is Node-safe and deliberately separate from the
+  renderer's Cornerstone errors; it is reachable from the package barrel.
+- The digest is a regression guard over the whole LUT, derived from the DICOM
+  PS3.6 Table B.1-1 8-bit tables; it is not a DICOM conformance check.
+
+## 4. Tests Added & Executed
+
+Added: 2 preset tests (whole-LUT digest; `findDicomPaletteById`) and 4 resolver
+tests; adjusted the harness registration test to seven unique names.
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **170 pass / 0 fail** (34 suites; 164 prior + 6) |
+| `npm run test:renderer` | **45 pass / 0 fail** (11 suites) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| P2.5 source integrity | **2/2** |
+
+Pinned digests (SHA-256 over the quantised 1024-value table):
+- `dicom-hot-iron` `ca6c2927abca13b899a7d88fef1231ac9a0f09cecfc6402f1a544d22a33c791e`
+- `dicom-pet` `d7a1f92cd7b2c2df82f0e6fe5211af10a6136fd348299272674693996f63f039`
+- `dicom-hot-metal-blue` `c3a09a60bd404de71385e4e39a3cf22586a217767c019ce06334cbdead737146`
+- `dicom-pet-20-step` `b3b98b418920617ae7a242e828a869be59b93e5d187d346137ad26c59c868b67`
+
+The reviewer independently recomputed all four digests from pydicom 3.0.2's
+bundled well-known palette SOP instances and they match the pins exactly.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-007 gained an addendum recording the canonical id rule (typed failure
+  before `setProperties`), the digest definition/derivation and the dedupe.
+- This report satisfies the AgentLog Gate for P3.4-B.1.1.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: **PASS** on all six technical items (it reproduced the
+  digests from pydicom and mutation-tested the digest); the only concern was
+  this AgentLog entry, now written. It also confirmed the earlier "B.1 handover
+  missing" note was stale (B.1 is committed in `7f97a2b`).
+- QA verdict: **PASS** on all command/structural gates with digest mutation
+  sensitivity independently demonstrated; the only failing row was this report.
+
+## 6. Project Model Impact
+
+- The persisted contract convention changes: PET/fusion `colormapId` is a
+  stable `dicom-*` id. The fixture was updated accordingly. No shared-types
+  change; the convention is recorded in ADR-007.
+
+## 7. Known Limitations & Technical Debt
+
+- CT `'gray'` (a Cornerstone built-in, not a catalog id) has no typed resolver
+  yet; B.2 must resolve built-ins fail-closed before `setProperties`.
+- The digest is a regression guard, not a DICOM conformance tool.
+- The palette data module is 632 lines (pure data, Rule 03 exempt).
+- Intermittent renderer-harness startup flake remains (rerun green).
+- No viewport application, capture, `RenderTarget` or hardware GPU evidence yet.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-B.2** with both mandatory requirements wired in: add the
+adapter volume-viewport capability and apply the `Single`/`Composed`
+`MedicalViewState` union using `resolveDicomPaletteById` (registered palettes,
+`dicom-*` ids, fail-closed before `setProperties`), the ADR-005 quantitative
+binding, and the per-layer fusion transfer (overall PET opacity solely
+`(blendSlider/100)^0.42`), with CT/PT/fusion positives and the addendum's
+fail-closed negatives plus real-harness evidence. Do not add `RenderTarget`
 (P3.5), UI or view-engine work.
 
 ---

@@ -38,6 +38,9 @@ const spatial: SpatialState = {
   sliceOffsetMm: 0,
 };
 const camera: CameraState = { zoom: 1, panMm: [0, 0], rotationDeg: 0, focalPointMm: [0, 0], fitMode: 'manual' };
+// `gray` is a Cornerstone built-in colormap, not a NuClear catalog id. P3.4-B.2
+// resolves built-ins through a separate fail-closed path; only the `dicom-*`
+// stable ids below are catalog entries.
 const presentation: PresentationState = {
   voi: [-1000, 1000], colormapId: 'gray', invert: false, opacity: 1, interpolation: 'linear', modalityPresentation: 'ct',
 };
@@ -51,13 +54,13 @@ export const mockMedicalView: MedicalViewState = {
 
 const petSpatial: SpatialState = { ...spatial, frameOfReferenceUID: mockPetAsset.geometry.frameOfReferenceUID };
 const petPresentation: PresentationState = {
-  suvRange: [0, 8], colormapId: 'PET', invert: false, opacity: 1, interpolation: 'linear', modalityPresentation: 'pet',
+  suvRange: [0, 8], colormapId: 'dicom-pet', invert: false, opacity: 1, interpolation: 'linear', modalityPresentation: 'pet',
 };
 const fusionCtPresentation: PresentationState = {
   voi: [-160, 240], colormapId: 'gray', invert: false, opacity: 1, interpolation: 'linear', modalityPresentation: 'ct',
 };
 const fusionPetPresentation: PetFusionOverlayPresentation = {
-  suvRange: [0, 8], colormapId: 'PET', invert: false, interpolation: 'linear', modalityPresentation: 'pet',
+  suvRange: [0, 8], colormapId: 'dicom-pet', invert: false, interpolation: 'linear', modalityPresentation: 'pet',
 };
 
 export const mockPetView: MedicalViewState = {

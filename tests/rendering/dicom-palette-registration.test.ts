@@ -41,11 +41,13 @@ const REQUIRED_NAMES = [
   'PET_20_STEP',
 ] as const;
 
-/** Both registration forms for each catalog palette, in catalog order. */
+/**
+ * The seven unique registry names, in catalog order: each palette's `name` and
+ * `contentLabel`, deduped where identical (`PET`).
+ */
 const EXPECTED_NAMES = [
   'Hot Iron',
   'HOT_IRON',
-  'PET',
   'PET',
   'Hot Metal Blue',
   'HOT_METAL_BLUE',
@@ -71,12 +73,13 @@ function describeAck(ack: PaletteAck): string {
 }
 
 describe('NuClear P3.4-B.1 — Cornerstone DICOM palette registration', () => {
-  it('1. registers all four palettes under both their name and content label', async () => {
+  it('1. registers all four palettes under seven unique name/label forms', async () => {
     const harness = await createRendererHarness({ entryPath: PALETTE_ENTRY_PATH });
     try {
       const ack = await callRegisterTwice(harness.page);
       assert.equal(ack.ok, true, describeAck(ack));
-      assert.deepEqual(ack.names, EXPECTED_NAMES, 'registerDicomPalettes must return both forms');
+      assert.equal(ack.names?.length, 7, 'registerDicomPalettes must return seven unique names');
+      assert.deepEqual(ack.names, EXPECTED_NAMES, 'registerDicomPalettes must return unique names');
       for (const required of REQUIRED_NAMES) {
         assert.equal(ack.namesInclude?.[required], true, `registry must include '${required}'`);
       }

@@ -17,7 +17,10 @@ import { utilities } from '@cornerstonejs/core';
 import { registerDicomPalettes } from '../../../packages/medical-engine/src/renderer/index.ts';
 import { probeWebGL2 } from './adapter-host.ts';
 
-/** Names the registration contract must place in Cornerstone's registry. */
+/**
+ * The seven unique names the registration contract must place in Cornerstone's
+ * registry (each palette's `name` and `contentLabel`, deduped for `PET`).
+ */
 const REQUIRED_NAMES = [
   'PET',
   'HOT_IRON',

@@ -7,6 +7,7 @@
  * `tests/rendering/dicom-palette-registration.test.ts`.
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { register } from 'node:module';
 import { describe, it } from 'node:test';
 
@@ -15,8 +16,27 @@ register(new URL('../medical/fixtures/ts-resolve-hook.mjs', import.meta.url));
 const {
   DICOM_PALETTE_CATALOG,
   findDicomPaletteByContentLabel,
+  findDicomPaletteById,
   findDicomPaletteBySopUid,
 } = await import('../../packages/rendering-presets/src/index.ts');
+
+/**
+ * Whole-LUT regression digests, in the catalog's stable-id order.
+ *
+ * Each digest is lowercase hex SHA-256 over exactly 1024 bytes, where
+ * `b[i] = clamp(round(rgbPoints[i] * 255), 0, 255)`: the whole
+ * `[x, r, g, b] × 256` transfer function quantised to the DICOM 8-bit LUT the
+ * palette denotes. The expected values were derived from the DICOM PS3.6
+ * Table B.1-1 8-bit tables cross-checked against pydicom's bundled
+ * well-known palette SOP instances. Mutating any byte, or changing the table
+ * length, changes the digest and fails the test.
+ */
+const EXPECTED_LUT_DIGESTS: Readonly<Record<string, string>> = {
+  'dicom-hot-iron': 'ca6c2927abca13b899a7d88fef1231ac9a0f09cecfc6402f1a544d22a33c791e',
+  'dicom-pet': 'd7a1f92cd7b2c2df82f0e6fe5211af10a6136fd348299272674693996f63f039',
+  'dicom-hot-metal-blue': 'c3a09a60bd404de71385e4e39a3cf22586a217767c019ce06334cbdead737146',
+  'dicom-pet-20-step': 'b3b98b418920617ae7a242e828a869be59b93e5d187d346137ad26c59c868b67',
+};
 
 /** The ratified nuclear-medicine set, in DICOM table order. */
 const EXPECTED = [
@@ -106,5 +126,30 @@ describe('NuClear P3.4-B.1 — DICOM palette catalog', () => {
     assert.equal(findDicomPaletteBySopUid('1.2.840.10008.1.5.99'), undefined);
     assert.equal(findDicomPaletteByContentLabel('hot_iron'), undefined, 'lookup is exact-case');
     assert.equal(findDicomPaletteBySopUid(''), undefined);
+  });
+
+  it('7. each palette whole-LUT SHA-256 digest matches its pinned 8-bit value', () => {
+    for (const palette of DICOM_PALETTE_CATALOG) {
+      const bytes = palette.rgbPoints.map((value) =>
+        Math.min(255, Math.max(0, Math.round(value * 255))),
+      );
+      assert.equal(bytes.length, 1024, `${palette.id} quantised LUT length`);
+      const digest = createHash('sha256').update(Buffer.from(bytes)).digest('hex');
+      assert.equal(digest, EXPECTED_LUT_DIGESTS[palette.id], `${palette.id} whole-LUT digest`);
+    }
+  });
+
+  it('8. findDicomPaletteById resolves every stable id and rejects unknown or empty ids', () => {
+    for (const expected of EXPECTED) {
+      assert.equal(
+        findDicomPaletteById(expected.id)?.id,
+        expected.id,
+        `stable id ${expected.id} must resolve`,
+      );
+    }
+    assert.equal(findDicomPaletteById('dicom-nope'), undefined);
+    assert.equal(findDicomPaletteById(''), undefined);
+    assert.equal(findDicomPaletteById('pet'), undefined, 'lookup is exact-case and id-only');
+    assert.equal(findDicomPaletteById('PET'), undefined, 'a content label is not a stable id');
   });
 });

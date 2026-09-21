@@ -619,3 +619,14 @@ export function findDicomPaletteBySopUid(
   return DICOM_PALETTE_CATALOG.find((palette) => palette.sopUid === uid);
 }
 
+/**
+ * Resolves a palette by its stable NuClear id (e.g. `dicom-pet`). This is the
+ * canonical identity for persisted/presented `colormapId` values; the DICOM
+ * content label and SOP UID remain available but are not the persisted form.
+ */
+export function findDicomPaletteById(
+  id: string,
+): DicomPaletteDefinition | undefined {
+  return DICOM_PALETTE_CATALOG.find((palette) => palette.id === id);
+}
+

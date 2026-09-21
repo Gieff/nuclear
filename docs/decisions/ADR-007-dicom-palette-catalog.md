@@ -78,3 +78,50 @@ throwing).
   their DICOM UIDs and structural tests.
 - If Cornerstone's registration API or RGB point layout changes, the typed
   adapter must be updated and re-verified.
+
+## Addendum (P3.4-B.1.1, 2026-09-21): canonical persisted id, whole-LUT digest, registration dedupe
+
+This addendum closes the P3.4-B.1 preflight gap before P3.4-B.2 applies a
+palette to a volume viewport. It does not implement that application.
+
+1. **Canonical persisted `colormapId`.** The persisted/presented
+   `PresentationState.colormapId` and `PetFusionOverlayPresentation.colormapId`
+   form is the stable NuClear catalog id — the `id` field of a
+   `DicomPaletteDefinition`, e.g. `dicom-pet` — resolved by
+   `findDicomPaletteById`. The DICOM content label (`PET`) and the Cornerstone
+   registration name (`PET`) are not persisted identities. The renderer
+   resolves a stable id to the Cornerstone name internally, before any
+   `setProperties` call, via `@nuclear/medical-engine`'s
+   `resolveDicomPaletteById`, which returns
+   `{ id, cornerstoneColormapName, contentLabel, sopUid }`. An unknown or empty
+   id raises a typed `PaletteResolutionError` with code `PALETTE_NOT_FOUND`
+   whose message names the received id and states that it must be a declared
+   catalog id. No default palette is substituted. Cornerstone built-ins such as
+   `gray` are not catalog ids and are resolved by a separate fail-closed path in
+   P3.4-B.2 (see the `view-contracts` fixture note).
+
+2. **Whole-LUT regression digest.** `tests/presets/dicom-palettes.test.ts`
+   pins a SHA-256 (lowercase hex) digest per palette over exactly 1024 bytes
+   `b[i] = clamp(round(rgbPoints[i] * 255), 0, 255)` — the whole
+   `[x, r, g, b] × 256` transfer function quantised to the DICOM 8-bit LUT the
+   palette denotes. The expected digests were derived from the DICOM PS3.6
+   Table B.1-1 8-bit tables cross-checked against pydicom's bundled well-known
+   palette SOP instances. Pinned values:
+
+   | Stable id | Whole-LUT SHA-256 |
+   | --- | --- |
+   | `dicom-hot-iron` | `ca6c2927abca13b899a7d88fef1231ac9a0f09cecfc6402f1a544d22a33c791e` |
+   | `dicom-pet` | `d7a1f92cd7b2c2df82f0e6fe5211af10a6136fd348299272674693996f63f039` |
+   | `dicom-hot-metal-blue` | `c3a09a60bd404de71385e4e39a3cf22586a217767c019ce06334cbdead737146` |
+   | `dicom-pet-20-step` | `b3b98b418920617ae7a242e828a869be59b93e5d187d346137ad26c59c868b67` |
+
+   Any mutated byte, or a changed table length, changes the digest and fails
+   the test.
+
+3. **Registration dedupe — seven unique names.** Because `PET` has an identical
+   `name` and `contentLabel`, registering both forms verbatim would touch the
+   same registry key twice. The registration adapter dedupes the two forms per
+   palette, so the four palettes create exactly seven unique Cornerstone
+   registry names, in deterministic catalog order: `Hot Iron`, `HOT_IRON`,
+   `PET`, `Hot Metal Blue`, `HOT_METAL_BLUE`, `PET 20 Step`, `PET_20_STEP`.
+   Idempotence and rethrow-on-failure behaviour are unchanged.

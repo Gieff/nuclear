@@ -4,7 +4,8 @@
  * Maps each declarative `DICOM_PALETTE_CATALOG` entry from
  * `@nuclear/rendering-presets` explicitly onto Cornerstone's
  * `ColormapRegistration` and registers it under both the palette `name`
- * (e.g. `Hot Iron`) and its `contentLabel` (e.g. `HOT_IRON`). Registration uses
+ * (e.g. `Hot Iron`) and its `contentLabel` (e.g. `HOT_IRON`), deduped when the
+ * two are identical (e.g. `PET`). Registration uses
  * `utilities.colormap.registerColormap`, which overwrites a same-named entry,
  * so a repeated call is idempotent; a module-level flag additionally makes the
  * second call a cheap no-op that returns the same names.
@@ -22,9 +23,24 @@ import {
   type DicomPaletteDefinition,
 } from '@nuclear/rendering-presets';
 
-/** Every name this module registers, in catalog order (`name`, `contentLabel`). */
+/**
+ * The names one palette is registered under: its DICOM `name` and its
+ * `contentLabel`, deduped when the two are identical (e.g. `PET`). Order is
+ * always `name`, then `contentLabel`.
+ */
+function registrationNames(palette: DicomPaletteDefinition): readonly string[] {
+  return palette.name === palette.contentLabel
+    ? [palette.name]
+    : [palette.name, palette.contentLabel];
+}
+
+/**
+ * Every unique Cornerstone registry name this module creates, in catalog order.
+ * The four palettes collapse to seven unique names because `PET` serves as both
+ * name and content label.
+ */
 const REGISTERED_NAMES: readonly string[] = DICOM_PALETTE_CATALOG.flatMap(
-  (palette) => [palette.name, palette.contentLabel],
+  registrationNames,
 );
 
 let palettesRegistered = false;
@@ -62,7 +78,7 @@ function registerOne(palette: DicomPaletteDefinition, name: string): void {
  * Registers the DICOM PS3.6 Table B.1-1 nuclear-medicine palettes with
  * Cornerstone under both their DICOM name and content label.
  *
- * @returns the registered names (both forms, in catalog order). The first call
+ * @returns the seven unique registered names, in catalog order. The first call
  * performs the real registration; later calls are a cheap no-op guarded by a
  * module-level flag. Even if the registration were repeated, `registerColormap`
  * would overwrite the same-named entries rather than duplicate them.
@@ -70,8 +86,9 @@ function registerOne(palette: DicomPaletteDefinition, name: string): void {
 export function registerDicomPalettes(): readonly string[] {
   if (!palettesRegistered) {
     for (const palette of DICOM_PALETTE_CATALOG) {
-      registerOne(palette, palette.name);
-      registerOne(palette, palette.contentLabel);
+      for (const name of registrationNames(palette)) {
+        registerOne(palette, name);
+      }
     }
     palettesRegistered = true;
   }
