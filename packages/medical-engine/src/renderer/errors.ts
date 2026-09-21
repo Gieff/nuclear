@@ -24,6 +24,20 @@ export interface RendererErrorOptions {
   readonly cause?: unknown;
 }
 
+/** A discrete teardown step that failed while releasing renderer resources. */
+export type RendererTeardownOperation = 'engine-destroy' | 'container-removal';
+
+/** Typed record of one failed teardown operation and its underlying cause. */
+export interface RendererTeardownFailure {
+  readonly operation: RendererTeardownOperation;
+  readonly cause: unknown;
+}
+
+/** Lifecycle-error options add the structured teardown failure record. */
+export interface RendererLifecycleErrorOptions extends RendererErrorOptions {
+  readonly failures?: readonly RendererTeardownFailure[];
+}
+
 /** Base class for every `CornerstoneRendererAdapter` failure. */
 export class RendererError extends Error {
   readonly code: RendererErrorCode;
@@ -56,8 +70,14 @@ export class RendererInitializationError extends RendererError {
 
 /** The adapter was moved through an invalid lifecycle transition. */
 export class RendererLifecycleError extends RendererError {
-  constructor(message: string, options?: RendererErrorOptions) {
+  /** Failed teardown operations, when this error reports an incomplete stop. */
+  readonly failures?: readonly RendererTeardownFailure[];
+
+  constructor(message: string, options: RendererLifecycleErrorOptions = {}) {
     super(RENDERER_ERROR_CODES.lifecycle, message, options);
     this.name = 'RendererLifecycleError';
+    if (options.failures !== undefined) {
+      this.failures = options.failures;
+    }
   }
 }

@@ -16,12 +16,19 @@ import { getRenderingEngine, isCornerstoneInitialized } from '@cornerstonejs/cor
 import {
   CornerstoneRendererAdapter,
   RendererError,
+  RendererLifecycleError,
 } from '../../../packages/medical-engine/src/renderer/index.ts';
 import type {
   RendererCapabilities,
   RendererRuntimeHost,
   WebGL2Availability,
 } from '../../../packages/medical-engine/src/renderer/index.ts';
+import {
+  breakEngineDestroy,
+  breakEngineDestroyOnce,
+  createBrowserHost,
+  probeWebGL2,
+} from './adapter-host.ts';
 
 interface AdapterErrorResult {
   readonly ok: false;
@@ -47,7 +54,13 @@ interface StopSuccess {
   readonly registeredAfter: boolean;
 }
 
-type StopOutcome = StopSuccess | AdapterErrorResult;
+interface StopFailure extends AdapterErrorResult {
+  readonly state?: string;
+  readonly registeredAfter?: boolean;
+  readonly failures?: readonly string[];
+}
+
+type StopOutcome = StopSuccess | StopFailure;
 
 interface CodeOutcome {
   readonly ok: boolean;
@@ -67,6 +80,9 @@ interface NuclearAdapterProbe {
   stopTwice(engineId: string): CodeOutcome;
   startWithFailingContainer(engineId: string): FailingContainerOutcome;
   initializeWithRealHost(engineId: string): CodeOutcome;
+  startWithThrowingRemoval(engineId: string): StartOutcome;
+  breakEngineDestroy(engineId: string): CodeOutcome;
+  breakEngineDestroyOnce(engineId: string): CodeOutcome;
 }
 
 /** Minimal shape the shared harness reads for its `requireWebGL2` gate. */
@@ -97,42 +113,9 @@ function toCodeOutcome(error: unknown): CodeOutcome {
   return { ok: false, name: described.name, code: described.code, message: described.message };
 }
 
-function probeWebGL2(): WebGL2Availability {
-  const canvas = document.createElement('canvas');
-  const gl = canvas.getContext('webgl2');
-  if (!gl) {
-    return { ok: false, reason: 'getContext("webgl2") returned null' };
-  }
-  return { ok: true };
-}
-
-function createBrowserHost(): RendererRuntimeHost {
-  const containers = new Map<string, HTMLDivElement>();
-  return {
-    createEngineContainer(engineId: string): HTMLDivElement {
-      const element = document.createElement('div');
-      element.id = engineId;
-      element.style.width = '64px';
-      element.style.height = '64px';
-      document.body.appendChild(element);
-      containers.set(engineId, element);
-      return element;
-    },
-    removeEngineContainer(engineId: string): void {
-      const tracked = containers.get(engineId);
-      const element = tracked ?? document.getElementById(engineId);
-      if (element) {
-        element.remove();
-      }
-      containers.delete(engineId);
-    },
-    probeWebGL2,
-  };
-}
-
-function start(engineId: string): StartOutcome {
+function startWithHost(host: RendererRuntimeHost, engineId: string): StartOutcome {
   try {
-    const adapter = CornerstoneRendererAdapter.start(createBrowserHost(), { engineId });
+    const adapter = CornerstoneRendererAdapter.start(host, { engineId });
     activeAdapter = adapter;
     return {
       ok: true,
@@ -148,13 +131,21 @@ function start(engineId: string): StartOutcome {
   }
 }
 
+function start(engineId: string): StartOutcome {
+  return startWithHost(createBrowserHost(), engineId);
+}
+
+function startWithThrowingRemoval(engineId: string): StartOutcome {
+  return startWithHost(createBrowserHost({ removalThrows: true }), engineId);
+}
+
 function stop(): StopOutcome {
   const adapter = activeAdapter;
   if (!adapter) {
     return { ok: false, name: 'Error', code: 'UNKNOWN', message: 'no active adapter to stop' };
   }
+  const engineId = adapter.id;
   try {
-    const engineId = adapter.id;
     adapter.stop();
     activeAdapter = undefined;
     return {
@@ -163,7 +154,31 @@ function stop(): StopOutcome {
       registeredAfter: getRenderingEngine(engineId) !== undefined,
     };
   } catch (error) {
-    return describeError(error);
+    // A failed teardown keeps the active adapter so a retry can self-heal.
+    const described = describeError(error);
+    const failures =
+      error instanceof RendererLifecycleError
+        ? error.failures?.map((failure) => failure.operation)
+        : undefined;
+    return {
+      ...described,
+      state: adapter.state,
+      registeredAfter: getRenderingEngine(engineId) !== undefined,
+      failures,
+    };
+  }
+}
+
+function injectDestroyFailure(engineId: string, once: boolean): CodeOutcome {
+  try {
+    if (once) {
+      breakEngineDestroyOnce(engineId);
+    } else {
+      breakEngineDestroy(engineId);
+    }
+    return { ok: true };
+  } catch (error) {
+    return toCodeOutcome(error);
   }
 }
 
@@ -247,6 +262,9 @@ const probe: NuclearAdapterProbe = {
   stopTwice,
   startWithFailingContainer,
   initializeWithRealHost,
+  startWithThrowingRemoval,
+  breakEngineDestroy: (engineId: string) => injectDestroyFailure(engineId, false),
+  breakEngineDestroyOnce: (engineId: string) => injectDestroyFailure(engineId, true),
 };
 
 globalThis.__nuclearRendererProbe = { webgl2: probeWebGL2 };

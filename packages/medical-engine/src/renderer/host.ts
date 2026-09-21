@@ -31,8 +31,14 @@ export interface RendererCapabilities {
   readonly softwareRasterizer: boolean;
 }
 
-/** Lifecycle state of a single renderer adapter. */
-export type RendererAdapterState = 'idle' | 'started';
+/**
+ * Lifecycle state of a single renderer adapter.
+ *
+ * `teardown-failed` is a retryable terminal-until-repaired state: teardown did
+ * not fully release the engine and/or container, so the adapter must never
+ * report `idle` until a later `stop()` succeeds completely.
+ */
+export type RendererAdapterState = 'idle' | 'started' | 'teardown-failed';
 
 /**
  * Host port supplying the DOM container and the WebGL capability probe to the

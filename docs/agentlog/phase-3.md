@@ -1,6 +1,8 @@
 # Phase 3 — Headless Medical Engine, Residency & RenderTarget
 
-Status: **IN PROGRESS** — P3.0–P3.1 accepted; P3.2–P3.6 not started.
+Status: **IN PROGRESS** — P3.0–P3.1.1 accepted (P3.1 closed via corrective
+P3.1.1); P3.2–P3.6 not started. Commit baseline: P3.0 `04bdbaa`, P3.1
+`ab0f69b`, P3.1.1 corrective commit recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
 `b793631`.
 
@@ -298,3 +300,130 @@ through Cornerstone, and fail closed on wrong locator, unsupported
 classification, `missing`/`mismatch` availability and geometry disagreement.
 Do not add residency (P3.3), state application (P3.4), `RenderTarget` (P3.5),
 UI or view-engine work in P3.2.
+
+---
+
+# Handover Report — P3.1.1: Teardown Hardening (corrective)
+
+## 1. What Was Implemented
+
+The user rejected P3.1 closure: `CornerstoneRendererAdapter.stop()` reported
+`idle` after `this.#state = 'idle'` even if `destroy()` or
+`removeEngineContainer()` threw, so physical state (a registered engine and/or
+a live container) could be retained while the adapter claimed a clean stop.
+That violated P3.1's own declared properties (typed fail-closed errors, clean
+teardown). `ab0f69b` remains the P3.1 baseline; this slice is a focused
+corrective.
+
+- **Independent teardown attempts.** `stop()` now attempts engine destruction
+  and container removal independently; a failure in one never prevents the
+  other.
+- **Container cleanup in `finally`.** `host.removeEngineContainer()` always
+  runs, even when `destroy()` throws.
+- **Typed fail-closed error with cause and remediation.** Any incomplete
+  teardown throws `RendererLifecycleError`
+  (`RENDERER_LIFECYCLE_VIOLATION`) whose message names the failed
+  operation(s) and instructs the caller to resolve the failure and call
+  `stop()` again.
+- **Truthful state.** `RendererAdapterState` is now
+  `'idle' | 'started' | 'teardown-failed'`. `idle` is set only when no failure
+  occurred **and** `getRenderingEngine(engineId) === undefined`. Otherwise the
+  adapter enters the retryable `teardown-failed` state before throwing, so it
+  can never expose `idle` while an engine remains registered.
+- **Retry semantics.** `stop()` is retryable from `'teardown-failed'`, so a
+  transient renderer/host failure self-heals; `stop()` from `'idle'` still
+  throws as an invalid transition.
+- **Structured failure record.** `RendererTeardownOperation`
+  (`'engine-destroy' | 'container-removal'`) and `RendererTeardownFailure`
+  are exported, and `RendererLifecycleError.failures` carries them (with
+  `cause` = first failure).
+
+## 2. Files Changed / Created
+
+Modified:
+- `packages/medical-engine/src/renderer/adapter.ts` (264 lines — hardened
+  `stop()`)
+- `packages/medical-engine/src/renderer/errors.ts` (83 lines — teardown
+  failure types + `RendererLifecycleError.failures`)
+- `packages/medical-engine/src/renderer/host.ts` (55 lines — adds the
+  `'teardown-failed'` state)
+- `tests/rendering/fixtures/adapter-entry.ts` (272 lines — failure-injection
+  probe methods, enriched stop result)
+
+Created:
+- `tests/rendering/fixtures/adapter-host.ts` (93 lines — browser host +
+  destroy/removal failure injection, extracted to respect the 300-line limit)
+- `tests/rendering/adapter-teardown.test.ts` (166 lines — 3 real-harness
+  tests)
+
+Unchanged: `packages/medical-engine/src/index.ts` (renderer barrel still not
+re-exported), all other packages, `package.json`, `package-lock.json`,
+`.gitignore`, ADR-003, the plans, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- `'teardown-failed'` is a truthful, retryable state rather than a silent
+  no-op; partial cleanup must be observable by the caller.
+- `resetInitialization()` remains deliberately excluded from per-engine
+  teardown (process-global; multiple engines may coexist).
+- Failure injection in tests narrows the registered engine with a structural
+  `EngineDestructible` interface (no `any`); it is test infrastructure only
+  and never reachable from product code.
+- The P2.5 source-integrity constraint still holds: no `Math.`, no
+  `enum`/`namespace` declarations anywhere under `packages/medical-engine/src`.
+
+## 4. Tests Added & Executed
+
+Added: `tests/rendering/adapter-teardown.test.ts` (3 tests, real WebGL 2
+harness).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean |
+| `npx tsc -b --force` | clean |
+| `npm run build` | clean |
+| `npm test` | **63 pass / 0 fail** (60 prior + 3 new) |
+| `npm run test:renderer` | **10 pass / 0 fail** (3 P3.1.1 + 5 P3.1 + 2 P3.0) |
+| `npm run test:python` | **166 passed** |
+| `npm run typecheck:python` | clean over 43 source files |
+
+Corrective evidence: permanent `destroy()` failure → `teardown-failed`, never
+`idle`, engine still registered, `failures === ['engine-destroy']`; throwing
+`removeEngineContainer()` → `teardown-failed`, engine unregistered
+(`registeredAfter:false`, proving destroy was still attempted),
+`failures` includes `'container-removal'`; one-shot `destroy()` failure then
+retry → second `stop()` reaches `idle` with the engine unregistered.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- No new ADR: this enforces the teardown/typed-error properties already
+  declared for P3.1 and recorded in ADR-003.
+- This report satisfies the AgentLog Gate for P3.1.1.
+- `CHANGELOG.md` untouched.
+- Reviewer verdict: **PASS**, original defect fully fixed. QA verdict: **PASS**
+  on every executable gate (AgentLog row NOT YET APPLICABLE at QA time).
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema, shared contract, residency vocabulary or fixture
+  semantics changed. The adapter's public state vocabulary gained the
+  `'teardown-failed'` member, which is in-package and has no cross-package
+  consumer yet.
+
+## 7. Known Limitations & Technical Debt
+
+- `cause` carries only the first failure's cause; the full set is available
+  through the typed `failures` array (non-blocking, by design).
+- Test sources remain outside the `tsc` graph (inherited debt).
+- All renderer evidence is the software backend (SwiftShader); hardware GPU
+  remains `NOT YET APPLICABLE`.
+- `opencode-rag.json` is modified in the working tree by RAG tooling; it is
+  **not** part of this slice and was intentionally excluded from the commit.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.2 — Explicit series-to-volume loading from an accepted
+`ImagingAsset` and Phase 2 evidence**, with committed programmatically
+reproducible pixel-bearing CT/PT fixtures. Keep the P3.1.1 retryable
+`'teardown-failed'` semantics when P3.2/P3.3 add real resource teardown. Do not
+add residency, state application, `RenderTarget`, UI or view-engine work.

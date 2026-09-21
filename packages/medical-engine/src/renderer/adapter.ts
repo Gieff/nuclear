@@ -25,6 +25,7 @@ import {
   RendererLifecycleError,
   RendererUnavailableError,
 } from './errors.js';
+import type { RendererTeardownFailure } from './errors.js';
 import type {
   RendererAdapterState,
   RendererCapabilities,
@@ -83,7 +84,9 @@ function bestEffortRelease(host: RendererRuntimeHost, engineId: string): void {
  * Owns one Cornerstone `RenderingEngine` for one injected host.
  *
  * Lifecycle: `idle` -> `started` (via `start`) -> `idle` (via `stop`).
- * `stop()` is one-shot: a second call is a lifecycle violation, not a no-op.
+ * A teardown that does not fully release physical state enters the retryable
+ * `teardown-failed` state and throws; a clean `stop()` from `idle` is a
+ * lifecycle violation, not a no-op.
  */
 export class CornerstoneRendererAdapter {
   readonly #host: RendererRuntimeHost;
@@ -200,6 +203,14 @@ export class CornerstoneRendererAdapter {
   /**
    * Tears the adapter down and unregisters its engine.
    *
+   * Engine destruction and container removal are attempted independently: a
+   * failure in one never prevents attempting the other, and container removal
+   * always runs (via `finally`) even when `destroy()` throws. Teardown is only
+   * reported as `idle` when no operation failed AND the engine is confirmed
+   * unregistered; otherwise the adapter enters the retryable `teardown-failed`
+   * state and throws a `RendererLifecycleError` carrying the failed
+   * operations, so a transient host/renderer failure can self-heal on a retry.
+   *
    * `resetInitialization()` is deliberately NOT called here: Cornerstone
    * initialization is process-global and multiple engines may coexist (Phase 4
    * surfaces), so resetting it on one engine's teardown would be incorrect.
@@ -207,14 +218,47 @@ export class CornerstoneRendererAdapter {
    * the registry is clean afterwards.
    */
   stop(): void {
-    if (this.#state !== 'started') {
+    if (this.#state === 'idle') {
       throw new RendererLifecycleError(
-        `Renderer adapter '${this.#engineId}' cannot stop from state '${this.#state}'. ` +
-          "Only an adapter in state 'started' can be stopped, and stop() is one-shot.",
+        `Renderer adapter '${this.#engineId}' cannot stop from state 'idle'. ` +
+          "Only an adapter in state 'started' or 'teardown-failed' can be stopped; a clean stop is not repeatable.",
       );
     }
-    this.#state = 'idle';
-    getRenderingEngine(this.#engineId)?.destroy();
-    this.#host.removeEngineContainer(this.#engineId);
+
+    const failures: RendererTeardownFailure[] = [];
+    try {
+      try {
+        getRenderingEngine(this.#engineId)?.destroy();
+      } catch (error) {
+        failures.push({ operation: 'engine-destroy', cause: error });
+      }
+    } finally {
+      try {
+        this.#host.removeEngineContainer(this.#engineId);
+      } catch (error) {
+        failures.push({ operation: 'container-removal', cause: error });
+      }
+    }
+
+    const registeredAfter = getRenderingEngine(this.#engineId) !== undefined;
+    if (failures.length === 0 && !registeredAfter) {
+      this.#state = 'idle';
+      return;
+    }
+
+    this.#state = 'teardown-failed';
+    const operations = failures.map((failure) => failure.operation);
+    const failedDetail =
+      operations.length > 0
+        ? `failed operation(s): ${operations.join(', ')}.`
+        : 'engine-destroy completed without unregistering the engine.';
+    const registeredDetail = registeredAfter
+      ? ` The engine '${this.#engineId}' is still registered in Cornerstone.`
+      : '';
+    throw new RendererLifecycleError(
+      `Renderer adapter '${this.#engineId}' teardown did not complete: ${failedDetail}${registeredDetail} ` +
+        "The adapter is in state 'teardown-failed'; resolve the renderer/host failure and call stop() again to retry.",
+      { cause: failures[0]?.cause, failures },
+    );
   }
 }
