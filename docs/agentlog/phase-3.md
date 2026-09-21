@@ -1,6 +1,6 @@
 # Phase 3 — Headless Medical Engine, Residency & RenderTarget
 
-Status: **IN PROGRESS** — P3.0 accepted; P3.1–P3.6 not started.
+Status: **IN PROGRESS** — P3.0–P3.1 accepted; P3.2–P3.6 not started.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
 `b793631`.
 
@@ -155,3 +155,146 @@ against an injected runtime host, typed errors and clean teardown inside
 fail-closed behaviour when WebGL/initialization is unavailable. Before that
 code lands, consider the test-tsconfig debt above. Do not add
 `ViewportSurface`, UI or export composition in P3.1.
+
+---
+
+# Handover Report — P3.1: Narrow Cornerstone Adapter Lifecycle
+
+## 1. What Was Implemented
+
+P3.1 added the UI-agnostic Cornerstone adapter lifecycle to
+`@nuclear/medical-engine`, behind an injected runtime host, with typed
+fail-closed errors and clean, observable teardown.
+
+- **Injected runtime host port** (`src/renderer/host.ts`): the host owns DOM
+  container creation/removal and the WebGL 2 probe. The adapter never reaches
+  for `document` or a browser window. `RendererCapabilities` is a
+  NuClear-owned serializable mirror, mapped field-by-field from
+  `detectRenderingCapabilities()` (no foreign-object spread).
+- **Typed, actionable errors** (`src/renderer/errors.ts`):
+  `RendererUnavailableError` / `RENDERER_UNAVAILABLE`,
+  `RendererInitializationError` / `RENDERER_INITIALIZATION_FAILED`,
+  `RendererLifecycleError` / `RENDERER_LIFECYCLE_VIOLATION`. Each message
+  states the failure and the remediation.
+- **Adapter lifecycle** (`src/renderer/adapter.ts`,
+  `CornerstoneRendererAdapter`): `static start(host, options?)` runs a
+  fail-closed sequence — WebGL 2 probe **before** any init; engine-id-in-use
+  guard; `init()` + `isCornerstoneInitialized()`; host container creation;
+  `RenderingEngine` + `enableElement(STACK)`. Any failure throws a typed error
+  after best-effort release, leaving no registered engine behind. `stop()`
+  destroys the engine and removes the container; `stop()` is one-shot.
+- **Renderer barrel** (`src/renderer/index.ts`) is deliberately **not**
+  re-exported from `src/index.ts`, so Node consumers of the package barrel
+  never load a browser-only renderer.
+- **Harness made pluggable**: `tests/rendering/fixtures/renderer-harness.mjs`
+  gained `options.entryPath` with per-entry memoized bundling; the P3.0 probe
+  remains the default.
+
+**Teardown rationale:** `stop()` deliberately does **not** call
+`resetInitialization()`. Cornerstone initialization is process-global and
+multiple engines may coexist (Phase 4 surfaces), so resetting it on one
+engine's teardown would be incorrect. `destroy()` releases that engine's
+physical resources; the harness proves the registry is clean.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/medical-engine/src/renderer/host.ts` (49 lines)
+- `packages/medical-engine/src/renderer/errors.ts` (63 lines)
+- `packages/medical-engine/src/renderer/adapter.ts` (220 lines)
+- `packages/medical-engine/src/renderer/index.ts` (12 lines)
+- `tests/rendering/fixtures/adapter-entry.ts` (254 lines — browser entry)
+- `tests/rendering/adapter-lifecycle.test.ts` (194 lines — node:test)
+
+Modified:
+- `tests/rendering/fixtures/renderer-harness.mjs` — pluggable `entryPath`
+  (per-entry memoized bundle); default entry unchanged.
+
+Unchanged: `packages/medical-engine/src/index.ts` (verified), all other
+packages, `package.json`, `package-lock.json`, `.gitignore`, the plans,
+`CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- The runtime host is the **only** DOM gateway; the adapter's public state is
+  serializable and host-independent.
+- The P2.5 source-integrity gate scans **all** `packages/medical-engine/src`
+  for `Math.` and for lowercase `enum `/`namespace ` declarations. The new
+  renderer sources contain none, so the adapter computes no arithmetic and
+  uses string unions / `as const` objects instead of enums.
+- `enableElement` requires an attached non-zero `HTMLDivElement`; the host
+  supplies it. Viewport **content** binding (images/volumes) is P3.2, not
+  P3.1 — the STACK viewport here is lifecycle plumbing only.
+- Multiple engines may coexist, so per-engine teardown must not reset global
+  Cornerstone initialization.
+
+## 4. Tests Added & Executed
+
+Added: `tests/rendering/adapter-lifecycle.test.ts` (5 tests, real harness).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean |
+| `npx tsc -b --force` | clean (genuine full rebuild) |
+| `npm run build` | clean |
+| `npm test` | **60 pass / 0 fail** (55 prior + 5 adapter) |
+| `npm run test:renderer` | **7 pass / 0 fail** (5 P3.1 + 2 P3.0) |
+| `npm run test:python` | **166 passed** |
+| `npm run typecheck:python` | clean over 43 source files |
+
+Positive evidence (real SwiftShader WebGL 2): start → `state:'started'`,
+`registered:true`, `initialized:true`, `capabilities.webgl2:true`,
+`maxTextureSize:8192`; stop → `registeredAfter:false`, `state:'idle'`;
+restart → registered; stop → unregistered; `pageErrors`/`consoleErrors`
+empty.
+
+Fail-closed negatives: WebGL disabled →
+`RendererUnavailableError`/`RENDERER_UNAVAILABLE`; failing container →
+`RendererInitializationError`/`RENDERER_INITIALIZATION_FAILED` with
+`registeredAfter:false` (no leak); double start and double stop →
+`RendererLifecycleError`/`RENDERER_LIFECYCLE_VIOLATION`.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- No new ADR required: P3.1 implements the runtime-host/harness decisions
+  already recorded in ADR-003.
+- This report satisfies the AgentLog Gate for P3.1.
+- `CHANGELOG.md` untouched.
+- Reviewer verdict: **PASS** (no blocking findings). QA verdict: **PASS**
+  (all executable gates PASS; AgentLog row NOT YET APPLICABLE at QA time).
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema, shared contract, residency vocabulary or fixture
+  semantics changed. The only new public surface is the in-package renderer
+  barrel, which is intentionally excluded from the package barrel and has no
+  cross-package consumer yet.
+
+## 7. Known Limitations & Technical Debt
+
+- **`stop()` sets `idle` before `destroy()`** (`adapter.ts`). If `destroy()`
+  throws, the caller gets a raw error, the engine may remain registered and
+  the container may not be removed, while the adapter reports `idle`. Loud,
+  not silent (a re-start fails closed on the in-use guard), and non-blocking
+  for P3.1 — but the reviewer requires hardening **before P3.4**: wrap
+  destroy/removal failures in `RendererLifecycleError` with cause +
+  remediation, clean the container in `finally`, and add a reproducible test.
+- **Test sources remain outside the `tsc` graph** (inherited P3.0 debt). The
+  new `adapter-entry.ts`/`adapter-lifecycle.test.ts` are not statically
+  typechecked. Carry forward.
+- **`stop()` tolerates a vanished engine** via optional chaining; acceptable
+  now, worth an explicit assertion when P3.4 hardens teardown.
+- **All renderer evidence is the software backend** (SwiftShader). Hardware
+  GPU behaviour remains `NOT YET APPLICABLE` until an explicit hardware run
+  is required and recorded.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.2 — Explicit series-to-volume loading from an accepted
+`ImagingAsset` and Phase 2 evidence**: commit minimal, programmatically
+reproducible pixel-bearing CT/PT fixtures under `tests/` (declared pixels,
+dimensions, modality, geometry and expected worker evidence), load them
+through Cornerstone, and fail closed on wrong locator, unsupported
+classification, `missing`/`mismatch` availability and geometry disagreement.
+Do not add residency (P3.3), state application (P3.4), `RenderTarget` (P3.5),
+UI or view-engine work in P3.2.

@@ -11,18 +11,22 @@
  * backend may be requested explicitly with `NUCLEAR_RENDERER_GL=metal`; the
  * raw `default` value launches Chromium with no GL args. `launchArgs` on the
  * options object takes precedence and is used by the fail-closed negative test.
+ *
+ * The browser entry is pluggable via `options.entryPath` (default
+ * `./harness-entry.ts`). Each distinct entry is bundled once, memoized by entry
+ * path and written to its own file under the gitignored `.harness/` directory.
  */
 
 import { mkdir, readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 
-const ENTRY_PATH = fileURLToPath(new URL('./harness-entry.ts', import.meta.url));
+const DEFAULT_ENTRY_PATH = fileURLToPath(new URL('./harness-entry.ts', import.meta.url));
 const BUNDLE_DIR = fileURLToPath(new URL('../.harness/', import.meta.url));
-const BUNDLE_PATH = fileURLToPath(new URL('../.harness/harness-bundle.js', import.meta.url));
 
 export const RENDERER_UNAVAILABLE_CODE = 'RENDERER_UNAVAILABLE';
 
@@ -61,30 +65,45 @@ function resolveLaunchArgs(overrides) {
   return [...args];
 }
 
-let bundleBuild;
+const bundleCache = new Map();
 
-async function buildBundle() {
+function resolveEntryPath(entryPath) {
+  if (typeof entryPath === 'string' && entryPath.length > 0) {
+    return entryPath;
+  }
+  return DEFAULT_ENTRY_PATH;
+}
+
+function bundleFileName(entryPath) {
+  const safe = basename(entryPath).replace(/[^a-zA-Z0-9._-]/g, '_');
+  return `harness-${safe.replace(/\.ts$/, '')}-bundle.js`;
+}
+
+async function buildBundle(entryPath) {
   await mkdir(BUNDLE_DIR, { recursive: true });
+  const outfile = join(BUNDLE_DIR, bundleFileName(entryPath));
   await build({
-    entryPoints: [ENTRY_PATH],
-    outfile: BUNDLE_PATH,
+    entryPoints: [entryPath],
+    outfile,
     bundle: true,
     format: 'iife',
     platform: 'browser',
     target: 'es2022',
     logLevel: 'warning',
   });
-  return readFile(BUNDLE_PATH, 'utf8');
+  return readFile(outfile, 'utf8');
 }
 
-function ensureBundle() {
-  if (!bundleBuild) {
-    bundleBuild = buildBundle().catch((error) => {
-      bundleBuild = undefined;
+function ensureBundle(entryPath) {
+  let pending = bundleCache.get(entryPath);
+  if (!pending) {
+    pending = buildBundle(entryPath).catch((error) => {
+      bundleCache.delete(entryPath);
       throw error;
     });
+    bundleCache.set(entryPath, pending);
   }
-  return bundleBuild;
+  return pending;
 }
 
 const HARNESS_HTML = `<!DOCTYPE html>
@@ -143,6 +162,7 @@ function stopServer(server) {
  *
  * @param {object} [options]
  * @param {string[]} [options.launchArgs] Explicit Chromium args (overrides NUCLEAR_RENDERER_GL).
+ * @param {string} [options.entryPath] Browser entry to bundle (defaults to harness-entry.ts).
  * @param {boolean} [options.requireWebGL2=true] Reject with RendererUnavailableError when WebGL2 is absent.
  * @param {number} [options.readyTimeoutMs=120000] Budget for the probe readiness marker.
  */
@@ -150,7 +170,8 @@ export async function createRendererHarness(options = {}) {
   const requireWebGL2 = options.requireWebGL2 !== false;
   const readyTimeoutMs = options.readyTimeoutMs ?? 120_000;
   const launchArgs = resolveLaunchArgs(options.launchArgs);
-  const bundleSource = await ensureBundle();
+  const entryPath = resolveEntryPath(options.entryPath);
+  const bundleSource = await ensureBundle(entryPath);
   const { server, origin } = await startServer(bundleSource);
 
   let browser;
