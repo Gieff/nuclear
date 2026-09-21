@@ -1,9 +1,10 @@
 # Phase 3 — Headless Medical Engine, Residency & RenderTarget
 
 Status: **IN PROGRESS** — P3.0–P3.2.1 accepted (P3.1 closed via corrective
-P3.1.1, P3.2 closed via corrective P3.2.1); P3.3–P3.6 not started. Commit
-baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`, P3.2 `0cec49e`;
-P3.2.1 commit recorded below.
+P3.1.1, P3.2 closed via corrective P3.2.1); P3.3-A accepted (pure
+`ResourceManager` residency core), P3.3-B–P3.6 not started. Commit baseline:
+P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`, P3.2 `0cec49e`; P3.2.1 and
+P3.3-A commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
 `b793631`.
 
@@ -756,4 +757,171 @@ Proceed to **P3.3 — `ResourceManager` residency state machine, demand
 reconciliation, budget accounting, eviction and on-demand reload**, reusing the
 P3.2.1 `bindVolume`/`releaseBoundVolume` primitives and resolving the
 cache-state code naming debt above. Do not add state application (P3.4),
+`RenderTarget` (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.3-A: Pure `ResourceManager` Residency Core
+
+## 1. What Was Implemented
+
+P3.3 was executed as the addendum's first bounded slice, **P3.3-A: pure
+resource-residency contract/state machine**. It is Node-only: `src/residency/**`
+imports no `@cornerstonejs/core`, no DOM, and no `view-engine`.
+
+- **Lease-based shared resources (addendum D1).** Physical identity is the
+  validated plan's `volumeId`; an opaque caller-owned `leaseId` replaces any
+  slot/cell identity. One volume can serve several consumers at once (a fusion
+  retains CT and PET as two independent resources, never an implicit composite).
+- **Safe transition ordering.** `reconcile(next)` validates all retentions,
+  then `retain(new) → release(removed) → settle()`, so a reused volume never
+  passes through a transient zero-lease window. `retain` never touches the
+  backend; only `settle()` acquires.
+- **Selective eviction only.** The backend port exposes a single-volume
+  `release`; there is deliberately no purge-all method and no `cache.purgeCache()`.
+  Eviction applies only to zero-lease physical resources, ordered by declared
+  priority (lowest first, deterministic registration-sequence tie-break).
+- **Semantic lifetime ≠ residency.** Eviction frees RAM/VRAM only and preserves
+  `assetId`, `geometricDigest` and the validated plan, so the same `volumeId`
+  can be reloaded on demand.
+- **Honest budget accounting.** Byte sizes come only from
+  `VolumeResidencyBackend.measure`; a missing axis is reported as
+  `measurement: 'unavailable'`, never a guessed VRAM formula. Insufficient
+  budget returns a typed `budget-exhausted` settlement **before** acquisition,
+  so a false `gpu-ready`/`gpu-resident` is impossible. Loader, release and
+  enumeration failures become typed dispositions (`loader-failed`,
+  `eviction-failed`, `enumeration-failed`) that preserve identity and are never
+  reported as success.
+- **Fail-closed preconditions.** `missing`, `mismatch` and `offline-cached`
+  availability, lease↔asset mismatch, and invalid demand tiers (`loading`,
+  `evicted`, empty) are refused with typed `ResidencyError` before any mutation.
+- **Integration fix required by the gate.** `npm test` was unscoped
+  (`node --test`) and therefore discovered the gitignored, non-committed local
+  `oracle/` MedCanvas mirror (`oracle/tests/unit/*.test.js`), which imports
+  absent `oracle/**/dist` files and failed 8 tests. The script is now scoped to
+  `node --test "tests/**/*.test.ts"`, matching `test:renderer`'s convention, so
+  the NuClear gate is deterministic and cannot be contaminated by a non-evidence
+  mirror. All committed suites live under `tests/`.
+
+## 2. Files Changed / Created
+
+Created (product, Node-safe):
+- `packages/medical-engine/src/residency/residency-types.ts` (149 lines)
+- `packages/medical-engine/src/residency/residency-errors.ts` (39)
+- `packages/medical-engine/src/residency/residency-tier.ts` (81)
+- `packages/medical-engine/src/residency/residency-budget.ts` (289)
+- `packages/medical-engine/src/residency/resource-manager.ts` (297)
+- `packages/medical-engine/src/residency/index.ts` (12)
+
+Modified (product):
+- `packages/medical-engine/src/index.ts` — added `export * from './residency/index.js';`
+  (the Node-safe residency core is now part of the package barrel; the
+  browser-only `renderer/` barrel remains excluded)
+
+Created (tests):
+- `tests/residency/resource-manager.test.ts` (285)
+- `tests/residency/fixtures/residency-fixtures.ts` (144)
+
+Modified (repo):
+- `package.json` — `"test": "node --test \"tests/**/*.test.ts\""` (was `node --test`)
+
+Unchanged: `src/renderer/**`, all other packages, `shared-types`,
+`package-lock.json`, CHANGELOG, the version, the plans.
+
+## 3. Architectural Assumptions Made
+
+- The backend port (`measure`/`acquire`/`release`/`listAcquiredVolumeIds`) is
+  the only physical boundary. P3.3-A tests use a deterministic in-memory mock;
+  P3.3-B binds the same interface to `bindVolume`/`releaseBoundVolume`.
+- Zero-lease resources keep their **last-known** declared priority for eviction
+  ordering, giving "lowest declared priority first" a concrete meaning after
+  the lease is gone; ties break by registration `sequence`.
+- `settle()` eagerly reclaims every zero-lease physical resource on each pass
+  (the addendum's `retain → release → evict` ordering); this is intentional
+  policy, recorded here so it is not silent.
+- A backend `measure` throw is treated as an unknown measurement (never a
+  guess); `acquire` throws are `loader-failed`, `release` throws are
+  `eviction-failed`, `listAcquiredVolumeIds` throws are `enumeration-failed`.
+- No new ADR: this slice implements the boundary already recorded in ADR-003
+  (injected host, UI-agnostic public state) and addendum D1/D2.
+
+## 4. Tests Added & Executed
+
+Added: `tests/residency/resource-manager.test.ts` (17 tests, pure Node).
+
+Coverage: idempotent duplicate retain; two leases pin a volume; fusion CT+PET
+as separate resources; `reconcile` rebinds without transient eviction or
+re-acquire; pending retain protected before `settle`; zero-lease-only eviction
+with identity preserved; reload reconstructs the same `volumeId`; declared
+priority order and sequence tie-break under budget pressure; insufficient budget
+→ `budget-exhausted` with no false GPU residency; loader failure; enumeration
+failure; `missing`/`mismatch`/`offline-cached` fail closed; lease↔asset
+mismatch; invalid demand tiers; unknown release as a safe no-op; leased
+resource never evicted while zero-lease ones exist.
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm run build` | clean (exit 0) |
+| `npm test` | **107 pass / 0 fail** (24 suites; 90 prior + 17 new) |
+| `npm run test:renderer` | **37 pass / 0 fail** |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| P2.5 source integrity | **2/2 pass** — no `Math.`, no `enum`/`namespace` in `src/**` |
+
+No test uses `|| true`. The slice makes no numerical/visual claim; assertions
+are exact typed codes and dispositions against the real state machine.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- No new ADR required; the slice implements addendum D1/D2 and ADR-003.
+- This report satisfies the AgentLog Gate for P3.3-A.
+- `CHANGELOG.md` untouched (release notes are compiled later via
+  `/promote-changelog 3`).
+- Reviewer verdict: **PASS** — boundary, contract fidelity, eviction/identity,
+  budget honesty, fail-closed negatives and P2.5 integrity verified; no
+  blocking findings.
+- QA verdict: **PASS** on every executable gate (typecheck, Node 107/107,
+  renderer 37/37, P2.5 2/2, build, Python 178, mypy 45 files); the only
+  not-yet-satisfied row was this AgentLog report, now written. It also
+  confirmed `npm test` is deterministic with respect to the local `oracle/`
+  directory.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema, shared contract, residency vocabulary or fixture
+  semantics changed. The new public surface is the Node-safe `residency`
+  barrel (no cross-package consumer yet). The `ResidencyError` codes and the
+  `VolumeResidencyBackend` port are in-package contracts.
+
+## 7. Known Limitations & Technical Debt
+
+- **Budget axis with no backend measurement is not evaluated** (reviewer
+  concern, P3.3-B precondition). `settleResource` skips the budget check when
+  the declared axis has no measurement and `projectedUsage` counts measured
+  bytes only, so an unmeasured resident volume is invisible to a declared
+  budget. Honest (never fabricates), but P3.3-B must either guarantee
+  per-volume measurements or emit a typed unevaluated-budget signal.
+- **`leaseVolumeConflict` is implemented but has no direct test** (pre-existing
+  session decision carried forward; add in P3.3-B).
+- **`attemptEviction` release-false + enumeration-confirms-absent branch** marks
+  `evicted` without adding to `evictedVolumeIds`; conservative, untested.
+- **`settle()` auto-eviction policy** documented above; ensure P3.3-B does not
+  accidentally thrash.
+- Test sources remain outside the `tsc` graph (inherited P3.0 debt);
+  `tests/residency` uses the existing `ts-resolve-hook.mjs` pattern.
+- No controlled-WebGL residency evidence yet; the mock backend is not GPU
+  evidence. This is explicitly P3.3-B.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.3-B — Cornerstone residency backend**: implement
+`VolumeResidencyBackend` over the existing `bindVolume`/`releaseBoundVolume`
+(and `cache.getVolumes()` enumeration) in `src/renderer/`, expose it through the
+adapter/`renderer` barrel only, and add controlled WebGL 2 harness evidence for
+load → demand `gpu-ready`/`gpu-resident` → release → evict (no residual
+Cornerstone entry) → demand → reload, sharing one real volume between two
+consumers, and `missing`/`mismatch`/`offline-cached` producing no live volume.
+Resolve the budget-measurement, `leaseVolumeConflict`-test and
+release-ambiguous-branch items above. Do not add state application (P3.4),
 `RenderTarget` (P3.5), UI or view-engine work.
