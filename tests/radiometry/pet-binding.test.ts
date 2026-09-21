@@ -207,4 +207,45 @@ describe('NuClear P3.4-A — SUV <-> Bq/mL conversion (ADR-005 §4)', () => {
       PET_BINDING_ERROR_CODES.suvNegative,
     );
   });
+
+  it('14. suvToBqml refuses a zero or negative factor with PET_BINDING_SUV_FACTOR_INVALID', () => {
+    for (const suvFactor of [0, -0.1]) {
+      expectPetCode(
+        () => suvToBqml(1, suvFactor),
+        PET_BINDING_ERROR_CODES.suvFactorInvalid,
+      );
+    }
+  });
+
+  it('15. bqmlToSuv refuses a zero or negative factor with PET_BINDING_SUV_FACTOR_INVALID', () => {
+    for (const suvFactor of [0, -1]) {
+      expectPetCode(
+        () => bqmlToSuv(1, suvFactor),
+        PET_BINDING_ERROR_CODES.suvFactorInvalid,
+      );
+    }
+  });
+
+  it('16. a reversed SUV range refuses with PET_BINDING_RANGE_INVALID', () => {
+    expectPetCode(
+      () => suvRangeToBqml([8, 0], SUV_FACTOR),
+      PET_BINDING_ERROR_CODES.rangeInvalid,
+    );
+    assert.equal(PET_BINDING_ERROR_CODES.rangeInvalid, 'PET_BINDING_RANGE_INVALID');
+  });
+
+  it('17. an overflowing conversion refuses with PET_BINDING_OUTPUT_NOT_FINITE', () => {
+    expectPetCode(
+      () => suvToBqml(Number.MAX_VALUE, Number.MIN_VALUE),
+      PET_BINDING_ERROR_CODES.outputNotFinite,
+    );
+    expectPetCode(
+      () => bqmlToSuv(Number.MAX_VALUE, 2),
+      PET_BINDING_ERROR_CODES.outputNotFinite,
+    );
+    assert.equal(
+      PET_BINDING_ERROR_CODES.outputNotFinite,
+      'PET_BINDING_OUTPUT_NOT_FINITE',
+    );
+  });
 });

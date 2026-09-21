@@ -15,6 +15,8 @@ export const PET_BINDING_ERROR_CODES = {
   scalarDomainNotBqml: 'PET_BINDING_SCALAR_DOMAIN_NOT_BQML',
   inputNotFinite: 'PET_BINDING_INPUT_NOT_FINITE',
   suvNegative: 'PET_BINDING_SUV_NEGATIVE',
+  rangeInvalid: 'PET_BINDING_RANGE_INVALID',
+  outputNotFinite: 'PET_BINDING_OUTPUT_NOT_FINITE',
 } as const;
 
 export type PetBindingErrorCode =

@@ -87,3 +87,35 @@ value and the loaded scalar transport value.
 - If the worker protocol begins transporting decoded voxel arrays, the
   `rescaled-bqml` expectation for the PT fixture must be re-derived from the
   accepted worker evidence rather than assumed.
+
+## Addendum — P3.4-A.1 Corrective Hardening
+
+An acceptance review rejected P3.4-A until four points were corrected. They are
+now ratified:
+
+1. **The normative specification is self-consistent.** §6 conditions the
+   conversion on `asset.metadata.pet?.units === "BQML"` (never the
+   non-existent `PetQuantitationResult.units`), §3 owns the SUV-domain guards at
+   the conversion boundary, and the degenerate-span rule is explicit.
+2. **The exported conversion helpers are independently safe.** They require a
+   finite, strictly positive `suvFactor`, require the converted result to be
+   finite, and `suvRangeToBqml` additionally requires `minSuv >= 0` and
+   `maxSuv > minSuv`, with typed `PET_BINDING_SUV_FACTOR_INVALID`,
+   `PET_BINDING_RANGE_INVALID` and `PET_BINDING_OUTPUT_NOT_FINITE` refusals. The
+   resolver's own guard path is unchanged.
+3. **A degenerate PET span is refused, not clamped.**
+   `getPETOpacityMapping` rejects `upper - lower < 10^-3` with a typed
+   `PRESET_INVALID_RANGE`. Clamping would place control points outside the
+   declared range and could make opacity decrease as the value increases.
+4. **The CT base-volume configuration is declarative.**
+   `@nuclear/rendering-presets` exposes `CT_HU_RANGE` (`[-1024, 3071]`),
+   `CT_BASE_VOLUME_VISIBLE` and `CT_BASE_VOLUME_OPACITY` (fully opaque across
+   the full HU range) per spec §5, so the adapter must not hardcode a second
+   copy.
+
+**Preset-population scope.** Only values the specification authorises are
+declared: the fusion exponent, the two PET transfer modes, the CT Soft Tissue
+preset/VOI, and the CT base-volume configuration. PET colormap names and PET
+display ranges remain caller-declared inputs; they will be added to
+`@nuclear/rendering-presets` only when a specification or ADR ratifies concrete
+values, never by inference.

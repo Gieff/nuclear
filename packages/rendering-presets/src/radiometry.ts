@@ -18,13 +18,20 @@ export const PET_TRANSFER_MODES = ['highlighted', 'alpha'] as const;
 export type PetTransferMode = (typeof PET_TRANSFER_MODES)[number];
 
 /**
- * One piecewise-linear opacity control point. Field names mirror Cornerstone's
- * `OpacityMapping { value, opacity }` without importing Cornerstone.
+ * One generic piecewise-linear opacity control point. Field names mirror
+ * Cornerstone's `OpacityMapping { value, opacity }` without importing
+ * Cornerstone, and the value semantics are declared by the owning preset.
  */
-export interface PetOpacityPoint {
+export interface OpacityPoint {
   readonly value: number;
   readonly opacity: number;
 }
+
+/** PET opacity control point; retained alias of the generic `OpacityPoint`. */
+export type PetOpacityPoint = OpacityPoint;
+
+/** Minimum admissible scalar span for a piecewise opacity mapping. */
+export const MIN_OPACITY_SPAN = 1e-3;
 
 /**
  * Maps the interactive blend slider `s ∈ [0, 100]` to the overall PET volume
@@ -74,6 +81,13 @@ export function getPETOpacityMapping(
       `PET opacity range must be finite with upper > lower, received lower=${String(lower)}, upper=${String(upper)}`,
     );
   }
+  const span = upper - lower;
+  if (span < MIN_OPACITY_SPAN) {
+    throw new PresetError(
+      PRESET_ERROR_CODES.invalidRange,
+      `PET opacity range span ${String(span)} (lower=${String(lower)}, upper=${String(upper)}) is below the minimum ${String(MIN_OPACITY_SPAN)}; a degenerate span is refused, not clamped, because clamping would place control points outside the declared range`,
+    );
+  }
   if (!Number.isFinite(gamma) || !(gamma > 0)) {
     throw new PresetError(
       PRESET_ERROR_CODES.invalidGamma,
@@ -97,7 +111,6 @@ export function getPETOpacityMapping(
     );
   }
 
-  const span = Math.max(1e-3, upper - lower);
   const midOpacity = Math.pow(0.5, gamma);
   const points: PetOpacityPoint[] =
     mode === 'highlighted'

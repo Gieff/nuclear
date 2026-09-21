@@ -30,18 +30,34 @@ It maps scalar SUV values (converted to native $Bq/mL$ using the series `suvFact
 ### Input Parameters
 * $\text{lower} = \text{minSuv} / \text{suvFactor}$
 * $\text{upper} = \text{maxSuv} / \text{suvFactor}$
-* $\text{span} = \max(10^{-3}, \text{upper} - \text{lower})$
+* $\text{span} = \text{upper} - \text{lower}$
 * $\gamma = \text{petGamma}$
 * $\text{mergeMethod} \in \{\text{"highlighted"}, \text{"alpha"}\}$
 
+The SUV-domain inputs are validated at the conversion boundary
+(`@nuclear/medical-engine` `suvRangeToBqml`): `minSuv >= 0`, `maxSuv > minSuv`,
+`suvFactor` finite and strictly positive, and the resulting Bq/mL bounds finite.
+`getPETOpacityMapping` itself receives the converted `lower`/`upper` and must
+validate them independently.
+
 ### Binding Numeric Input Guards & Fail-Closed Policy
 All inputs must satisfy the following strict guards:
-* $\text{minSuv} \ge 0$
-* $\text{maxSuv} > \text{minSuv}$
+* `lower` and `upper` finite, with $\text{upper} - \text{lower} \ge 10^{-3}$
 * Slider setting $s \in [0, 100]$
 * Gamma $\gamma > 0$
+* `minOpacity` $\in [0, 1]$
 
-**Fail-Closed Policy**: If any input guard is violated (e.g., negative SUV, non-finite values, $\text{maxSuv} \le \text{minSuv}$, $s \notin [0,100]$, or $\gamma \le 0$), the function must fail closed by throwing a structured error or returning a zero-opacity mapping. It must never render an unverified or mathematically corrupt transfer curve.
+A range whose span is below $10^{-3}$ is **refused with a typed error**, never
+clamped: clamping `span` would place control points outside the declared
+$[\text{lower}, \text{upper}]$ range and could make opacity decrease as the
+value increases.
+
+**Fail-Closed Policy**: If any input guard is violated (e.g., negative SUV,
+non-finite values, $\text{maxSuv} \le \text{minSuv}$, a span below $10^{-3}$,
+$s \notin [0,100]$, $\gamma \le 0$, or `minOpacity` outside $[0,1]$), the
+function must fail closed by throwing a structured error or returning a
+zero-opacity mapping. It must never render an unverified or mathematically
+corrupt transfer curve.
 
 ---
 
@@ -99,18 +115,29 @@ $$\text{midOp} = (0.5)^\gamma$$
 * **Default Preset**: Soft Tissue ($\text{Window} = 400$, $\text{Level} = 40$).
 * **VOI Range**: $\text{lower} = \text{Level} - \text{Window}/2$, $\text{upper} = \text{Level} + \text{Window}/2$.
 
+The full-HU opacity mapping, the HU range, the visibility flag, the Soft Tissue
+preset and its VOI range must be **exposed declaratively by
+`@nuclear/rendering-presets`**. The adapter must consume them and MUST NOT
+hardcode a second copy.
+
 ---
 
 ## 6. Quantitative SUV $\to$ Bq/mL Binding Constraint
 
-Conversion from physical SUV units to raw scalar activity ($Bq/mL$) is valid **IF AND ONLY IF**:
-1. `PetQuantitationResult.status === "computed"`
-2. `PetQuantitationResult.units === "BQML"`
+Conversion from physical SUV units to raw scalar activity ($Bq/mL$) is valid **IF AND ONLY IF**, checked fail-closed in this order (ratified by [ADR-005](../decisions/ADR-005-pet-ct-radiometry-binding.md)):
+1. the asset modality is `PT`;
+2. `asset.metadata.pet?.units === "BQML"` — the DICOM Units (0054,1001) value carried by `PetAcquisitionMetadata`. `PetQuantitationResult` has no `units` field and MUST NOT gain one;
+3. `asset.metadata.petQuantitation?.status === "computed"`;
+4. `asset.metadata.petQuantitation.suvFactor` is finite and strictly greater than zero;
+5. the loaded volume plan declares `scalarDataDomain === "rescaled-bqml"`.
+
+The asset `valueSemantics` (`suv-bw` / `g/mL`) is the clinical display semantic;
+it is NOT the transport scalar domain, and the two must not be conflated.
 
 ### Verification Mandate for P3.4 Tests
 * During P3.4 test execution, `@nuclear/medical-engine` must verify that Cornerstone3D receives and exposes scalar voxel values that are correctly scaled to $Bq/mL$.
-* If `PetQuantitationResult` is missing, invalid, or `status !== "computed"`, the system MUST NOT render a plausible-looking but quantitatively inaccurate fusion image.
-* It must fail closed or fallback explicitly to an uncalibrated raw-counts mode with an explicit diagnostic warning, preventing silent numeric or clinical corruption.
+* If `asset.metadata.pet` is missing, the units are not `BQML`, the quantitation result is missing or not `computed`, the factor is not a finite positive number, or the plan domain is not `rescaled-bqml`, the system MUST NOT render a plausible-looking but quantitatively inaccurate fusion image.
+* It must fail closed with a typed diagnostic, preventing silent numeric or clinical corruption.
 
 ---
 
@@ -137,5 +164,5 @@ viewport.setProperties(
 ## 8. Implementation Mandate for Phase 3.4
 
 During **Slice P3.4** (*Medical-state application & preset rendering*):
-1. Package `@nuclear/rendering-presets` must export `CANONICAL_PET_FUSION_EXPONENT`, `getPETOpacityMapping`, and preset definitions matching this specification.
+1. Package `@nuclear/rendering-presets` must export `CANONICAL_PET_FUSION_EXPONENT`, `getPETOpacityMapping`, the CT full-HU base opacity mapping and HU range, and the CT Soft Tissue preset definitions matching this specification.
 2. Package `@nuclear/medical-engine` must apply this exact opacity mapping, input guards, fail-closed policies, and quantitative $Bq/mL$ constraints when rendering PET/CT fused viewports.

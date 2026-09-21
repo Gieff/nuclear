@@ -3,8 +3,8 @@
 Status: **IN PROGRESS** — P3.0–P3.2.1 accepted (P3.1 closed via corrective
 P3.1.1, P3.2 closed via corrective P3.2.1); P3.3 closed (P3.3-A `16c40b4`,
 P3.3-B `3fbc011`, P3.3.1 corrective `9ede6d7`, conclusive P3.3-C review/QA
-**PASS**); P3.4-A accepted (radiometry/presets preflight under ADR-005);
-P3.4-B–P3.6 not started.
+**PASS**); P3.4-A accepted and P3.4-A.1 accepted (corrective radiometry
+hardening under ADR-005); P3.4-B–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -1412,13 +1412,11 @@ five were caught by the suite.
 
 ## 7. Known Limitations & Technical Debt
 
-- **Degenerate PET span is an open decision for P3.4-B.** With
-  `upper - lower < 1e-3`, the spec-mandated `span` clamp makes the
-  `highlighted`/`alpha` control points fall outside `[lower, upper]` and can
-  produce a non-monotonic/duplicate opacity sequence. This follows spec §3
-  literally, but conflicts with its own fail-closed policy. P3.4-B must decide
-  (typed refusal vs clipping) before applying real VOI ranges, with a
-  discriminating test. No consumer wires it yet.
+- **Degenerate PET span — resolved in P3.4-A.1.** The pre-A.1 `span` clamp was
+  a real bug: for `upper - lower < 1e-3` it placed control points outside
+  `[lower, upper]` and could make opacity decrease with value. P3.4-A.1 now
+  refuses a span below `1e-3` with a typed `PRESET_INVALID_RANGE`, and the
+  normative spec §3 was updated accordingly. See the P3.4-A.1 report below.
 - `getPETOpacityMapping` accepts a negative transport `lower` (only finiteness
   and `upper > lower` are guarded); the SUV-domain non-negativity is enforced
   upstream by `suvToBqml`.
@@ -1433,5 +1431,139 @@ presets and the ADR-005 binding to the Cornerstone viewport (CT underlay + PET
 overlay, `setProperties` per spec §7), with CT/PT/fusion positive tests and the
 addendum's fail-closed negatives (missing/invalid quantitation, wrong units or
 domain, inverted range, out-of-range slider/gamma, non-resident/incompatible
-volume, wrong target, incomplete state). Resolve the degenerate-span decision
-above first. Do not add `RenderTarget` (P3.5), UI or view-engine work.
+volume, wrong target, incomplete state). The degenerate-span policy is already
+resolved (see P3.4-A.1). Do not add `RenderTarget` (P3.5), UI or view-engine
+work.
+
+---
+
+# Handover Report — P3.4-A.1: Radiometry Hardening (corrective)
+
+## 1. What Was Implemented
+
+The user rejected P3.4-A acceptance for P3.4-B on four clinical-architectural
+grounds (green gates proved internal coherence, not completeness). `5cba8db`
+remains the P3.4-A baseline; this is the focused corrective.
+
+1. **Normative spec made self-consistent.** `PET_CT_FUSION_RADIOMETRY_SPEC.md`
+   §6 no longer references the non-existent `PetQuantitationResult.units`; it
+   now conditions on `asset.metadata.pet?.units === "BQML"` with the full
+   ADR-005 conjunction. §3 owns the SUV-domain guards at the conversion boundary
+   and states the degenerate-span refusal. §5 mandates declarative exposure of
+   the CT base configuration; §8 lists it.
+2. **Conversion helpers made independently safe.** `suvToBqml`, `bqmlToSuv` and
+   `suvRangeToBqml` now require a finite, strictly positive `suvFactor`, a
+   finite result, and `suvRangeToBqml` additionally `minSuv >= 0` and
+   `maxSuv > minSuv`, with typed `PET_BINDING_SUV_FACTOR_INVALID`,
+   `PET_BINDING_RANGE_INVALID` and `PET_BINDING_OUTPUT_NOT_FINITE` refusals.
+   Previously `suvToBqml(1, 0)` returned `Infinity`, `suvToBqml(1, -0.1)`
+   returned a negative activity, and `suvRangeToBqml([8, 0], f)` returned an
+   inverted range.
+3. **Degenerate PET span refused, not clamped.** `getPETOpacityMapping` now
+   throws typed `PRESET_INVALID_RANGE` for `upper - lower < 1e-3`; `span` is
+   the real difference, so all control points stay within `[lower, upper]` and
+   opacity is non-decreasing with value.
+4. **CT base-volume configuration is declarative.**
+   `@nuclear/rendering-presets` now exports `CT_HU_RANGE` (`[-1024, 3071]`),
+   `CT_BASE_VOLUME_VISIBLE` and `CT_BASE_VOLUME_OPACITY` (fully opaque over the
+   full HU range) per spec §5, so the adapter cannot hardcode a second copy.
+   A generic `OpacityPoint` type was added; `PetOpacityPoint` remains an alias.
+
+ADR-005 gained a "P3.4-A.1 Corrective Hardening" addendum ratifying all four
+changes and explicitly recording the preset-population scope: **only**
+spec-authorised values are declared, and PET colormap names / PET display
+ranges stay caller-declared until a specification or ADR ratifies concrete
+values — never by inference.
+
+## 2. Files Changed / Created
+
+Modified (docs):
+- `docs/plans/PET_CT_FUSION_RADIOMETRY_SPEC.md` (§3, §5, §6, §8)
+- `docs/decisions/ADR-005-pet-ct-radiometry-binding.md` (corrective addendum)
+
+Modified (product):
+- `packages/medical-engine/src/radiometry/pet-binding.ts` (180 lines)
+- `packages/medical-engine/src/radiometry/errors.ts` (33 lines, +2 codes)
+- `packages/rendering-presets/src/radiometry.ts` (139 lines — `OpacityPoint`,
+  `MIN_OPACITY_SPAN`, span refusal)
+- `packages/rendering-presets/src/ct.ts` (52 lines — CT base config)
+
+Modified (tests):
+- `tests/presets/radiometry-presets.test.ts` (238 lines, +3 tests)
+- `tests/radiometry/pet-binding.test.ts` (251 lines, +4 tests)
+
+Unchanged: `@nuclear/shared-types`, the renderer/residency code, the Python
+worker, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- The SUV-domain guards (`minSuv >= 0`, `maxSuv > minSuv`, finite positive
+  factor, finite converted bounds) are owned by the conversion boundary
+  (`suvRangeToBqml`), while `getPETOpacityMapping` independently validates its
+  transport-domain `lower`/`upper` and the span. This division is now explicit
+  in spec §3.
+- A range whose PET span is below `1e-3` is clinically degenerate; refusing is
+  the fail-closed choice the spec now mandates. Clamping was rejected because
+  it silently moves the declared range.
+- A non-finite `suvFactor` (e.g. `Infinity`) is reported as
+  `PET_BINDING_INPUT_NOT_FINITE` (the finiteness check precedes the positivity
+  check); finite non-positive factors are `PET_BINDING_SUV_FACTOR_INVALID`.
+  Both are typed refusals.
+
+## 4. Tests Added & Executed
+
+Added: 3 preset tests (degenerate-span refusal + exact `1e-3` acceptance;
+in-range non-decreasing control points; CT base constants) and 4 binding tests
+(zero/negative factor for each helper; reversed range; non-finite overflow).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **152 pass / 0 fail** (31 suites; 145 prior + 7 new) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:renderer` | **43 pass / 0 fail** |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| P2.5 source integrity | **2/2 pass** |
+
+Named tolerance `1e-12`. The reviewer ran a 10-mutation battery on the new
+guards: 7 killed directly; 3 are redundant layers (inner helper already refuses
+the same case) with no individual pin — safe, recorded as non-blocking.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-005 addendum and spec §3/§5/§6/§8 updated; this report satisfies the
+  AgentLog Gate for P3.4-A.1 and supersedes the earlier "open decision"
+  wording in the P3.4-A §7/§8.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: **CONCERNS → resolved** — all four rejected points PASS
+  with file:line evidence and mutation testing; the only required action was
+  this AgentLog sync, now done.
+- QA verdict: **PASS** on all 15 gates (typecheck, Node 152/152, build,
+  renderer 43/43, Python 178, mypy 45, integrity 2/2, leaf purity, exact-code
+  assertions, spec/ADR coherence, shared-types untouched); zero FAIL/BLOCKED.
+
+## 6. Project Model Impact
+
+- None. No shared-types / `.ncp` / persisted-contract change.
+
+## 7. Known Limitations & Technical Debt
+
+- Three layered guards (the outer positive-factor/`minSuv` checks in
+  `suvRangeToBqml` and the strict `upper > lower` sub-guard in
+  `getPETOpacityMapping`) are redundant with the span/negative guards and have
+  no individual mutation pin; they must be covered if edited.
+- The OpenCodeRAG index can serve pre-A.1 spec chunks (stale `span = max(...)`
+  text); always Read the file. `PHASE_3_MEDCANVAS_RECOVERY_ADDENDUM.md` still
+  describes the units discrepancy as an open mandate (historical; now closed
+  by ADR-005/spec §6).
+- No Cornerstone state application/capture, `RenderTarget` or hardware GPU
+  evidence yet — P3.4-B/P3.4-C/P3.5.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-B — `MedicalViewState` application** as in the P3.4-A §8,
+now without any open preflight decision: apply the ADR-005 binding and the
+declarative CT/PET presets to the Cornerstone viewport (spec §7 `setProperties`),
+with CT/PT/fusion positives and the addendum's fail-closed negatives, plus the
+real-harness evidence. Do not add `RenderTarget` (P3.5), UI or view-engine work.

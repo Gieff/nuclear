@@ -13,7 +13,11 @@ register(new URL('../medical/fixtures/ts-resolve-hook.mjs', import.meta.url));
 
 const {
   CANONICAL_PET_FUSION_EXPONENT,
+  CT_BASE_VOLUME_OPACITY,
+  CT_BASE_VOLUME_VISIBLE,
+  CT_HU_RANGE,
   CT_PRESET_SOFT_TISSUE,
+  MIN_OPACITY_SPAN,
   PET_TRANSFER_MODES,
   PRESET_ERROR_CODES,
   PresetError,
@@ -159,6 +163,41 @@ describe('NuClear P3.4-A — PET opacity mapping (spec §3)', () => {
       PRESET_ERROR_CODES.invalidMinOpacity,
     );
   });
+
+  it('14. refuses a degenerate span below 1e-3 and accepts a span of exactly 1e-3', () => {
+    assert.equal(MIN_OPACITY_SPAN, 1e-3);
+    for (const mode of PET_TRANSFER_MODES) {
+      expectPresetCode(
+        () => getPETOpacityMapping(0, 0.0005, 0, 1, mode),
+        PRESET_ERROR_CODES.invalidRange,
+      );
+      expectPresetCode(
+        () => getPETOpacityMapping(5, 5.0005, 0, 1, mode),
+        PRESET_ERROR_CODES.invalidRange,
+      );
+      const boundary = getPETOpacityMapping(0, 0.001, 0, 1, mode);
+      assert.equal(boundary.length, 4, `${mode} boundary span must be accepted`);
+    }
+  });
+
+  it('15. emitted control points stay within [lower, upper] with non-decreasing opacity for both modes', () => {
+    for (const mode of PET_TRANSFER_MODES) {
+      for (const [lower, upper] of [
+        [0, 0.001],
+        [0, 8],
+        [1, 11],
+      ] as const) {
+        const mapping = getPETOpacityMapping(lower, upper, 0, 1, mode);
+        let previous = -1;
+        for (const point of mapping) {
+          assert.ok(point.value >= lower, `${mode}/${lower}-${upper} value >= lower`);
+          assert.ok(point.value <= upper, `${mode}/${lower}-${upper} value <= upper`);
+          assert.ok(point.opacity >= previous, `${mode}/${lower}-${upper} opacity order`);
+          previous = point.opacity;
+        }
+      }
+    }
+  });
 });
 
 describe('NuClear P3.4-A — CT Soft Tissue preset (spec §5)', () => {
@@ -186,5 +225,14 @@ describe('NuClear P3.4-A — CT Soft Tissue preset (spec §5)', () => {
       () => ctVoiRange({ id: 'ct-center-nan', windowWidth: 400, windowCenter: Number.NaN }),
       PRESET_ERROR_CODES.invalidPreset,
     );
+  });
+
+  it('16. exposes CT_HU_RANGE, CT_BASE_VOLUME_VISIBLE and the full-HU opaque base mapping', () => {
+    assert.deepEqual(CT_HU_RANGE, [-1024, 3071]);
+    assert.equal(CT_BASE_VOLUME_VISIBLE, true);
+    assert.deepEqual(CT_BASE_VOLUME_OPACITY, [
+      { value: -1024, opacity: 1 },
+      { value: 3071, opacity: 1 },
+    ]);
   });
 });

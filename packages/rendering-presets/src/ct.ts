@@ -7,12 +7,25 @@
  */
 
 import { PRESET_ERROR_CODES, PresetError } from './errors.js';
+import type { OpacityPoint } from './radiometry.js';
 
 export interface CtWindowPreset {
   readonly id: string;
   readonly windowWidth: number;
   readonly windowCenter: number;
 }
+
+/** Spec §5 full CT Hounsfield-unit range of the base volume. */
+export const CT_HU_RANGE = [-1024, 3071] as const;
+
+/** Spec §5: the CT base volume is always visible under the PET fusion. */
+export const CT_BASE_VOLUME_VISIBLE = true;
+
+/** Spec §5: the CT base volume is fully opaque across the full HU range. */
+export const CT_BASE_VOLUME_OPACITY: readonly OpacityPoint[] = [
+  { value: CT_HU_RANGE[0], opacity: 1 },
+  { value: CT_HU_RANGE[1], opacity: 1 },
+];
 
 /** Spec §5 default CT preset: Soft Tissue, Window 400 / Level 40. */
 export const CT_PRESET_SOFT_TISSUE = {

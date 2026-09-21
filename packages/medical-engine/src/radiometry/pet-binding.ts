@@ -91,30 +91,90 @@ function requireFinite(value: number, label: string): number {
   return value;
 }
 
+/**
+ * The body-weight scaling factor is the one certified conversion constant, so
+ * it must be a finite value strictly greater than zero (ADR-005 §4). A
+ * non-finite factor is reported as `inputNotFinite` by the caller's preceding
+ * `requireFinite`; this guard owns the positive-domain refusal.
+ */
+function requirePositiveFactor(suvFactor: number): number {
+  if (!Number.isFinite(suvFactor) || !(suvFactor > 0)) {
+    throw new PetBindingError(
+      PET_BINDING_ERROR_CODES.suvFactorInvalid,
+      `suvFactor must be a finite number strictly greater than 0 (g/Bq), received ${String(suvFactor)}`,
+    );
+  }
+  return suvFactor;
+}
+
+/**
+ * A conversion must never silently yield `Infinity`/`NaN` for an in-domain
+ * input: an overflowing result is refused instead of propagated as a scalar.
+ */
+function requireFiniteOutput(value: number, label: string): number {
+  if (!Number.isFinite(value)) {
+    throw new PetBindingError(
+      PET_BINDING_ERROR_CODES.outputNotFinite,
+      `${label} overflowed the finite numeric range and produced ${String(value)}; the conversion is refused rather than returning a non-finite scalar`,
+    );
+  }
+  return value;
+}
+
 /** `suv [g/mL] / suvFactor [g/Bq] = Bq/mL`. */
 export function suvToBqml(suv: number, suvFactor: number): number {
   requireFinite(suv, 'suv');
   requireFinite(suvFactor, 'suvFactor');
+  requirePositiveFactor(suvFactor);
   if (suv < 0) {
     throw new PetBindingError(
       PET_BINDING_ERROR_CODES.suvNegative,
       `suv must be non-negative (spec §3 guard minSuv >= 0), received ${String(suv)}`,
     );
   }
-  return suv / suvFactor;
+  return requireFiniteOutput(suv / suvFactor, 'suv / suvFactor');
 }
 
 /** `bqml [Bq/mL] * suvFactor [g/Bq] = suv [g/mL]`. */
 export function bqmlToSuv(bqml: number, suvFactor: number): number {
   requireFinite(bqml, 'bqml');
   requireFinite(suvFactor, 'suvFactor');
-  return bqml * suvFactor;
+  requirePositiveFactor(suvFactor);
+  return requireFiniteOutput(bqml * suvFactor, 'bqml * suvFactor');
 }
 
-/** Converts a `[min, max]` SUV range to its Bq/mL transport range. */
+/**
+ * Converts a `[min, max]` SUV range to its Bq/mL transport range. The SUV
+ * domain guards live here (spec §3): `minSuv >= 0` and `maxSuv > minSuv`, and
+ * both converted bounds must remain finite.
+ */
 export function suvRangeToBqml(
   range: readonly [number, number],
   suvFactor: number,
 ): readonly [number, number] {
-  return [suvToBqml(range[0], suvFactor), suvToBqml(range[1], suvFactor)];
+  requireFinite(suvFactor, 'suvFactor');
+  requirePositiveFactor(suvFactor);
+  const minSuv = requireFinite(range[0], 'range[0]');
+  const maxSuv = requireFinite(range[1], 'range[1]');
+  if (minSuv < 0) {
+    throw new PetBindingError(
+      PET_BINDING_ERROR_CODES.suvNegative,
+      `range[0] must be non-negative (spec §3 guard minSuv >= 0), received ${String(minSuv)}`,
+    );
+  }
+  if (!(maxSuv > minSuv)) {
+    throw new PetBindingError(
+      PET_BINDING_ERROR_CODES.rangeInvalid,
+      `range[1] must be strictly greater than range[0] (spec §3 guard maxSuv > minSuv), received [${String(minSuv)}, ${String(maxSuv)}]`,
+    );
+  }
+  const lower = requireFiniteOutput(
+    suvToBqml(minSuv, suvFactor),
+    'converted range lower bound',
+  );
+  const upper = requireFiniteOutput(
+    suvToBqml(maxSuv, suvFactor),
+    'converted range upper bound',
+  );
+  return [lower, upper];
 }
