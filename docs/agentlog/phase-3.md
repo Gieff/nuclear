@@ -1,12 +1,12 @@
 # Phase 3 — Headless Medical Engine, Residency & RenderTarget
 
-Status: **IN PROGRESS** — P3.0–P3.2.1 accepted (P3.1 closed via corrective
-P3.1.1, P3.2 closed via corrective P3.2.1); P3.3 closed (P3.3-A `16c40b4`,
+Status: **COMPLETE** (final phase review/QA **PASS**) — P3.0–P3.2.1 accepted
+(P3.1 closed via corrective P3.1.1, P3.2 closed via corrective P3.2.1); P3.3 closed (P3.3-A `16c40b4`,
 P3.3-B `3fbc011`, P3.3.1 corrective `9ede6d7`, conclusive P3.3-C review/QA
 **PASS**); P3.4-A accepted, P3.4-A.1 accepted (corrective radiometry hardening
 under ADR-005), P3.4-A.2 accepted (ADR-006 per-layer fusion `MedicalViewState`
 contract), P3.4-A.3 accepted (corrective single-source PET overlay opacity) and
-P3.4-A.3bis accepted (representability precision); P3.4-B in progress —
+P3.4-A.3bis accepted (representability precision); P3.4-B —
 P3.4-B.1 accepted (ADR-007 DICOM palette catalog), P3.4-B.1.1 accepted
 (canonical colormap id, whole-LUT digest, registration dedupe), P3.4-B.2.1
 accepted (pure `MedicalViewState` → Cornerstone application compiler),
@@ -18,7 +18,8 @@ accepted (different-FoR refusal, viewport-measured size, real-cache residency)
 and P3.4-B.2.2.5 accepted (positive same-FoR fusion evidence); P3.4-C accepted
 (ordinary raster capture, provenance, spec §6 transport check and per-state
 isolation; review/QA **PASS**); P3.5 accepted (temporary high-resolution
-`RenderTarget` primitive, ADR-009); P3.6 not started.
+`RenderTarget` primitive, ADR-009); P3.6 accepted (independent final phase
+review/QA **PASS**).
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -3777,7 +3778,10 @@ is JSON-exact; live snapshots are deep-equal (value invariants).
   the injected host factory, fail-closed allocation/disposal and the exclusions.
 - This report satisfies the Agentlog Gate for P3.5.
 - `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
-- Independent review/QA verdicts are recorded below once executed.
+- Independent verdicts (executed after this report was drafted, recorded here
+  for completeness): `nuclear-reviewer` **PASS** (6 non-blocking notes);
+  `nuclear-qa` **PASS** (all gates green; hardware-GPU `NOT YET APPLICABLE`);
+  the final Phase 3 report carries the closure verdicts.
 
 ## 6. Project Model Impact
 
@@ -3810,3 +3814,170 @@ and record the final eight-point Phase 3 report with runtime/hardware facts,
 package versions, fixture provenance, remaining platform risks and Phase 4
 entry conditions. Do not promote the changelog or create a tag without an
 explicit release request.
+
+---
+
+# Handover Report — P3.6: Final Phase 3 Closure
+
+Final eight-point phase report. P3.6 is a **review/QA + documentation closure**
+slice: no product code changed (only `docs/agentlog/phase-3.md` and the
+`AGENTS.md` baseline). The independent phase review and QA were executed over
+the accumulated Phase 3 tree. `CHANGELOG.md` and the version are untouched.
+
+## 1. What Was Implemented
+
+- **Independent final phase review** (`nuclear-reviewer`, read-only) over the
+  accumulated Phase 3 state (`e59e748..HEAD`, last commits `718cc71`, `800af86`,
+  `c978a2e`): verdict **PASS**, zero blocking findings, all nine Completion
+  Gates met, all eight architectural invariants verified, no Stop Condition
+  triggered. Non-blocking findings were resolved here (final handover,
+  P3.5 verdicts, `AGENTS.md` baseline, status-header wording) or recorded as
+  carried risk (zero-headroom files, the pure-data palette-table exemption,
+  and the documented technical debt).
+- **Independent final phase QA** (`nuclear-qa`, read-only): verdict **PASS** on
+  every executable gate, with real counts, real fixtures, named tolerances and
+  no vacuous/suppressed evidence. Non-executable gates correctly reported
+  `NOT YET APPLICABLE` (production bundle, hardware GPU, changelog promotion,
+  final handover).
+- **Documentation generation executed**: `npm run docs` regenerated the
+  TypeScript API (typedoc) and Python API (pdoc) into the gitignored
+  `docs/api/` and produced the master portal — no tracked artifact change.
+- **Phase status closed** and the `AGENTS.md` baseline advanced to Phase 3,
+  with this report as the phase-level handover.
+
+## 2. Files Changed / Created (P3.6 itself)
+
+| File | Change |
+| --- | --- |
+| `docs/agentlog/phase-3.md` | status header → **COMPLETE**; P3.5 verdicts recorded; this final phase report |
+| `AGENTS.md` | "Current Baseline" advanced from Phase 2 to Phase 3 complete |
+
+No product, test, contract, plan, ADR, `CHANGELOG.md` or version change in
+P3.6.
+
+## 3. Phase 3 Summary, Runtime/Hardware & Package Facts
+
+- **Runtime/hardware**: macOS (darwin); Node **v24.3.0**; Python **3.14.6**
+  (`python/worker/.venv`); Playwright **1.63.0** + bundled Chromium; esbuild
+  **0.28.2**. Default renderer backend is deterministic **software WebGL 2**:
+  `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)),
+  SwiftShader driver)`, `softwareRasterizer = true`, `maxTextureSize = 8192`,
+  `max3DTexture = 2048`. A hardware backend (`NUCLEAR_RENDERER_GL=metal`,
+  observed earlier: `ANGLE (Apple, ANGLE Metal Renderer: Apple M4)`,
+  `softwareRasterizer = false`, `maxTextureSize = 16384`) exists but hardware
+  evidence is **NOT YET APPLICABLE** and is not a phase gate.
+- **Package versions**: `@cornerstonejs/core` pinned **5.10.7**, owned solely
+  by `@nuclear/medical-engine`; monorepo version **0.1.2**; no new runtime
+  dependency in any other package.
+- **Architecture executed**: `ImagingAsset` + verified worker evidence →
+  local Cornerstone volume → `ResourceManager` residency → `MedicalViewState`
+  application → ordinary raster capture → temporary high-resolution
+  `RenderTarget`; Cornerstone the sole renderer; package graph acyclic.
+
+## 4. Fixture Provenance & Evidence
+
+Committed, programmatically reproducible fixtures under
+`tests/rendering/fixtures/volumes/` (gitignored `tests/cases/` is never PASS
+evidence):
+
+| Fixture | Geometry digest | Frame of Reference | Pixel dtype / dims / domain |
+| --- | --- | --- | --- |
+| `ct-axial` | `sha256:4195de76…c360a70` | `…5001.4` | int16 `[4,4,3]` `rescaled-hu` |
+| `pt-axial` | `sha256:f89f1d4e…04ce5b` | `…5002.4` | float32 `[4,4,3]` `rescaled-bqml` |
+| `pt-axial-coreg` | `sha256:4195de76…c360a70` (CT geometry) | `…5001.4` | float32 `[4,4,3]` `rescaled-bqml` |
+
+Both PT fixtures declare `status: computed` with `suvFactor =
+0.00022864801061323923` (g/Bq); `pt-axial-coreg` is the same-Frame-of-Reference
+positive, `pt-axial` the permanent different-Frame-of-Reference negative.
+
+- **Renderer evidence**: 17 serialized renderer suites / 85 tests — feasibility,
+  adapter lifecycle and teardown hardening, volume ingestion/payload/
+  construction/load, CT/PET/fusion view application, DICOM palette
+  registration, Cornerstone residency backend, ordinary capture, round-trip/
+  isolation, temporary render target. Unsupported host fails explicitly
+  (`RENDERER_UNAVAILABLE`); real SwiftShader WebGL 2 throughout.
+- **Residency evidence**: pure `resource-manager` (16 tests: lease
+  idempotence, shared-resource eviction ordering, fusion dual-retain, eviction
+  preserves identity/reload, budget priority/exhaustion, loader failure) and
+  the browser Cornerstone residency backend (6 tests: shared-volume eviction,
+  reload, partial fusion eviction, availability refusal, real `dispose()`),
+  with no global purge and measured-or-unknown VRAM.
+- **State-path evidence**: `MedicalCaptureDescriptor` provenance (viewId,
+  per-layer asset/volume/role/modality/palette/domain/VOI, blend mode, applied
+  orientation, renderer facts); spec §6 runtime check reads the PET transport
+  scalars from Cornerstone's cache (48 scalars `[200000, 247000]` Bq/mL);
+  round-trip within 1e-6. Isolation is proven across **two adapters/engines**;
+  intra-engine multi-viewport isolation is not yet demonstrated.
+- **RenderTarget evidence**: `round(mm/25.4·DPI)` exact (8 cm @600 → 1890×1890,
+  `byteLength 14 288 400`, all 3 572 100 pixels non-empty; @300 → 945×945,
+  `byteLength 3 572 100`, 893 025); ordinary vs target provenance JSON-equal;
+  full live snapshot value-invariant; allocation failure typed with no
+  fallback; disposal on success and after an apply refusal with no leaked
+  engine/container.
+
+## 5. Tests & Gates (P3.6 execution)
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **258 pass / 0 fail** (58 suites; 0 skipped/todo) |
+| `node --test --test-concurrency=1 "tests/rendering/**/*.test.ts"` | **85 pass / 0 fail** (17 suites) |
+| `npm run build` | clean (exit 0; `tsc -b` only) |
+| `npm run test:python` | **189 passed** |
+| `npm run typecheck:python` | clean over 47 files |
+| `node --test tests/medical/worker-source-integrity.test.ts` | **2 pass / 0 fail** |
+| `npm run docs` | typedoc + pdoc + portal generated into gitignored `docs/api/` |
+
+Named tolerances in force: 1e-12 (radiometry/SUV↔Bq/mL and fusion opacity),
+1e-6 (orientation read-back, capture round-trip, PET transport comparison),
+exact for dimensions/byteLength/provenance. RGBA is deliberately not
+byte-compared across runs (software rasterizer).
+
+## 6. Reviewer & QA Verdicts
+
+| Scope | `nuclear-reviewer` | `nuclear-qa` |
+| --- | --- | --- |
+| Phase 3 closure (P3.6) | **PASS** (0 blocking; 7 non-blocking) | **PASS** (all executable gates green) |
+| P3.4-C | **PASS** (7 non-blocking) | **PASS** |
+| P3.5 | **PASS** (6 non-blocking) | **PASS** |
+| Completion Gates | 9/9 met | 8/8 commands green |
+
+Hardware-GPU, true production bundle, changelog promotion and the final
+handover were correctly reported `NOT YET APPLICABLE`, never faked.
+
+## 7. Project Model Impact & Remaining Platform Risks
+
+- No `.ncp` schema, `@nuclear/shared-types` contract, residency vocabulary or
+  package-graph change in P3.6. Phase 3 added the medical-engine renderer,
+  volume loading, residency manager, view-state application, ordinary capture
+  and the temporary publication target, plus ADR-003–ADR-009.
+- **Remaining risks / technical debt** (carried, disclosed, none blocking):
+  1. All raster/WebGL evidence is **SwiftShader software**; hardware-GPU
+     behaviour (`--use-angle=metal`, norm16, 16384 textures) is unverified and
+     `NOT YET APPLICABLE`.
+  2. `npm run build` is `tsc -b` only — a true production bundle gate is
+     `NOT YET APPLICABLE` until the desktop shell (Phase 7).
+  3. `tests/**` remain outside the `tsc` graph; TS errors in tests surface only
+     at runtime (inherited P3.0 debt).
+  4. `renderer/adapter.ts` is exactly 300 lines and `renderer/medical-capture.ts`
+     299/300 — the next edits there must decompose.
+  5. `packages/rendering-presets/src/dicom-palettes.ts` (632 lines) exceeds the
+     Rule 02 letter but is the declared Rule 03 pure-data palette-table
+     exemption; the inter-rule tension is noted, not silently ignored.
+  6. Intra-engine multi-viewport isolation is not yet demonstrated; capture
+     validates the declared state camera, not the live camera (deferred until
+     the interaction layer exists).
+  7. The `createHost`-itself-throws branch and a mid-raster capture failure are
+     not separately exercised; the disposal mechanism is shared.
+  8. The historical renderer-harness startup flake class remains; both full
+     runs this session were green with the rerun protocol available.
+
+## 8. Exact Next Recommended Task
+
+Phase 3 is closed and no further P3 slice is required. The next smallest safe
+step is to **plan Phase 4 — view engine** (surfaces, view slots,
+synchronization, linking, locks), which will declare demand/priority against
+the now-complete `ResourceManager` and must not reimplement engine behaviour.
+Before any release activity, note that changelog promotion and tagging require
+an **explicit user request** (`/promote-changelog 3`); commits remain local
+until the user explicitly authorizes a push.
