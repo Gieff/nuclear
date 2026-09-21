@@ -1,8 +1,8 @@
 # Phase 3 — Headless Medical Engine, Residency & RenderTarget
 
-Status: **IN PROGRESS** — P3.0–P3.1.1 accepted (P3.1 closed via corrective
-P3.1.1); P3.2–P3.6 not started. Commit baseline: P3.0 `04bdbaa`, P3.1
-`ab0f69b`, P3.1.1 corrective commit recorded below.
+Status: **IN PROGRESS** — P3.0–P3.2 accepted (P3.1 closed via corrective
+P3.1.1); P3.3–P3.6 not started. Commit baseline: P3.0 `04bdbaa`, P3.1
+`ab0f69b`, P3.1.1 `e9a9f26`; P3.2 corrective/feature commit recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
 `b793631`.
 
@@ -427,3 +427,191 @@ Proceed to **P3.2 — Explicit series-to-volume loading from an accepted
 reproducible pixel-bearing CT/PT fixtures. Keep the P3.1.1 retryable
 `'teardown-failed'` semantics when P3.2/P3.3 add real resource teardown. Do not
 add residency, state application, `RenderTarget`, UI or view-engine work.
+
+---
+
+# Handover Report — P3.2: Explicit Series-to-Volume Loading
+
+## 1. What Was Implemented
+
+P3.2 delivers the first real volume load into Cornerstone3D from an accepted
+`ImagingAsset` plus Phase 2 worker evidence, via a **fixture-only pixel
+ingestion capability** (ADR-004). It is explicitly not generic real-source
+pixel ingestion.
+
+- **Pure, fail-closed ingestion planner** (`src/renderer/volume.ts`,
+  `volume-types.ts`, `volume-errors.ts`): maps `{ asset, availability,
+  classification, WorkerGeometryResult, pixel payload }` to a Cornerstone
+  volume-construction plan. Typed `VolumeIngestionError` with six codes:
+  `VOLUME_SOURCE_UNAVAILABLE`, `VOLUME_SOURCE_MISMATCH`,
+  `VOLUME_UNSUPPORTED_CLASSIFICATION`, `VOLUME_EVIDENCE_UNAVAILABLE`,
+  `VOLUME_GEOMETRY_DISAGREEMENT`, `VOLUME_PAYLOAD_INVALID`.
+- **Adapter volume capability** (`adapter.ts`): `loadVolume(plan)` uses
+  `volumeLoader.createLocalVolume` with worker geometry; `releaseVolume(id)`
+  uses `cache.removeVolumeLoadObject`. Loading before `started` and duplicate
+  `volumeId` loads fail closed.
+- **Worker geometry is copied verbatim.** `dimensions`, `spacing`, `origin`
+  are the worker's; the 9-element Cornerstone direction is
+  `[...assetGeometry.direction(6), ...sliceNormal(3)]` with no cross product,
+  normalization or sign flip. Layout verified against
+  `@kitware/vtk.js/Common/DataModel/ImageData.computeTransforms` and
+  `@cornerstonejs/core/generateVolumePropsFromImageIds`.
+- **Committed pixel-bearing CT and PT fixtures** under
+  `tests/rendering/fixtures/volumes/{ct-axial,pt-axial}/`: 3 pixel-bearing
+  DICOM instances each (4×4×3), plus a self-describing `pixels.json`
+  (encoding, byteOrder, dtype, signedness, SamplesPerPixel, bit layout,
+  `scalarDataDomain`, rescale, base64 LE values), `fixture.json` and the real
+  `expected-geometry.json`.
+- **Reproducible test-only generator + tests**
+  (`python/tests/synthetic_pixel_volume.py`,
+  `test_rendering_volume_fixtures.py`): byte-identical regeneration, payload ==
+  DICOM pixels × declared rescale (with a wrong-rescale negative control), and
+  real `nuclear.dicom.geometry`/`inspect` results equal to the committed
+  evidence.
+- **P3.4 bridge:** the PT fixture declares `scalarDataDomain: "rescaled-bqml"`
+  and the tests prove Cornerstone receives exactly the committed Bq/mL scalars
+  (sample 0 = 100000, sample 47 = 147000). No SUV conversion is performed in
+  P3.2.
+
+## 2. Files Changed / Created
+
+Created (product):
+- `packages/medical-engine/src/renderer/volume.ts` (244 lines)
+- `packages/medical-engine/src/renderer/volume-types.ts` (157 lines)
+- `packages/medical-engine/src/renderer/volume-errors.ts` (45 lines)
+
+Modified (product):
+- `packages/medical-engine/src/renderer/adapter.ts` (300 lines — added
+  `loadVolume`/`releaseVolume`/`#assertStarted`; the P3.1.1 teardown code is
+  unchanged, only comments were condensed)
+- `packages/medical-engine/src/renderer/index.ts` (re-export `./volume.js`)
+
+Created (tests/fixtures):
+- `tests/rendering/volume-ingestion.test.ts` (221), `volume-load.test.ts` (240)
+- `tests/rendering/fixtures/{volume-entry.ts (205), volume-fixture.ts (167),
+  volume-request.ts (182)}`
+- `tests/rendering/fixtures/volumes/{ct-axial,pt-axial}/` — 6 `.dcm`,
+  2 `pixels.json`, 2 `fixture.json`, 2 `expected-geometry.json`
+- `python/tests/synthetic_pixel_volume.py` (300),
+  `python/tests/test_rendering_volume_fixtures.py` (261)
+
+Modified (repo):
+- `.gitignore` — narrow negation
+  `!tests/rendering/fixtures/volumes/**/instances/*.dcm` so the committed
+  pixel-bearing fixtures are visible despite the global `*.dcm` ignore.
+
+Created (docs):
+- `docs/decisions/ADR-004-fixture-only-pixel-ingestion.md`
+
+Unchanged: `packages/medical-engine/src/index.ts` (renderer/volume still not
+reachable from the Node barrel), all other packages, `package.json`,
+`package-lock.json`, the plans, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- **No second geometry authority.** `@cornerstonejs/dicom-image-loader` and
+  all TS DICOM parsing are refused; `createLocalVolume` receives geometry from
+  the worker. The Mat3 layout was read from Cornerstone/vtk source, not
+  guessed.
+- **Fixture-only pixel authority (ADR-004).** The committed descriptor is the
+  pixel-format authority for this slice; the payload is a validated test
+  artifact, not a runtime `.ncp` representation and not a clinical authority.
+- **Declaration without inference.** `dtype`, byte order, signedness,
+  `SamplesPerPixel`, bit layout, `scalarDataDomain` and rescale are declared;
+  TS maps them verbatim. `PixelSpacing` is emitted in DICOM order
+  `[rowSpacing, columnSpacing]`.
+- **No invented presentation defaults:** `voiLut: []`, `VOILUTFunction:
+  'LINEAR'`; no window/level is chosen.
+- **`volumeId = nuclear-volume:<assetId>:<geometricDigest>`** — deterministic
+  and provenance-bound.
+
+## 4. Tests Added & Executed
+
+Added: 12 pure ingestion tests + 4 real-harness volume tests + 12 Python
+fixture tests.
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean |
+| `npx tsc -b --force` | clean |
+| `npm run build` | clean |
+| `npm test` | **79 pass / 0 fail** (63 prior + 16 new) |
+| `npm run test:renderer` | **26 pass / 0 fail** (10 prior + 16 new) |
+| `npm run test:python` | **178 passed** (166 prior + 12 new) |
+| `npm run typecheck:python` | clean over 45 source files |
+
+Positive evidence (real SwiftShader WebGL 2): CT and PT fixtures load; the
+Cornerstone volume reports exactly the worker `dimensions`/`spacing`/`origin`/
+`direction`; the worker→world transform for slice 1 matches
+`slicePositionsLpsMm[1]` within the named tolerance
+`WORKER_WORLD_TOLERANCE_MM = 1e-6` (proving normalized slice order); scalar
+length 48; PT scalars equal the committed Bq/mL payload exactly.
+
+Fail-closed negatives (each a distinct typed code): `missing`/`offline-cached`
+→ sourceUnavailable; `mismatch` → sourceMismatch; unsupported classification,
+modality or kind → unsupportedClassification; `rejected`/`unavailable`
+evidence → evidenceUnavailable; series/frame/modality/deep-geometry
+disagreement → geometryDisagreement; payload dimension/voxel-count mismatch →
+payloadInvalid; duplicate `volumeId` load and unknown release id → fail
+closed.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-004 records the fixture-only ingestion decision and the four user-imposed
+  constraints (test-only payload, declaration without inference, exact-geometry
+  proof, explicit hydration-boundary debt).
+- This report satisfies the AgentLog Gate for P3.2.
+- `CHANGELOG.md` untouched.
+- Reviewer verdict: **PASS** (no blocking findings). QA verdict: **PASS** on
+  every applicable gate (AgentLog row NOT YET APPLICABLE at QA time).
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema, shared contract or fixture-manifest semantics
+  changed; the renderer/volume modules remain unreachable from the package
+  barrel. The committed `tests/rendering/fixtures/volumes/**` payload is
+  test-only and must never be persisted as project state.
+
+## 7. Known Limitations & Technical Debt
+
+- **Generic pixel ingestion debt (explicit, not hidden behind
+  `SourceLocator`).** Real sources still have no verifiable pixel-transport
+  boundary: the pixel-format authority here is the committed fixture
+  descriptor. A separate, declared hydration contract (pixel format + voxel
+  transport) is required before real-source live rendering, with its own ADR.
+- **Axial-identity fixtures cannot disambiguate Mat3 element order** at the
+  world-geometry level (an identity transpose is still identity). Mitigated
+  by an array-level `deepEqual` against the assembled worker triplets and a
+  pure non-identity unit test; a non-identity browser volume load is future
+  work.
+- **`loadVolume` propagates a raw `createLocalVolume` allocation failure**
+  (e.g. cache exhaustion) rather than a typed `VolumeIngestionError`; still
+  fail-closed, but the plan's "volume-load error" negative is untested. P3.3
+  budget accounting will revisit this.
+- **Shared error codes:** `unsupportedClassification` covers worker
+  classification and asset modality/kind; `payloadInvalid` is reused for
+  duplicate-load and unknown-release cache states. Messages/tests
+  discriminate; a dedicated cache-state code belongs with P3.3 residency.
+- **Duplicate-load guard is load-bearing:** Cornerstone 5.10.7
+  `createLocalVolume` silently returns a cached volume for a duplicate id; the
+  adapter's guard is what makes the duplicate case fail closed.
+- **Declared dtype range is wider than the adapter path:** `volume-types.ts`
+  and the payload reader accept int8…float64, but Cornerstone's
+  `createLocalVolume` byteLength switch handles 8/16-bit ints and Float32 only;
+  P3.2 fixtures use int16/float32.
+- **`adapter.ts` is exactly 300 lines** and `synthetic_pixel_volume.py` is
+  exactly 300 — at the Rule 02 ceiling; further growth requires splitting.
+- Test-infra nit: `volume-request.ts` hardcodes asset `rescaleSlope:1`,
+  `rescaleIntercept:0` though the browser builder honours the declared rescale
+  (CT intercept −1024). Cosmetic; `ImagingAsset.metadata` is not consumed by
+  the P3.2 planner.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.3 — `ResourceManager` residency state machine, demand
+reconciliation, budget accounting, eviction and on-demand reload**, accepting
+`ResourceDemand` without importing `view-engine`, proving shared-resource
+accounting, deterministic eviction, honest unknown VRAM, and reload without
+semantic asset deletion. Reuse the P3.2 `loadVolume`/`releaseVolume` primitives
+and revisit the raw allocation-failure and shared-code debt above. Do not add
+state application (P3.4), `RenderTarget` (P3.5), UI or view-engine work.

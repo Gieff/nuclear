@@ -1,23 +1,21 @@
 /**
- * @nuclear/medical-engine — narrow Cornerstone adapter lifecycle (P3.1).
+ * @nuclear/medical-engine — narrow Cornerstone adapter: P3.1 engine lifecycle
+ * and P3.2 local volume loading via `createLocalVolume`.
  *
- * Owns the UI-agnostic start/stop lifecycle of one Cornerstone `RenderingEngine`
- * against an injected runtime host. Volume loading (P3.2), residency (P3.3),
- * state application (P3.4) and temporary RenderTargets (P3.5) are out of scope.
- *
- * Direct `@cornerstonejs/core` imports are confined to this adapter and the
- * browser bundle entry, per ADR-003. This module is intentionally NOT reachable
- * from `src/index.ts`, so Node tests that import the package barrel never load
- * a browser-only renderer.
+ * Residency, state application and RenderTargets (P3.3–P3.5) are out of scope.
+ * Direct `@cornerstonejs/core` imports stay confined to this adapter and the
+ * browser bundle entry (ADR-003); `src/index.ts` never re-exports it.
  */
 
 import {
+  cache,
   detectRenderingCapabilities,
   Enums,
   getRenderingEngine,
   init,
   isCornerstoneInitialized,
   RenderingEngine,
+  volumeLoader,
 } from '@cornerstonejs/core';
 
 import {
@@ -31,6 +29,12 @@ import type {
   RendererCapabilities,
   RendererRuntimeHost,
 } from './host.js';
+import {
+  describeLoadedVolume,
+  VOLUME_INGESTION_ERROR_CODES,
+  VolumeIngestionError,
+} from './volume.js';
+import type { LoadedVolume, VolumeIngestionPlan } from './volume.js';
 
 /** Default engine id when the caller does not supply one. */
 export const DEFAULT_RENDERER_ENGINE_ID = 'nuclear-renderer-engine';
@@ -60,10 +64,7 @@ function mapDetectedCapabilities(): RendererCapabilities {
   };
 }
 
-/**
- * Best-effort release of a partially created engine. Never throws: it must not
- * mask the original initialization failure being reported to the caller.
- */
+/** Best-effort release of a partially created engine; never masks the original failure. */
 function bestEffortRelease(host: RendererRuntimeHost, engineId: string): void {
   try {
     getRenderingEngine(engineId)?.destroy();
@@ -83,10 +84,9 @@ function bestEffortRelease(host: RendererRuntimeHost, engineId: string): void {
 /**
  * Owns one Cornerstone `RenderingEngine` for one injected host.
  *
- * Lifecycle: `idle` -> `started` (via `start`) -> `idle` (via `stop`).
- * A teardown that does not fully release physical state enters the retryable
- * `teardown-failed` state and throws; a clean `stop()` from `idle` is a
- * lifecycle violation, not a no-op.
+ * Lifecycle: `idle` -> `started` -> `idle`. A teardown that does not fully
+ * release physical state enters the retryable `teardown-failed` state; a clean
+ * `stop()` from `idle` is a lifecycle violation, not a no-op.
  */
 export class CornerstoneRendererAdapter {
   readonly #host: RendererRuntimeHost;
@@ -106,7 +106,6 @@ export class CornerstoneRendererAdapter {
    *
    * Fail-closed order: probe WebGL 2, reject a taken engine id, initialize
    * Cornerstone, create the host container, then create and enable the engine.
-   * Any failure throws a typed error and leaves no registered engine behind.
    */
   static start(
     host: RendererRuntimeHost,
@@ -203,19 +202,12 @@ export class CornerstoneRendererAdapter {
   /**
    * Tears the adapter down and unregisters its engine.
    *
-   * Engine destruction and container removal are attempted independently: a
-   * failure in one never prevents attempting the other, and container removal
-   * always runs (via `finally`) even when `destroy()` throws. Teardown is only
-   * reported as `idle` when no operation failed AND the engine is confirmed
-   * unregistered; otherwise the adapter enters the retryable `teardown-failed`
-   * state and throws a `RendererLifecycleError` carrying the failed
-   * operations, so a transient host/renderer failure can self-heal on a retry.
-   *
-   * `resetInitialization()` is deliberately NOT called here: Cornerstone
-   * initialization is process-global and multiple engines may coexist (Phase 4
-   * surfaces), so resetting it on one engine's teardown would be incorrect.
-   * `destroy()` releases this engine's physical resources; the harness proves
-   * the registry is clean afterwards.
+   * Engine destruction and container removal are attempted independently, and
+   * container removal always runs even when `destroy()` throws. `idle` is only
+   * reported when no operation failed AND the engine is confirmed unregistered;
+   * otherwise the retryable `teardown-failed` state throws so a transient
+   * failure can self-heal on a retry. `resetInitialization()` is deliberately
+   * NOT called: initialization is global and engines may coexist (Phase 4).
    */
   stop(): void {
     if (this.#state === 'idle') {
@@ -259,6 +251,50 @@ export class CornerstoneRendererAdapter {
       `Renderer adapter '${this.#engineId}' teardown did not complete: ${failedDetail}${registeredDetail} ` +
         "The adapter is in state 'teardown-failed'; resolve the renderer/host failure and call stop() again to retry.",
       { cause: failures[0]?.cause, failures },
+    );
+  }
+
+  /**
+   * Loads a validated plan as a real local Cornerstone volume, verbatim.
+   * Fail-closed: adapter must be `started` and `plan.volumeId` must be uncached.
+   */
+  loadVolume(plan: VolumeIngestionPlan): LoadedVolume {
+    this.#assertStarted(`load volume '${plan.volumeId}'`);
+    if (cache.getVolume(plan.volumeId) !== undefined) {
+      throw new VolumeIngestionError(
+        VOLUME_INGESTION_ERROR_CODES.payloadInvalid,
+        `Volume '${plan.volumeId}' is already cached; release it before loading.`,
+      );
+    }
+    volumeLoader.createLocalVolume(plan.volumeId, {
+      metadata: plan.metadata,
+      dimensions: [plan.dimensions[0], plan.dimensions[1], plan.dimensions[2]],
+      spacing: [plan.spacing[0], plan.spacing[1], plan.spacing[2]],
+      origin: [plan.origin[0], plan.origin[1], plan.origin[2]],
+      direction: [...plan.direction],
+      scalarData: plan.scalarData,
+    });
+    return describeLoadedVolume(plan);
+  }
+
+  /** Releases a cached volume; a non-started adapter or unknown id fails closed. */
+  releaseVolume(volumeId: string): void {
+    this.#assertStarted(`release volume '${volumeId}'`);
+    if (cache.getVolume(volumeId) === undefined) {
+      throw new VolumeIngestionError(
+        VOLUME_INGESTION_ERROR_CODES.payloadInvalid,
+        `Volume '${volumeId}' is not cached; nothing to release.`,
+      );
+    }
+    cache.removeVolumeLoadObject(volumeId);
+  }
+
+  #assertStarted(action: string): void {
+    if (this.#state === 'started') {
+      return;
+    }
+    throw new RendererLifecycleError(
+      `Renderer adapter '${this.#engineId}' cannot ${action}: state is '${this.#state}', not 'started'. Start the adapter first.`,
     );
   }
 }

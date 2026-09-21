@@ -1,0 +1,17 @@
+{
+  "assetId": "fixture.volume.ct-axial",
+  "studyInstanceUID": "1.2.826.0.1.3680043.10.5001.1",
+  "seriesInstanceUID": "1.2.826.0.1.3680043.10.5001.2",
+  "frameOfReferenceUID": "1.2.826.0.1.3680043.10.5001.4",
+  "modality": "CT",
+  "kind": "volume",
+  "classification": {
+    "supported": true,
+    "reason": null
+  },
+  "availability": "online",
+  "instanceCount": 3,
+  "pixelsPath": "pixels.json",
+  "expectedGeometryPath": "expected-geometry.json",
+  "provenanceNote": "NuClear P3.2 test-only fixture; not a clinical authority and not a runtime .ncp representation."
+}

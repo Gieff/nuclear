@@ -9,4 +9,5 @@
 
 export * from './host.js';
 export * from './errors.js';
+export * from './volume.js';
 export * from './adapter.js';
