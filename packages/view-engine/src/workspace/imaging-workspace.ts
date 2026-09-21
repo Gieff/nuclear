@@ -10,6 +10,8 @@
 import type {
   AssetId,
   ImagingAsset,
+  PreparedView,
+  PreparedViewId,
   StudyId,
   StudyInstanceUID,
   StudyReference,
@@ -18,12 +20,14 @@ import type {
 } from '@nuclear/shared-types';
 import { WorkspaceError } from './errors.js';
 import { ViewSlotRegistry } from './view-slot-registry.js';
+import { PreparedViewRegistry } from '../prepared-view/registry.js';
 
 export interface ImagingWorkspaceSnapshot {
   readonly studies: readonly StudyReference[];
   readonly assets: readonly ImagingAsset[];
   readonly groups: readonly ViewGroup[];
   readonly slots: readonly ViewSlot[];
+  readonly preparedViews: readonly PreparedView[];
 }
 
 /**
@@ -38,6 +42,7 @@ function cloneValue<T>(value: T): T {
 
 export class ImagingWorkspace {
   readonly slots: ViewSlotRegistry;
+  readonly preparedViews: PreparedViewRegistry;
 
   private readonly studyById = new Map<StudyId, StudyReference>();
   private readonly studyOrder: StudyId[] = [];
@@ -47,6 +52,7 @@ export class ImagingWorkspace {
 
   constructor(options: { slotRegistry?: ViewSlotRegistry } = {}) {
     this.slots = options.slotRegistry ?? ViewSlotRegistry.createDefault();
+    this.preparedViews = new PreparedViewRegistry();
   }
 
   registerStudy(study: StudyReference): void {
@@ -78,6 +84,26 @@ export class ImagingWorkspace {
     this.assetOrder.push(asset.id);
   }
 
+  registerPreparedView(view: PreparedView): PreparedView {
+    for (const assetId of view.provenance.sourceAssetIds) {
+      if (!this.assetById.has(assetId)) {
+        throw new WorkspaceError(
+          'WORKSPACE_UNKNOWN_ASSET',
+          `Prepared view '${view.id}' references provenance source asset id '${assetId}', which is not registered. Remediation: register the asset (and its owning study) before registering the prepared view.`,
+        );
+      }
+    }
+    return this.preparedViews.register(view);
+  }
+
+  getPreparedView(preparedViewId: PreparedViewId): PreparedView {
+    return this.preparedViews.get(preparedViewId);
+  }
+
+  listPreparedViews(): readonly PreparedView[] {
+    return this.preparedViews.list();
+  }
+
   getStudy(studyId: StudyId): StudyReference {
     return cloneValue(this.requireStudy(studyId));
   }
@@ -101,6 +127,11 @@ export class ImagingWorkspace {
       assets: this.listAssets(),
       groups: layout.groups,
       slots: layout.slots,
+      // Deliberate asymmetry (ADR-010 §1 / P4.3): studies, assets and slots are
+      // value-cloned, while prepared views are returned by reference so the
+      // shared `MedicalViewState` object identity stays observable. Do not
+      // "fix" this by cloning prepared views.
+      preparedViews: this.listPreparedViews(),
     };
   }
 

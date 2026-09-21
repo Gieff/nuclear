@@ -2,7 +2,8 @@
 
 Status: **IN PROGRESS** — P4.0 accepted (baseline, contract audit, plan,
 runbook and ADR-010); P4.1 accepted (workspace core, review **PASS**, QA
-**PASS**). P4.2–P4.8 pending in declared dependency order.
+**PASS**); P4.2 accepted (`PreparedView` assembly + provenance, review
+**PASS**, QA **PASS**). P4.3–P4.8 pending in declared dependency order.
 Baseline entry: Phase 3 closed and released (HEAD `30ef205`, annotated tag
 `v0.2.0`, monorepo 0.2.0).
 
@@ -266,3 +267,142 @@ which payloads are value-cloned versus identity-preserving before P4.3
 introduces shared-state objects. Do not add shared state (P4.3), linking
 (P4.4), lock/override (P4.5), surfaces (P4.6) or demand projection (P4.7) in
 P4.2.
+
+---
+
+# Handover Report — P4.2: `PreparedView` Assembly and Provenance
+
+## 1. What Was Implemented
+
+P4.2 added pure, Node-safe `PreparedView` assembly and registration to
+`@nuclear/view-engine`, and made the workspace own the prepared views.
+Assembly consumes an already-defined `MedicalViewState` plus `ViewProvenance`
+and produces a serializable `PreparedView`; it issues **no** `ResourceManager`
+call and pins no RAM/VRAM (residency stays P4.7).
+
+- **Typed errors** (`prepared-view/errors.ts`): `PreparedViewError` with a
+  `PreparedViewErrorCode` union (`MISSING_PROVENANCE`, `EMPTY_PROVENANCE`,
+  `BINDING_NOT_IN_PROVENANCE`, `DUPLICATE_LOCK`, `DUPLICATE_ID`,
+  `UNKNOWN_ID`, plus the reserved `SOURCE_VIEW_MISMATCH`) and messages naming
+  the offending view/asset/state id plus a remediation clause.
+- **Assembly** (`prepared-view/assemble.ts`): `assemblePreparedView(input)`
+  validates fail-closed in a fixed order — missing provenance → empty
+  provenance (`sourceAssetIds`/`sourceFingerprints`) → bound asset absent
+  from provenance → duplicate lock — then returns a `PreparedView` whose
+  `sourceViewId` is **derived** from `MedicalViewState.id`. `boundAssetIds`
+  covers the `dataBinding` plus every composition layer (single vs
+  fusion/multi-layer) and dedupes in order.
+- **Identity rule (deliberate)**: `state` and `provenance` are stored **by
+  reference** — no JSON clone — while `links`/`locks` are shallow-copied.
+  This is required so P4.3 shared-state groups can observe the same
+  `MedicalViewState` object across views. `PreparedViewRegistry` also returns
+  the stored object by reference from `get`/`list`/`snapshot`.
+- **Registry** (`prepared-view/registry.ts`): register/get/has/list/snapshot
+  with `PREPARED_VIEW_DUPLICATE_ID`/`PREPARED_VIEW_UNKNOWN_ID`.
+- **Workspace integration**: `ImagingWorkspace` gains `preparedViews`,
+  `registerPreparedView` (every `provenance.sourceAssetIds` id must be a
+  registered asset, else `WORKSPACE_UNKNOWN_ASSET`, checked before any
+  mutation), `getPreparedView`/`listPreparedViews`, and a `preparedViews`
+  snapshot field.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/view-engine/src/prepared-view/errors.ts` (49 lines)
+- `packages/view-engine/src/prepared-view/assemble.ts` (128 lines)
+- `packages/view-engine/src/prepared-view/registry.ts` (54 lines)
+- `packages/view-engine/src/prepared-view/index.ts` (11 lines)
+- `tests/view-engine/prepared-view.test.ts` (~264 lines)
+
+Modified:
+- `packages/view-engine/src/index.ts` (adds the prepared-view barrel)
+- `packages/view-engine/src/workspace/imaging-workspace.ts` (~158 lines)
+
+Unchanged: `packages/shared-types/**`, every other package, all `package.json`
+/ root config, plans/ADRs, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- **Identity over value for shared state.** P4.2 deliberately preserves object
+  identity for `state`/`provenance`; the workspace snapshot therefore has a
+  documented asymmetry — studies/assets/slots are JSON-cloned, prepared views
+  are by reference. P4.3 must not clone shared `SpatialState`/`CameraState`.
+- **Fixture seam (carried debt).** `mockMedicalView` binds the literal
+  `'asset-ct'` while `mockViewProvenance` lists `'asset-ct-001'`/
+  `'asset-pet-001'`; this is a pre-existing Phase 1 fixture incoherence, and
+  accepted P3 suites assert the literal. P4.2 does **not** weaken the
+  binding-vs-provenance check to accommodate it; it uses internally
+  consistent pet/fusion pairs and pins the mismatch as a fail-closed
+  regression test (case 13). A dedicated fixture-hygiene slice should fix the
+  Phase 1 ids and the P3 assertions together.
+- `PREPARED_VIEW_SOURCE_VIEW_MISMATCH` is reserved and currently unreachable
+  because `sourceViewId` is derived; it is documented as reserved rather than
+  removed.
+
+## 4. Tests Added & Executed
+
+Added `tests/view-engine/prepared-view.test.ts` (14 tests, 1 suite).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm run build` | clean (exit 0, `tsc -b`) |
+| `npm test` | **283 pass / 0 fail** (60 suites, 0 skipped/todo) = P4.1 269/59 + 14 tests / +1 suite |
+| `node --test tests/view-engine/prepared-view.test.ts` | 14 pass / 0 fail |
+| `node --test tests/view-engine/workspace-core.test.ts` | 11 pass / 0 fail |
+| `npm run test:python` | 189 passed (unchanged) |
+| `npm run typecheck:python` | clean over 47 files (unchanged) |
+
+Coverage: derived `sourceViewId` + strict reference identity of state and
+provenance; default/shallow-copied links and locks; registry identity
+preservation; workspace registration once provenance assets are registered;
+fusion assembly; JSON serializability without masking identity; and
+fail-closed negatives for missing/empty provenance, bound-asset-absent,
+duplicate locks, duplicate/unknown ids, unregistered provenance asset (no
+state mutation) and the pinned fixture seam. A final case pins the validation
+order (provenance binding check wins over the lock check). No
+`skip`/`todo`/`|| true` and no vacuous assertions.
+
+Independent verdicts: `nuclear-reviewer` **PASS** (zero blocking; 6
+non-blocking findings) and `nuclear-qa` **PASS** for the executable scope.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-010 remains **Accepted**; P4.2 implements §1 (workspace owns prepared
+  views; package boundary) and §6 (assembly declares no demand). No ADR change
+  was required.
+- This report satisfies the AgentLog Gate for P4.2.
+- `CHANGELOG.md` untouched; release notes are compiled later via
+  `/promote-changelog 4` only on explicit request.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema change. The workspace snapshot now carries
+  `preparedViews` in memory; persisting them remains a future, explicitly
+  scoped `project-model` decision.
+
+## 7. Known Limitations & Technical Debt
+
+- **Carried Phase 3 debt**: `tests/**` remains outside the `tsc` graph;
+  `renderer/adapter.ts` (300) and `renderer/medical-capture.ts` (299/300)
+  still have zero headroom; hardware-GPU and true production-bundle evidence
+  remain `NOT YET APPLICABLE`.
+- **Fixture defect to track**: the Phase 1 `mockMedicalView` asset-id
+  incoherence (see §3). Recommended as a small dedicated fixture-hygiene
+  slice that updates the fixture literal and the P3 view-application
+  assertions plus P4.2 case 13 in one change.
+- Reviewer non-blocking notes addressed here: reserved-code comment,
+  snapshot-asymmetry comment, validation-order pin. Remaining: `boundAssetIds`
+  O(n²) dedup (cosmetic), no 1:1 asset↔fingerprint check (not required).
+- `@nuclear/view-engine` still declares a permitted-but-unused
+  `@nuclear/medical-engine` dependency; consumed from P4.7.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P4.3 — shared-state groups**: let several views reference the
+*same* `SpatialState`/`CameraState` object instead of an imperative notify
+chain, with object identity observable and in-place mutation refused so one
+view cannot silently change another. P4.3 must preserve the by-reference
+identity contract introduced in P4.2 and must not clone shared state objects.
+Do not add linking (P4.4), lock/override application (P4.5), surfaces (P4.6)
+or demand projection (P4.7) in P4.3.
