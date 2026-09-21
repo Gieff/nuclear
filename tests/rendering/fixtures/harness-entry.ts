@@ -67,11 +67,6 @@ interface NuclearRendererProbe {
   reset(): ResetProbeResult;
 }
 
-declare global {
-  var __nuclearRendererProbe: NuclearRendererProbe | undefined;
-  var __nuclearRendererProbeReady: boolean | undefined;
-}
-
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

@@ -11,15 +11,24 @@ import type {
   PetFusionOverlayPresentation,
   PresentationState,
   ProjectionState,
+  SingleMedicalViewState,
   SpatialState,
   StateLock,
   ViewProvenance,
   ViewportSurface,
 } from '../../packages/shared-types/src/index.js';
 import type {
-  AssetId, ComposerViewInstanceId, FrameOfReferenceUID, PreparedViewId, PreviewId, SurfaceId, ViewId, ViewportId,
+  AssetId, ComposerViewInstanceId, PreparedViewId, PreviewId, SurfaceId, ViewId, ViewportId,
 } from '../../packages/shared-types/src/index.js';
-import { mockCtAsset, mockIdentityTransform, mockPetAsset, mockRigidFollowupTransform, mockViewProvenance } from './clinical-contracts.fixture.ts';
+import {
+  MOCK_CT_SERIES_UID,
+  MOCK_PET_SERIES_UID,
+  mockCtAsset,
+  mockIdentityTransform,
+  mockPetAsset,
+  mockRigidFollowupTransform,
+  mockViewProvenance,
+} from './clinical-contracts.fixture.ts';
 
 const id = <T extends string>(value: string): T => value as T;
 const identity: CoordinateTransformSet = {
@@ -47,7 +56,7 @@ const presentation: PresentationState = {
 const projection: ProjectionState = { mode: 'slice' };
 const composition: CompositionState = { mode: 'single', layers: [binding] };
 
-export const mockMedicalView: MedicalViewState = {
+export const mockMedicalView: SingleMedicalViewState = {
   id: id<ViewId>('view-ct'), dataBinding: binding, spatial, camera, presentation, projection, composition,
   coordinateTransforms: identity,
 };
@@ -63,7 +72,7 @@ const fusionPetPresentation: PetFusionOverlayPresentation = {
   suvRange: [0, 8], colormapId: 'dicom-pet', invert: false, interpolation: 'linear', modalityPresentation: 'pet',
 };
 
-export const mockPetView: MedicalViewState = {
+export const mockPetView: SingleMedicalViewState = {
   id: id<ViewId>('view-pet'), dataBinding: { assetId: mockPetAsset.id, role: 'base' }, spatial: petSpatial, camera,
   presentation: petPresentation, projection: { mode: 'slice' },
   composition: { mode: 'single', layers: [{ assetId: mockPetAsset.id, role: 'base' }] },
@@ -126,7 +135,7 @@ export const mockPreparedView: PreparedView = {
 export const mockPetViewProvenance: ViewProvenance = {
   studyInstanceUID: mockPetAsset.studyInstanceUID,
   sourceAssetIds: [mockPetAsset.id],
-  sourceSeriesInstanceUIDs: [mockPetAsset.seriesInstanceUID],
+  sourceSeriesInstanceUIDs: [MOCK_PET_SERIES_UID],
   sourceFingerprints: [mockPetAsset.sourceFingerprint],
   engineVersion: '0.1.0',
   createdAt: '2026-09-20T10:30:00Z',
@@ -136,7 +145,7 @@ export const mockPetViewProvenance: ViewProvenance = {
 export const mockFusionViewProvenance: ViewProvenance = {
   studyInstanceUID: mockCtAsset.studyInstanceUID,
   sourceAssetIds: [mockCtAsset.id, mockPetAsset.id],
-  sourceSeriesInstanceUIDs: [mockCtAsset.seriesInstanceUID, mockPetAsset.seriesInstanceUID],
+  sourceSeriesInstanceUIDs: [MOCK_CT_SERIES_UID, MOCK_PET_SERIES_UID],
   sourceFingerprints: [mockCtAsset.sourceFingerprint, mockPetAsset.sourceFingerprint],
   appliedTransforms: [mockIdentityTransform.id],
   appliedPresetIds: ['ct-soft-tissue'],

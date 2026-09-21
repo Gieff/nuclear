@@ -25,7 +25,17 @@ const nonEmpty = (value: unknown): value is string => typeof value === 'string' 
 const positivePair = (value: unknown): value is readonly number[] => pair(value) && value[0] > 0 && value[1] > 0;
 const crop = (value: unknown): value is readonly number[] => Array.isArray(value) && value.length === 4 && value.every(finite) && value[0] >= 0 && value[1] >= 0 && value[2] <= 1 && value[3] <= 1 && value[0] < value[2] && value[1] < value[3];
 const position = (value: unknown): value is readonly number[] => pair(value);
-const availability = (value: unknown): boolean => record(value) && ['online', 'loading', 'offline-cached', 'missing', 'mismatch'].includes(String(value.state));
+
+/** Structural view of a validated availability object (`isSourceFingerprint`-free). */
+interface AvailabilityLike {
+  readonly state?: unknown;
+  readonly message?: unknown;
+  readonly lastCheckedAt?: unknown;
+  readonly expectedFingerprint?: unknown;
+  readonly observedFingerprint?: unknown;
+}
+
+const availability = (value: unknown): value is AvailabilityLike => record(value) && ['online', 'loading', 'offline-cached', 'missing', 'mismatch'].includes(String(value.state));
 
 const cachedPreview = (value: unknown): boolean => {
   if (!record(value) || !nonEmpty(value.previewId) || !nonEmpty(value.renderStateHash) || !positivePair(value.pixelDimensions) || !nonEmpty(value.colorProfile) || !nonEmpty(value.generatedAt) || !Array.isArray(value.sourceFingerprintSet) || !value.sourceFingerprintSet.every(isSourceFingerprint)) return false;
@@ -73,7 +83,9 @@ const anchorSpace = (anchor: AnnotationAnchor): AnnotationCoordinateSpace => anc
 const annotationBase = (value: Record<string, unknown>): boolean => nonEmpty(value.id) && isAnnotationAnchor(value.anchor) && (value.strokeColor === undefined || nonEmpty(value.strokeColor)) && (value.fillColor === undefined || nonEmpty(value.fillColor)) && (value.strokeWidthMm === undefined || (finite(value.strokeWidthMm) && value.strokeWidthMm >= 0));
 
 export const isFigureAnnotation = (value: unknown): value is FigureAnnotation => {
-  if (!record(value) || !annotationBase(value) || !coordinateSpace(value.coordinateSpace) || value.coordinateSpace !== anchorSpace(value.anchor)) return false;
+  if (!record(value)) return false;
+  const anchor = value.anchor;
+  if (!annotationBase(value) || !isAnnotationAnchor(anchor) || !coordinateSpace(value.coordinateSpace) || value.coordinateSpace !== anchorSpace(anchor)) return false;
   const space = value.coordinateSpace;
   if (value.kind === 'line' || value.kind === 'arrow') return Array.isArray(value.endpoints) && value.endpoints.length === 2 && value.endpoints.every((point) => annotationPoint(point, space));
   if (value.kind === 'circle') return record(value.geometry) && value.geometry.coordinateSpace === space && annotationPoint(value.geometry.center, space) && finite(value.geometry.radiusMm) && value.geometry.radiusMm > 0;
@@ -98,12 +110,12 @@ const fingerprintKey = (value: Record<string, unknown>): string => JSON.stringif
 ]);
 
 /** Equality of fingerprint multisets: order-independent, duplicate-sensitive, and complete. */
-const sameFingerprints = (left: readonly Record<string, unknown>[], right: readonly Record<string, unknown>[]): boolean => {
+const sameFingerprints = (left: readonly object[], right: readonly object[]): boolean => {
   if (left.length !== right.length) return false;
-  const counts = (items: readonly Record<string, unknown>[]): Map<string, number> => {
+  const counts = (items: readonly object[]): Map<string, number> => {
     const result = new Map<string, number>();
     for (const item of items) {
-      const key = fingerprintKey(item);
+      const key = fingerprintKey(item as Record<string, unknown>);
       result.set(key, (result.get(key) ?? 0) + 1);
     }
     return result;
@@ -114,14 +126,17 @@ const sameFingerprints = (left: readonly Record<string, unknown>[], right: reado
   return [...leftCounts].every(([key, count]) => rightCounts.get(key) === count);
 };
 
-const samePreview = (left: Record<string, unknown>, right: Record<string, unknown>): boolean => left.previewId === right.previewId && left.renderStateHash === right.renderStateHash && left.colorProfile === right.colorProfile && JSON.stringify(left.pixelDimensions) === JSON.stringify(right.pixelDimensions) && Array.isArray(left.sourceFingerprintSet) && Array.isArray(right.sourceFingerprintSet) && sameFingerprints(left.sourceFingerprintSet as readonly Record<string, unknown>[], right.sourceFingerprintSet as readonly Record<string, unknown>[]) && JSON.stringify(left.rendererMetadata) === JSON.stringify(right.rendererMetadata);
+const samePreview = (left: Record<string, unknown>, right: object): boolean => {
+  const target = right as Record<string, unknown>;
+  return left.previewId === target.previewId && left.renderStateHash === target.renderStateHash && left.colorProfile === target.colorProfile && JSON.stringify(left.pixelDimensions) === JSON.stringify(target.pixelDimensions) && Array.isArray(left.sourceFingerprintSet) && Array.isArray(target.sourceFingerprintSet) && sameFingerprints(left.sourceFingerprintSet as readonly object[], target.sourceFingerprintSet as readonly object[]) && JSON.stringify(left.rendererMetadata) === JSON.stringify(target.rendererMetadata);
+};
 
-const sameAvailability = (left: Record<string, unknown>, right: Record<string, unknown>): boolean => {
+const sameAvailability = (left: AvailabilityLike, right: AvailabilityLike): boolean => {
   if (left.state !== right.state) return false;
-  for (const field of ['message', 'lastCheckedAt']) {
+  for (const field of ['message', 'lastCheckedAt'] as const) {
     if (Object.prototype.hasOwnProperty.call(left, field) !== Object.prototype.hasOwnProperty.call(right, field) || left[field] !== right[field]) return false;
   }
-  for (const field of ['expectedFingerprint', 'observedFingerprint']) {
+  for (const field of ['expectedFingerprint', 'observedFingerprint'] as const) {
     const leftValue = left[field];
     const rightValue = right[field];
     if (Object.prototype.hasOwnProperty.call(left, field) !== Object.prototype.hasOwnProperty.call(right, field)) return false;
@@ -175,6 +190,6 @@ export const isPublicationRenderRequest = (value: unknown): value is Publication
     if (bindingPreview !== undefined && (!record(inputPreview) || !cachedPreview(inputPreview) || !samePreview(inputPreview, bindingPreview))) return false;
     if (input.availability.state === 'online') return value.renderMode === 'live-medical' && input.renderSource === 'live-medical';
     if (input.availability.state !== 'offline-cached' || value.availabilityPolicy !== 'allow-offline-preview' || value.renderMode !== 'offline-cached-preview' || input.renderSource !== 'cached-preview' || !record(input.cachedPreviewReference) || !cachedPreview(input.cachedPreviewReference) || !record(input.preparedView.cachedPreviewReference) || !samePreview(input.cachedPreviewReference, input.preparedView.cachedPreviewReference)) return false;
-    return input.cachedPreviewReference.renderStateHash === value.renderStateHash && sameFingerprints(input.cachedPreviewReference.sourceFingerprintSet as readonly Record<string, unknown>[], input.preparedView.provenance.sourceFingerprints as readonly Record<string, unknown>[]);
+    return input.cachedPreviewReference.renderStateHash === value.renderStateHash && sameFingerprints(input.cachedPreviewReference.sourceFingerprintSet as readonly object[], input.preparedView.provenance.sourceFingerprints);
   });
 };

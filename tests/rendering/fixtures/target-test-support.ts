@@ -5,7 +5,7 @@
 
 import { fileURLToPath } from 'node:url';
 import type { Page } from 'playwright';
-import type { MedicalCaptureDescriptor } from '../../packages/medical-engine/src/view-application/index.ts';
+import type { MedicalCaptureDescriptor } from '../../../packages/medical-engine/src/view-application/index.ts';
 import type { LiveSnapshot } from './target-probe-types.ts';
 
 export const TARGET_ENTRY_PATH = fileURLToPath(

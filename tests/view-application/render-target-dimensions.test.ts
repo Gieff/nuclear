@@ -22,12 +22,13 @@ const {
 } = await import('../../packages/medical-engine/src/view-application/index.ts');
 
 type RenderTargetErrorCode = string;
+type RenderTargetFailure = InstanceType<typeof RenderTargetError>;
 
 function expectRenderTargetError(
   run: () => unknown,
   code: RenderTargetErrorCode,
-): RenderTargetError {
-  let caught: RenderTargetError | undefined;
+): RenderTargetFailure {
+  let caught: RenderTargetFailure | undefined;
   assert.throws(run, (error: unknown) => {
     assert.ok(
       error instanceof RenderTargetError,
@@ -38,7 +39,7 @@ function expectRenderTargetError(
     caught = error;
     return true;
   });
-  return caught as RenderTargetError;
+  return caught as RenderTargetFailure;
 }
 
 const PLAN = {
@@ -203,12 +204,13 @@ describe('NuClear P3.5-A — temporary render target plan derivation', () => {
     // The source plan is never mutated.
     assert.deepEqual(PLAN.transforms.viewportSizePx, [512, 512]);
 
-    for (const pixelDimensions of [
+    const invalidPixelDimensions: ReadonlyArray<readonly [number, number]> = [
       [0, 100],
       [100, -1],
       [1.5, 100],
       [Number.NaN, 100],
-    ]) {
+    ];
+    for (const pixelDimensions of invalidPixelDimensions) {
       expectRenderTargetError(
         () => deriveTemporaryRenderTargetPlan(PLAN, pixelDimensions),
         RENDER_TARGET_ERROR_CODES.specInvalid,

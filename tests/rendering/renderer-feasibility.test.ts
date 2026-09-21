@@ -95,7 +95,7 @@ describe('NuClear P3.0 — controlled WebGL 2 renderer harness', () => {
   it('initializes real Cornerstone, manages engine lifecycle, resets and recycles', async () => {
     const harness = await createRendererHarness();
     try {
-      const webgl2 = await harness.webgl2();
+      const webgl2: WebGL2Result = await harness.webgl2();
       assert.equal(webgl2.ok, true, `WebGL 2 probe failed: ${webgl2.reason ?? 'no reason'}`);
       assert.ok(
         typeof webgl2.version === 'string' && webgl2.version.startsWith('WebGL 2.0'),

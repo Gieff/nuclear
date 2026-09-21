@@ -35,6 +35,8 @@ import {
   suvRangeToBqml,
   twoPetFusionState,
 } from './fixtures/view-application-fixtures.ts';
+import type { FusionState } from './fixtures/view-application-fixtures.ts';
+import type { FusionOverlayLayer, MedicalViewState } from '../../packages/shared-types/src/index.js';
 
 describe('NuClear P3.4-B.2.1 — fusion application (ADR-006)', () => {
   it('6. a fusion view applies a CT base and a PET overlay whose opacity is getFusionOpacity(50) and whose mapping is getPETOpacityMapping', () => {
@@ -86,9 +88,9 @@ describe('NuClear P3.4-B.2.1 — fusion application (ADR-006)', () => {
   });
 
   it('8. a PET layer declaring both voi and suvRange, or neither, refuses with VIEW_STATE_INVALID', () => {
-    const [baseLayer, overlayLayer] = mockFusionView.composition.layers;
-    const withPresentation = (presentation: Record<string, unknown>) => ({
-      ...mockFusionView,
+    const [baseLayer, overlayLayer] = (mockFusionView as FusionState).composition.layers;
+    const withPresentation = (presentation: FusionOverlayLayer['presentation']): MedicalViewState => ({
+      ...(mockFusionView as FusionState),
       composition: {
         mode: 'fusion',
         blend: 'alpha',
@@ -96,7 +98,7 @@ describe('NuClear P3.4-B.2.1 — fusion application (ADR-006)', () => {
       },
     });
     for (const presentation of [
-      { ...overlayLayer.presentation, voi: [0, 8] },
+      { ...overlayLayer.presentation, voi: [0, 8] as const },
       { ...overlayLayer.presentation, suvRange: undefined },
     ]) {
       expectCode(
@@ -136,7 +138,7 @@ describe('NuClear P3.4-B.2.1 — projection mapping', () => {
       Number.NaN,
       Number.POSITIVE_INFINITY,
     ]) {
-      const state = { ...mockMedicalView, projection: { mode: 'MIP', slabThicknessMm } };
+      const state = { ...mockMedicalView, projection: { mode: 'MIP' as const, slabThicknessMm } };
       expectCode(
         () => compileMedicalViewApplication({ state, volumeIds: CT_VOLUME_IDS, petBindings: NO_BINDINGS }),
         VIEW_APPLICATION_ERROR_CODES.projectionInvalid,

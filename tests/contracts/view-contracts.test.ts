@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import type { FusionCompositionState } from '../../packages/shared-types/src/index.js';
 import {
   isCoordinateTransformSet, isIntraStudyLink, isInterStudyLink, isLocalViewOverride,
   isMedicalViewState, isPreparedView, isStateLock, isViewGroup, isViewLink, isViewSlot, isViewportSurface,
@@ -24,7 +25,7 @@ describe('NuClear Phase 1.3 — View contracts', () => {
   });
 
   it('enforces per-layer fusion completeness, transfer bounds and no presentation fallback', () => {
-    const fusion = mockFusionView.composition as { layers: Array<Record<string, unknown>> };
+    const fusion = mockFusionView.composition as FusionCompositionState;
     const baseLayer = fusion.layers[0]; const overlayLayer = fusion.layers[1];
     const fusionView = (layers: unknown[]) => ({ ...mockFusionView, composition: { mode: 'fusion', blend: 'alpha', layers } });
     assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, fusion: undefined }])), false);
@@ -48,7 +49,7 @@ describe('NuClear Phase 1.3 — View contracts', () => {
   });
 
   it('single-sources PET overlay overall opacity from blendSlider, rejecting presentation.opacity', () => {
-    const fusion = mockFusionView.composition as { layers: Array<Record<string, unknown>> };
+    const fusion = mockFusionView.composition as FusionCompositionState;
     const baseLayer = fusion.layers[0]; const overlayLayer = fusion.layers[1];
     const fusionView = (layers: unknown[]) => ({ ...mockFusionView, composition: { mode: 'fusion', blend: 'alpha', layers } });
     assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, presentation: { ...overlayLayer.presentation as object, opacity: 1 } }])), false);
@@ -95,12 +96,13 @@ describe('NuClear Phase 1.3 — View contracts', () => {
   it('rejects malformed geometry, presentation, payload, identity and residency references', () => {
     assert.equal(isMedicalViewState({ ...mockMedicalView, spatial: { ...mockMedicalView.spatial, viewUp: [0, 0, 1] } }), false);
     assert.equal(isMedicalViewState({ ...mockMedicalView, presentation: { ...mockMedicalView.presentation, suvRange: [10, 2] } }), false);
-    assert.equal(isMedicalViewState({ ...mockFusionView, composition: { ...mockFusionView.composition, layers: [{ ...(mockFusionView.composition as { layers: Array<Record<string, unknown>> }).layers[0] }, { ...(mockFusionView.composition as { layers: Array<Record<string, unknown>> }).layers[1], presentation: { ...((mockFusionView.composition as { layers: Array<Record<string, unknown>> }).layers[1].presentation as object), opacity: 2 } }] } }), false);
+    const fusion = mockFusionView.composition as FusionCompositionState;
+    assert.equal(isMedicalViewState({ ...mockFusionView, composition: { ...mockFusionView.composition, layers: [{ ...fusion.layers[0] }, { ...fusion.layers[1], presentation: { ...(fusion.layers[1].presentation as object), opacity: 2 } }] } }), false);
     assert.equal(isIntraStudyLink({ ...mockIntraStudyLink, geometryEvidence: { ...mockIntraStudyLink.geometryEvidence, snapshots: [] } }), false);
     assert.equal(isIntraStudyLink({ ...mockIntraStudyLink, geometryEvidence: { ...mockIntraStudyLink.geometryEvidence, assetIds: [mockIntraStudyLink.geometryEvidence.assetIds[0], mockIntraStudyLink.geometryEvidence.assetIds[0]] } }), false);
     assert.equal(isIntraStudyLink({ ...mockIntraStudyLink, geometryEvidence: { ...mockIntraStudyLink.geometryEvidence, snapshots: mockIntraStudyLink.geometryEvidence.snapshots.map((snapshot) => ({ ...snapshot, frameOfReferenceUID: 'wrong-frame' })) } }), false);
     assert.equal(isInterStudyLink({ ...mockInterStudyLink, spatialTransform: { ...mockInterStudyLink.spatialTransform, units: 'cm' } }), false);
-    assert.equal(isInterStudyLink({ ...mockInterStudyLink, spatialTransform: { ...mockInterStudyLink.spatialTransform, validity: { ...mockInterStudyLink.spatialTransform.validity, isValid: false } } }), false);
+    assert.equal(isInterStudyLink({ ...mockInterStudyLink, spatialTransform: { ...mockInterStudyLink.spatialTransform, validity: { ...mockInterStudyLink.spatialTransform!.validity, isValid: false } } }), false);
     assert.equal(isLocalViewOverride({ ...mockLocalOverride, overrides: [{ state: 'camera', value: { zoom: 0 } }] }), false);
     assert.equal(isViewGroup({ id: 'group-0', slotIds: ['slot-0', 'slot-0', 'slot-2', 'slot-3'] }), false);
     assert.equal(isViewSlot({ id: 'slot-0', groupId: 'group-0', role: 'PET', status: 'bound', resourceDemand: { assetId: 'a', priority: 'bad', requiredTiers: [] } }), false);

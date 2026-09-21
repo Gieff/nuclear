@@ -85,15 +85,8 @@ interface NuclearAdapterProbe {
   breakEngineDestroyOnce(engineId: string): CodeOutcome;
 }
 
-/** Minimal shape the shared harness reads for its `requireWebGL2` gate. */
-interface NuclearRendererProbe {
-  webgl2(): WebGL2Availability;
-}
-
 declare global {
   var __nuclearAdapterProbe: NuclearAdapterProbe | undefined;
-  var __nuclearRendererProbe: NuclearRendererProbe | undefined;
-  var __nuclearRendererProbeReady: boolean | undefined;
 }
 
 let activeAdapter: CornerstoneRendererAdapter | undefined;

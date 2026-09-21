@@ -154,12 +154,12 @@ async function assertFixtureVolumeLoads(name: FixtureName, domain: string): Prom
     assertNear(result.firstCornerWorld, geometry.bounds.min, 'first outer corner');
     assertNear(result.lastCornerWorld, geometry.bounds.max, 'last outer corner');
     assertNear(
-      [result.worldBounds?.[0], result.worldBounds?.[2], result.worldBounds?.[4]],
+      [result.worldBounds![0], result.worldBounds![2], result.worldBounds![4]],
       geometry.bounds.min,
       'world bounds min',
     );
     assertNear(
-      [result.worldBounds?.[1], result.worldBounds?.[3], result.worldBounds?.[5]],
+      [result.worldBounds![1], result.worldBounds![3], result.worldBounds![5]],
       geometry.bounds.max,
       'world bounds max',
     );

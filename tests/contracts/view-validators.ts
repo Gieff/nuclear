@@ -1,4 +1,4 @@
-import type { InterStudyLink, IntraStudyLink, LocalViewOverride, MedicalViewState, PreparedView, StateLock, ViewGroup, ViewLink, ViewSlot, ViewportSurface } from '../../packages/shared-types/src/index.js';
+import type { CompositionState, InterStudyLink, IntraStudyLink, LocalViewOverride, MedicalViewState, PreparedView, StateLock, ViewGroup, ViewLink, ViewSlot, ViewportSurface } from '../../packages/shared-types/src/index.js';
 import { isSpatialTransform, isSourceFingerprint, isViewProvenance } from './validators.ts';
 
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
@@ -6,7 +6,7 @@ const finite = (value: unknown): value is number => typeof value === 'number' &&
 const tuple = (value: unknown, length: number): value is readonly number[] => Array.isArray(value) && value.length === length && value.every(finite);
 const matrix = (value: unknown): value is readonly number[] => tuple(value, 16) && value[12] === 0 && value[13] === 0 && value[14] === 0 && value[15] === 1;
 const unit = (value: readonly number[]): boolean => Math.abs(Math.hypot(...value) - 1) < 1e-5;
-const direction = (value: unknown): boolean => {
+const direction = (value: unknown): value is readonly number[] => {
   if (!tuple(value, 6)) return false;
   const row = value.slice(0, 3); const column = value.slice(3, 6);
   return unit(row) && unit(column) && Math.abs(row[0] * column[0] + row[1] * column[1] + row[2] * column[2]) < 1e-5;
@@ -42,7 +42,7 @@ const baseCompositionLayer = (value: unknown): boolean => {
   if (!presentationState(value.presentation) || !record(value.presentation) || !tuple(value.presentation.voi, 2)) return false;
   return value.fusion === undefined;
 };
-const compositionState = (value: unknown): boolean => {
+const compositionState = (value: unknown): value is CompositionState => {
   if (!record(value) || !Array.isArray(value.layers) || value.layers.length === 0 || !['single', 'fusion', 'multi-layer'].includes(String(value.mode))) return false;
   const layers = value.layers as unknown[];
   if (value.mode === 'single') return value.blend === undefined && layers.length === 1 && binding(layers[0]);
@@ -77,8 +77,9 @@ export const isMedicalViewState = (value: unknown): value is MedicalViewState =>
 
 export const isIntraStudyLink = (value: unknown): value is IntraStudyLink => {
   if (!record(value) || value.kind !== 'co-referenced' || typeof value.sourceViewId !== 'string' || typeof value.targetViewId !== 'string' || typeof value.frameOfReferenceUID !== 'string' || !Array.isArray(value.synchronizedState) || !value.synchronizedState.every((item) => stateNames.includes(item as typeof stateNames[number])) || !record(value.geometryEvidence) || value.geometryEvidence.verified !== true || value.geometryEvidence.frameOfReferenceUID !== value.frameOfReferenceUID || !Array.isArray(value.geometryEvidence.assetIds) || value.geometryEvidence.assetIds.length === 0 || new Set(value.geometryEvidence.assetIds).size !== value.geometryEvidence.assetIds.length || !Array.isArray(value.geometryEvidence.snapshots) || value.geometryEvidence.snapshots.length !== value.geometryEvidence.assetIds.length || !value.geometryEvidence.snapshots.every(geometrySnapshot)) return false;
+  const frameOfReferenceUID = value.geometryEvidence.frameOfReferenceUID;
   const assetIds = new Set(value.geometryEvidence.assetIds);
-  return value.geometryEvidence.snapshots.every((snapshot) => record(snapshot) && assetIds.has(snapshot.assetId) && snapshot.frameOfReferenceUID === value.geometryEvidence.frameOfReferenceUID) && new Set(value.geometryEvidence.snapshots.map((snapshot) => record(snapshot) ? snapshot.assetId : '')).size === assetIds.size;
+  return value.geometryEvidence.snapshots.every((snapshot) => record(snapshot) && assetIds.has(snapshot.assetId) && snapshot.frameOfReferenceUID === frameOfReferenceUID) && new Set(value.geometryEvidence.snapshots.map((snapshot) => record(snapshot) ? snapshot.assetId : '')).size === assetIds.size;
 };
 
 export const isInterStudyLink = (value: unknown): value is InterStudyLink => {

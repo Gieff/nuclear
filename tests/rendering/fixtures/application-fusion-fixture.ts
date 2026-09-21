@@ -92,7 +92,7 @@ export function fusionEvidence(
 
 /** A CT-base + PET-overlay fusion `MedicalViewState` in the CT frame. */
 export function buildFusionState(
-  pet: VolumeIngestionPlan,
+  _pet: VolumeIngestionPlan,
   ct: VolumeIngestionPlan,
   options: FusionFixtureOptions = {},
 ): MedicalViewState {

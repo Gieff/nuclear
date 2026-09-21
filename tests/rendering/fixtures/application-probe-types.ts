@@ -57,6 +57,4 @@ export interface NuclearRendererProbe {
 
 declare global {
   var __nuclearApplicationProbe: NuclearApplicationProbe | undefined;
-  var __nuclearRendererProbe: NuclearRendererProbe | undefined;
-  var __nuclearRendererProbeReady: boolean | undefined;
 }

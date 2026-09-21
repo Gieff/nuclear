@@ -11,7 +11,7 @@
  * This file is NOT product UI and is never reachable from product code.
  */
 
-import { cache, volumeLoader } from '@cornerstonejs/core';
+import { cache } from '@cornerstonejs/core';
 
 import type { AssetAvailabilityStatus } from '../../../packages/shared-types/src/index.ts';
 import {
@@ -80,15 +80,8 @@ interface NuclearVolumeProbe {
   teardown(): VolumeProbeAck;
 }
 
-/** Minimal shape the shared harness reads for its `requireWebGL2` gate. */
-interface NuclearRendererProbe {
-  webgl2(): ReturnType<typeof probeWebGL2>;
-}
-
 declare global {
   var __nuclearVolumeProbe: NuclearVolumeProbe | undefined;
-  var __nuclearRendererProbe: NuclearRendererProbe | undefined;
-  var __nuclearRendererProbeReady: boolean | undefined;
 }
 
 let adapter: CornerstoneRendererAdapter | undefined;
@@ -152,7 +145,7 @@ function install(input: VolumeProbeInput): VolumeProbeSuccess {
     throw new Error(`volume '${plan.volumeId}' was not cached after loadVolume`);
   }
   const [nx, ny, nz] = volume.dimensions;
-  const scalarArray = volume.voxelManager?.getCompleteScalarDataArray() ?? new Float32Array(0);
+  const scalarArray = volume.voxelManager?.getCompleteScalarDataArray?.() ?? new Float32Array(0);
   return {
     ok: true,
     declaredScalarDataDomain: plan.scalarDataDomain,

@@ -208,7 +208,7 @@ export async function runCaptureNegative(
           PET_ASSET_ID,
           {
             ...petToCtTransform(pet, ct),
-            validity: { isValid: false, errorMarginMm: 99, outOfDomainBehavior: 'warn' },
+            validity: { isValid: false, errorMarginMm: 99, outOfDomainBehavior: 'warn' as const },
           },
         ],
       ]);

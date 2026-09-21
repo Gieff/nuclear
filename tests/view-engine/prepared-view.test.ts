@@ -45,7 +45,9 @@ const PET_PREPARED = 'prepared-view-pet-test' as PreparedViewId;
 const FUSION_PREPARED = 'prepared-view-fusion-test' as PreparedViewId;
 const UNKNOWN_PREPARED = 'prepared-view-missing' as PreparedViewId;
 
-const oneCtWorkspace = (): ImagingWorkspace => {
+type ImagingWorkspaceInstance = InstanceType<typeof ImagingWorkspace>;
+
+const oneCtWorkspace = (): ImagingWorkspaceInstance => {
   const workspace = new ImagingWorkspace();
   workspace.registerStudy(mockStudyReference);
   workspace.registerAsset(mockCtAsset);

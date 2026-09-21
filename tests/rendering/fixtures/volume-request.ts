@@ -70,7 +70,7 @@ export interface Request {
   asset: ImagingAsset;
   availability: { state: 'online' | 'loading' | 'offline-cached' | 'missing' | 'mismatch' };
   classification: { supported: boolean; modality: string; reason: string | null };
-  geometryEvidence: WorkerGeometryResult;
+  geometryEvidence: WorkerGeometryComputed;
   pixels: VolumePixelPayload;
 }
 

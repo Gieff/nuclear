@@ -43,7 +43,7 @@ export async function captureTarget(input: TargetCaptureInput): Promise<TargetCa
     const liveStateBefore = cloneJson(state);
 
     const sizeMm = [input.widthMm, input.heightMm] as const;
-    const { pixelDimensions, targetPlan, spec } = planTarget(plan, sizeMm, input.dpi);
+    const { targetPlan, spec } = planTarget(plan, sizeMm, input.dpi);
 
     const startedAt = Date.now();
     const result = await captureTemporaryRenderTarget(

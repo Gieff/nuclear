@@ -140,6 +140,4 @@ export interface NuclearRendererProbe {
 
 declare global {
   var __nuclearCaptureProbe: NuclearCaptureProbe | undefined;
-  var __nuclearRendererProbe: NuclearRendererProbe | undefined;
-  var __nuclearRendererProbeReady: boolean | undefined;
 }

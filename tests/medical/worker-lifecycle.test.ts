@@ -21,6 +21,8 @@ const {
   WorkerUnavailableError,
 } = await import('../../packages/medical-engine/src/index.js');
 
+type ScientificWorkerBridgeInstance = InstanceType<typeof ScientificWorkerBridge>;
+
 const FAKE_WORKER = fileURLToPath(new URL('./fixtures/fake-worker.mjs', import.meta.url));
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -36,7 +38,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitReady(bridge: ScientificWorkerBridge, timeoutMs = 5_000): Promise<void> {
+async function waitReady(bridge: ScientificWorkerBridgeInstance, timeoutMs = 5_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (bridge.availability === 'ready') return;

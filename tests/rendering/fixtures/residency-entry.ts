@@ -41,15 +41,8 @@ interface NuclearResidencyProbe {
   teardown(): ResidencyAck;
 }
 
-/** Minimal shape the shared harness reads for its `requireWebGL2` gate. */
-interface NuclearRendererProbe {
-  webgl2(): ReturnType<typeof probeWebGL2>;
-}
-
 declare global {
   var __nuclearResidencyProbe: NuclearResidencyProbe | undefined;
-  var __nuclearRendererProbe: NuclearRendererProbe | undefined;
-  var __nuclearRendererProbeReady: boolean | undefined;
 }
 
 let adapter: CornerstoneRendererAdapter | undefined;

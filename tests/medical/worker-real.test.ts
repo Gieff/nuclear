@@ -23,6 +23,8 @@ const {
   WorkerProtocolError,
 } = await import('../../packages/medical-engine/src/index.js');
 
+type WorkerProtocolFailure = InstanceType<typeof WorkerProtocolError>;
+
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const PYTHON = join(ROOT, 'python/worker/.venv/bin/python');
 const MISSING_SOURCE = join(ROOT, 'tests/medical/__no_such_source__');
@@ -59,9 +61,9 @@ describe('NuClear P2.5 — ScientificWorkerBridge real worker', () => {
       assert.equal(settled[2].status, 'rejected');
       assert.equal(settled[3].status, 'rejected');
 
-      const unknown = settled[1].reason as WorkerProtocolError;
-      const invalidParams = settled[2].reason as WorkerProtocolError;
-      const unavailable = settled[3].reason as WorkerProtocolError;
+      const unknown = settled[1].reason as WorkerProtocolFailure;
+      const invalidParams = settled[2].reason as WorkerProtocolFailure;
+      const unavailable = settled[3].reason as WorkerProtocolFailure;
       assert.ok(unknown instanceof WorkerProtocolError);
       assert.equal(unknown.code, JSON_RPC_METHOD_NOT_FOUND);
       assert.equal(unknown.method, 'nuclear.unknown.operation');

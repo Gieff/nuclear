@@ -47,15 +47,8 @@ interface NuclearPaletteProbe {
   registerTwice(): PaletteAck;
 }
 
-/** Minimal shape the shared harness reads for its `requireWebGL2` gate. */
-interface NuclearRendererProbe {
-  webgl2(): ReturnType<typeof probeWebGL2>;
-}
-
 declare global {
   var __nuclearPaletteProbe: NuclearPaletteProbe | undefined;
-  var __nuclearRendererProbe: NuclearRendererProbe | undefined;
-  var __nuclearRendererProbeReady: boolean | undefined;
 }
 
 function describeError(error: unknown): PaletteAck {

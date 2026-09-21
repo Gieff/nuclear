@@ -29,7 +29,10 @@ describe('NuClear P3.4-B.2.2.1 — spatial and transforms carried verbatim', () 
       petBindings: NO_BINDINGS,
     });
     const { spatial } = mockMedicalView;
-    assert.deepEqual(plan.spatial, {
+    // Assert the comparison against a local so `assert.deepEqual`'s assertion
+    // signature (`asserts actual is T`) cannot narrow `plan.spatial` itself.
+    const planSpatial = plan.spatial;
+    assert.deepEqual(planSpatial, {
       frameOfReferenceUID: spatial.frameOfReferenceUID,
       orientation: spatial.orientation,
       viewPlaneNormal: spatial.viewPlaneNormal,

@@ -21,11 +21,13 @@ const {
 } = await import('../../packages/medical-engine/src/renderer/volume.ts');
 const { makeRequest } = await import('./fixtures/volume-request.ts');
 
+type VolumeIngestionFailure = InstanceType<typeof VolumeIngestionError>;
+
 function expectCode(run: () => unknown, code: string): void {
   assert.throws(run, (error: unknown) => {
     assert.ok(error instanceof VolumeIngestionError, `expected VolumeIngestionError, got ${String(error)}`);
-    assert.equal((error as VolumeIngestionError).code, code);
-    assert.ok((error as VolumeIngestionError).message.length > 0, 'expected an actionable message');
+    assert.equal((error as VolumeIngestionFailure).code, code);
+    assert.ok((error as VolumeIngestionFailure).message.length > 0, 'expected an actionable message');
     return true;
   });
 }

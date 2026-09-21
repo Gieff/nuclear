@@ -10,7 +10,7 @@
  * time) and nothing is reachable from product code.
  */
 
-import type { MedicalViewState } from '../../../packages/shared-types/src/index.ts';
+import type { CameraState, MedicalViewState } from '../../../packages/shared-types/src/index.ts';
 import type {
   VolumeIngestionPlan,
 } from '../../../packages/medical-engine/src/renderer/index.ts';
@@ -49,7 +49,7 @@ export const IDENTITY_MATRIX = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 export const IDENTITY_ORIENTATION = [1, 0, 0, 0, 1, 0] as const;
 
 /** The neutral camera the pure compiler accepts (no zoom/pan/rotation/focal). */
-export const NEUTRAL_CAMERA = {
+export const NEUTRAL_CAMERA: CameraState = {
   zoom: 1,
   panMm: [0, 0],
   rotationDeg: 0,

@@ -14,7 +14,6 @@ import type {
   LocalFileListLocator,
 } from '../../packages/shared-types/src/index.js';
 import {
-  MOCK_CT_SERIES_UID,
   MOCK_FOLLOWUP_FOR_UID,
   MOCK_FOR_UID,
   MOCK_STUDY_UID,

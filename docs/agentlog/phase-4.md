@@ -482,3 +482,126 @@ Phase 1 fixture incoherence (`'asset-ct'` vs `'asset-ct-001'`).
 - `AGENTS.md` remains “Phase 3 Complete” until Phase 4 truly closes.
 - **Nothing pushed.** Push remains user-authorized only.
 
+---
+
+# Handover Report — C8 (P4.T): `tests/**` in the `tsc` Type Graph
+
+## 1. What Was Implemented
+
+C8 brought every TypeScript file under `tests/**` into the `tsc` type graph
+under the inherited `strict` settings, and made that a **non-optional gate**.
+Baseline was **83 errors across 26 files**; the slice fixes all of them without
+changing a single test's behaviour, assertion, expected value or name.
+
+- **New `tsconfig.test.json`** (root): extends `tsconfig.base.json`, keeps
+  `strict`/`noImplicitAny`/`noUnusedLocals`/`noUnusedParameters`,
+  enables `allowImportingTsExtensions` (167 `.ts`-extension imports) and
+  `allowJs` (to resolve the harness `.mjs` import) with `noEmit`,
+  `composite:false`. `include: ["tests/**/*.ts"]`; `exclude` is exactly
+  `node_modules`, `tests/cases` (gitignored real DICOM data, no `.ts`),
+  `tests/rendering/.harness` (generated esbuild bundles). No test path was
+  excluded to hide an error.
+- **Gate wired**: root `npm run typecheck` is now
+  `tsc -b && tsc -p tsconfig.test.json`; a `typecheck:tests` script was added.
+- **Error families fixed** (type-only): `InstanceType<typeof X>` aliases for
+  values imported through destructured dynamic-import consts (`TS2749`);
+  union/`unknown` narrowing and proper predicates (`TS2339`/`TS18046`/
+  `TS18048`); removal of non-overlapping casts (`TS2352`); removal of unused
+  locals/imports (`TS6133`/`TS6196`); a wrong type-only relative path in
+  `rendering/fixtures/target-test-support.ts` (`TS2307`); a duplicate ambient
+  probe global consolidated into `rendering/fixtures/renderer-probe-global.ts`
+  (`TS2403`); localized optional-call/guards (`TS2722`, `TS2488`, `TS2353`,
+  `TS2345`, `TS2322`).
+- **No weakening**: zero `@ts-ignore`/`@ts-expect-error`/`@ts-nocheck`; zero
+  added `as unknown as`; `strict` flags untouched.
+- **Non-vacuity proven**: an injected `const qaProbe: number = "x"` in a
+  test file makes `npx tsc -p tsconfig.test.json` exit non-zero (verified at
+  root and in a nested test dir); the probe was removed.
+
+## 2. Files Changed / Created
+
+Created:
+- `tsconfig.test.json` (root, 16 lines)
+- `tests/rendering/fixtures/renderer-probe-global.ts` (23 lines, ambient types only)
+
+Modified:
+- `package.json` (root scripts: `typecheck`, `typecheck:tests`)
+- ~31 files under `tests/**` (validators as type predicates, fixtures typing,
+  rendering browser entries, focused suites)
+
+No file under `packages/**` or `python/**` changed.
+
+## 3. Architectural Assumptions Made
+
+- Test sources now participate in static type checking; the long-carried
+  Phase 3 debt “`tests/**` outside the `tsc` graph” is **closed**.
+- Type-only edits are acceptable across accepted Phase 3 test files because
+  the runtime suite is unchanged (283/283, identical suite topology).
+- `tests/contracts/view-validators.ts` was touched **type-only** (predicates,
+  a captured local); `isIntraStudyLink` runtime logic is unchanged, so C3 can
+  still add the snapshot↔asset↔series correlation.
+- A localized `as FigureAnnotation` bridges a **real frozen-contract defect**
+  (see §7); it changes no runtime value.
+
+## 4. Tests Added & Executed
+
+No test was added or removed; the slice makes the existing suite
+type-checked.
+
+| Command | Observed result |
+| --- | --- |
+| `npx tsc -p tsconfig.test.json` | exit 0 (83 → 0 errors) |
+| `npm run typecheck` (`tsc -b && tsc -p tsconfig.test.json`) | exit 0 |
+| `npm test` | **283 pass / 0 fail / 60 suites** (0 skipped/todo) — unchanged |
+| `npm run build` | clean (exit 0) |
+| `node --test tests/view-engine/workspace-core.test.ts` | 11/11 |
+| `node --test tests/view-engine/prepared-view.test.ts` | 14/14 |
+| `npm run test:python` | 189 passed (unchanged) |
+| `npm run typecheck:python` | 47 files clean (unchanged) |
+| Gate-failure proof | intended test type error → `tsc` exit 2 (root + nested), probe removed |
+
+Independent verdicts: `nuclear-reviewer` **PASS** (zero blocking; 5
+non-blocking) and `nuclear-qa` **PASS** for the executable scope.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- No ADR change is required by C8; it implements the C8 row of the ratified
+  plan and the testing skill's Gate 3.
+- This report satisfies the AgentLog Gate for C8.
+- `CHANGELOG.md` untouched; release notes are compiled later via
+  `/promote-changelog 4` only on explicit request.
+
+## 6. Project Model Impact
+
+- None. The contract is unchanged; `tests/**` is now type-checked but the
+  `.ncp` schema and packages are untouched.
+
+## 7. Known Limitations & Technical Debt
+
+- **Real frozen-contract defect surfaced**: `figure-validators.ts` requires a
+  top-level `coordinateSpace` for every annotation kind, but
+  `FigureRoiAnnotation` carries it only inside `geometry`
+  (`packages/shared-types/src/figure.ts:135-139`). A contract-valid ROI
+  annotation would be rejected by the validator. C8 bridges it with one
+  localized `as FigureAnnotation` (no runtime change); it must be reconciled
+  in a dedicated fixture/contract slice.
+- Pre-existing `as unknown as` escapes in tests (47) are now inside the type
+  gate; they compile clean but are unreviewed and worth a hygiene pass.
+- Non-null `!` additions (6× `worldBounds`, 1× `spatialTransform`) encode test
+  invariants; replacing them with `assert.ok` guards would improve failure
+  messages (non-blocking).
+- `typecheck` now runs two `tsc` invocations (no incremental project for
+  tests); acceptable at this scale.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **C1 (P4.1.1) — workspace input integrity**: replace
+`ImagingWorkspace.cloneValue`'s JSON normalization with validation that
+fails closed on non-finite / non-JSON-safe input, with negative tests that
+exercise the **real public workspace API** using freshly constructed
+`NaN`/`±Infinity`/`Date`/`Map`/`Set`/`bigint` values and assert a typed,
+path-naming error with no mutation on refusal. Do not route the negatives
+through the pre-existing `as unknown as` fixture escapes. Do not start C5 or
+C4 in the same slice.
+
+

@@ -47,6 +47,7 @@ import {
 } from '../../fixtures/view-contracts.fixture.ts';
 import type {
   AssetId,
+  ComposedMedicalViewState,
   FusionCompositionState,
   FusionOverlayLayer,
   ImagingAsset,
@@ -132,10 +133,9 @@ export const SECOND_BINDING_ONLY: PetBindings = new Map([
   [secondPetAsset.id, secondPetBinding],
 ]);
 
-export type FusionState = Extract<
-  MedicalViewState,
-  { composition: FusionCompositionState }
->;
+export type FusionState = ComposedMedicalViewState & {
+  readonly composition: FusionCompositionState;
+};
 const fusionComposition = (mockFusionView as FusionState).composition;
 const [fusionBaseLayer, fusionPetOverlay] = fusionComposition.layers;
 const secondPetOverlay: FusionOverlayLayer = {
@@ -193,8 +193,10 @@ export const mockMultiLayerView: MedicalViewState = {
   },
 };
 
-export function expectCode(run: () => unknown, code: string): ViewApplicationError {
-  let caught: ViewApplicationError | undefined;
+type ViewApplicationFailure = InstanceType<typeof ViewApplicationError>;
+
+export function expectCode(run: () => unknown, code: string): ViewApplicationFailure {
+  let caught: ViewApplicationFailure | undefined;
   assert.throws(run, (error: unknown) => {
     assert.ok(
       error instanceof ViewApplicationError,
@@ -205,5 +207,5 @@ export function expectCode(run: () => unknown, code: string): ViewApplicationErr
     caught = error;
     return true;
   });
-  return caught as ViewApplicationError;
+  return caught as ViewApplicationFailure;
 }
