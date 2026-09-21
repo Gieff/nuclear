@@ -82,7 +82,9 @@
       ".opencode/rag_db",
       ".opencode/plugins",
       ".opencode/skills/opencode-rag",
-      ".opencode/wiki"
+      ".opencode/wiki",
+      "tests/rendering/.harness",
+      ".harness"
     ],
     "excludeFiles": [
       "package-lock.json",
@@ -124,7 +126,9 @@
       "*.doc",
       "*.docx",
       "*.xls",
-      "*.xlsx"
+      "*.xlsx",
+      "*bundle.js",
+      "*.bundle.js"
     ],
     "chunkOverlap": 10,
     "maxChunkSize": 200,
@@ -134,7 +138,7 @@
     "embedConcurrency": 2,
     "ollamaMaxBatchSize": 40,
     "descriptionConcurrency": 2,
-    "embedDescriptions": true,
+    "embedDescriptions": false,
     "maxSvgSizeBytes": 1048576,
     "includeDirs": []
   },
@@ -161,7 +165,7 @@
     "maxContextChunks": 10,
     "readOverride": true,
     "autoIndex": {
-      "enabled": true,
+      "enabled": false,
       "debounceMs": 2000,
       "intervalMs": 300000,
       "watcher": "chokidar"
@@ -177,7 +181,7 @@
     "numCtx": 2048
   },
   "description": {
-    "enabled": true,
+    "enabled": false,
     "provider": "ollama",
     "baseUrl": "http://127.0.0.1:11434/api",
     "model": "qwen2.5:3b",
