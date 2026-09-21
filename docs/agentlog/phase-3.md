@@ -3,7 +3,8 @@
 Status: **IN PROGRESS** — P3.0–P3.2.1 accepted (P3.1 closed via corrective
 P3.1.1, P3.2 closed via corrective P3.2.1); P3.3 closed (P3.3-A `16c40b4`,
 P3.3-B `3fbc011`, P3.3.1 corrective `9ede6d7`, conclusive P3.3-C review/QA
-**PASS**); P3.4–P3.6 not started.
+**PASS**); P3.4-A accepted (radiometry/presets preflight under ADR-005);
+P3.4-B–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -1297,3 +1298,140 @@ blocking findings and zero FAIL/BLOCKED gates.
 
 No code changes were made in P3.3-C; this section is the conclusive review/QA
 record. Phase 3 continues with P3.4.
+
+---
+
+# Handover Report — P3.4-A: PET/CT Radiometry & Presets Preflight
+
+## 1. What Was Implemented
+
+P3.4 was started with its mandated preflight, **P3.4-A**: close the two PET
+incoherences flagged by the addendum, ratify the radiometry binding in an ADR,
+and give `@nuclear/rendering-presets` a real declarative surface — all before
+any Cornerstone state application.
+
+- **ADR-005 ratified the binding.** The authoritative PET units source is
+  `asset.metadata.pet?.units` (`BQML`); `PetQuantitationResult` deliberately
+  gains no `units` field, and spec §6's stale
+  `PetQuantitationResult.units === "BQML"` guard is corrected. Quantitative
+  fusion requires modality `PT`, `metadata.pet.units === 'BQML'`,
+  `petQuantitation.status === 'computed'`, a finite `suvFactor > 0` and a plan
+  `scalarDataDomain === 'rescaled-bqml'`.
+- **Display semantics ≠ transport domain.** `valueSemantics: suv-bw / g/mL` is
+  the clinical reading; the plan's `scalarDataDomain` is the physical unit of
+  the array Cornerstone receives. A `stored-values`/`rescaled-hu` plan is
+  refused even when the asset carries computed SUVbw — proven by an explicit
+  non-conflation test.
+- **`@nuclear/rendering-presets` became a real leaf surface:** the canonical
+  fusion exponent `0.42`, `getFusionOpacity(s) = (s/100)^0.42`, the
+  piecewise-linear `highlighted` and `alpha` `getPETOpacityMapping` modes with
+  exact spec control points, the CT Soft Tissue preset (W400/L40) plus
+  `ctVoiRange`, and a typed fail-closed `PresetError`. No PET colormap or PET
+  display range is defaulted.
+- **`@nuclear/medical-engine` gained a Node-safe PET binding resolver**
+  (`src/radiometry/**`, exported from the package barrel): the ADR-005 guard
+  conjunction with seven typed refusal codes, plus the only TypeScript
+  SUV↔Bq/mL arithmetic (`bqml = suv / suvFactor`, `suv = bqml * suvFactor`),
+  operating solely on validated worker values.
+
+## 2. Files Changed / Created
+
+Created (product):
+- `packages/rendering-presets/src/{errors.ts (28), radiometry.ts (126), ct.ts (39)}`
+- `packages/medical-engine/src/radiometry/{errors.ts (31), pet-binding.ts (120), index.ts (3)}`
+
+Modified (product, one line each):
+- `packages/rendering-presets/src/index.ts` — real barrel replaces `export {}`
+- `packages/medical-engine/src/index.ts` — `+ export * from './radiometry/index.js'`
+
+Created (tests):
+- `tests/presets/radiometry-presets.test.ts` (190 lines)
+- `tests/radiometry/pet-binding.test.ts` (210 lines)
+
+Created (docs):
+- `docs/decisions/ADR-005-pet-ct-radiometry-binding.md`
+
+Unchanged: `@nuclear/shared-types` (no `units` field added), the Python worker,
+the renderer/residency code, the plans, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- Spec §3's `span = max(1e-3, upper - lower)` is implemented verbatim. Its
+  degenerate consequence for `upper - lower < 1e-3` is recorded as an **open
+  decision for P3.4-B** (see §7) rather than silently changed.
+- The spec-authorised defaults are the only ones declared: gamma `1.0`
+  (spec §4), mode `highlighted` (spec §3 Mode A), `minOpacity 0` (spec §7 call
+  shape), CT Soft Tissue W400/L40 (spec §5).
+- `PetOpacityPoint { value, opacity }` mirrors Cornerstone's `OpacityMapping`
+  field names without importing Cornerstone, keeping `rendering-presets` a leaf.
+- The SUV guard `minSuv ≥ 0` (spec §3) is enforced at the SUV input boundary
+  (`suvToBqml`), because `getPETOpacityMapping` operates on the already
+  converted transport range.
+
+## 4. Tests Added & Executed
+
+Added: 15 preset tests + 13 binding/conversion tests (25 at review time, 28
+after the review follow-ups: `PET_BINDING_SUV_NEGATIVE`, plus NaN
+`lower`/`minOpacity`/`windowCenter` guards).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **145 pass / 0 fail** (31 suites; 119 prior + 26 new) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:renderer` | **43 pass / 0 fail** (unaffected) |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| P2.5 source integrity | **2/2 pass** |
+
+Named tolerance `1e-12` for the power curve, control points and the
+`[0,8]`↔`[0, 8/suvFactor]` conversion. The reviewer additionally ran five
+mutations (fraction, range guard, exponent, domain guard, units source) and all
+five were caught by the suite.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- **ADR-005** records the ratified units source, domain separation and
+  conversion; Status **Accepted**.
+- This report satisfies the AgentLog Gate for P3.4-A.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: code **CONCERNS → resolved** — spec fidelity, fail-closed
+  guards, no invented defaults, ADR-005 fidelity, leaf purity and mutation-tested
+  discrimination all PASS. The only blocking item was the missing AgentLog; the
+  actionable non-blocking item (`minSuv ≥ 0` had no owner/test) is now closed,
+  and the minor NaN test gaps were added.
+- QA verdict: **PASS** on all 14 gates (144/144 Node at the time + renderer 43,
+  Python 178, mypy 45, integrity 2/2, leaf purity, negative-test discrimination);
+  the only pending row was this report.
+
+## 6. Project Model Impact
+
+- None. No shared-types, `.ncp` schema or persisted-contract change. The new
+  public surface is the `rendering-presets` barrel and the medical-engine
+  `radiometry` barrel (both in-package/leaf).
+
+## 7. Known Limitations & Technical Debt
+
+- **Degenerate PET span is an open decision for P3.4-B.** With
+  `upper - lower < 1e-3`, the spec-mandated `span` clamp makes the
+  `highlighted`/`alpha` control points fall outside `[lower, upper]` and can
+  produce a non-monotonic/duplicate opacity sequence. This follows spec §3
+  literally, but conflicts with its own fail-closed policy. P3.4-B must decide
+  (typed refusal vs clipping) before applying real VOI ranges, with a
+  discriminating test. No consumer wires it yet.
+- `getPETOpacityMapping` accepts a negative transport `lower` (only finiteness
+  and `upper > lower` are guarded); the SUV-domain non-negativity is enforced
+  upstream by `suvToBqml`.
+- Test sources remain outside the `tsc` graph (inherited P3.0 debt).
+- No Cornerstone state application, raster capture, `RenderTarget` or hardware
+  GPU evidence yet — explicitly P3.4-B/P3.4-C/P3.5.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-B — `MedicalViewState` application**: apply the ratified
+presets and the ADR-005 binding to the Cornerstone viewport (CT underlay + PET
+overlay, `setProperties` per spec §7), with CT/PT/fusion positive tests and the
+addendum's fail-closed negatives (missing/invalid quantitation, wrong units or
+domain, inverted range, out-of-range slider/gamma, non-resident/incompatible
+volume, wrong target, incomplete state). Resolve the degenerate-span decision
+above first. Do not add `RenderTarget` (P3.5), UI or view-engine work.
