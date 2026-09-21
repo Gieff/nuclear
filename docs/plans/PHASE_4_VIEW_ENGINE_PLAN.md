@@ -1,0 +1,175 @@
+# Phase 4 — View Engine: Workspace, Link/Lock/Override & Persistent Surfaces
+
+## Objective
+
+Deliver `@nuclear/view-engine`: the headless orchestration layer that decides
+**what to show, in which logical slot, with which state and which relations**,
+without owning pixels, GPU resources or UI.
+
+```text
+ImagingAsset + PreparedView + ViewLink + StateLock + LocalViewOverride
+  -> view-engine
+     -> ImagingWorkspace      -> ViewGroups / ViewSlots / shared state
+     -> PreparedView assembly -> MedicalViewState + provenance
+     -> LINK / LOCK / OVERRIDE semantics
+     -> ViewportSurfaceRegistry -> stable surface identity
+     -> SurfaceLayoutManager    -> pure viewer/composer placement geometry
+     -> ResourceDemand[]        -> medical-engine ResourceManager residency
+```
+
+“Headless” here means **no product UI owns the behaviour** and no React/DOM
+chrome is introduced. The view engine is a pure, serializable model plus
+placement and demand projection; it never renders and never manages a WebGL
+context.
+
+## Phase Entry Conditions
+
+- Phase 3 is closed; the `ResourceManager`
+  (`retain`/`release`/`reconcile`/`settle`) and the `MedicalViewState`
+  application path exist and are accepted.
+- Phase 1 view contracts (`ViewSlot`, `ViewGroup`, `ViewportSurface`,
+  `ViewLink`, `StateLock`, `LocalViewOverride`, `PreparedView`,
+  `ResourceDemand`, `MedicalViewState`, `SpatialTransform`) are frozen and
+  validated by `tests/contracts/view-validators.ts`.
+- `@nuclear/view-engine` currently exports an empty stub and depends on
+  `shared-types`, `rendering-presets` and `medical-engine`. No package may
+  reverse that dependency direction.
+- The curated Phase 3 volume fixtures
+  (`tests/rendering/fixtures/volumes/{ct-axial,pt-axial,pt-axial-coreg}`)
+  provide real geometry/FoR evidence for linking tests. `ct-axial` and
+  `pt-axial-coreg` share `FrameOfReferenceUID …5001.4` and
+  `geometricDigest sha256:4195de76…c360a70`; `pt-axial` uses frame `…5002.4`.
+
+## In Scope
+
+- `ImagingWorkspace`: studies, imaging assets, spatial transforms, view
+  groups, slots, shared-state groups, prepared views and resource demand —
+  a model independent of React, DOM and Cornerstone.
+- Up to **16 `ViewSlot`s** organised as four `ViewGroup`s of four roles
+  (`MIP`, `PET`, `GENERIC`, `FUSION`), with bind/unbind and truthful
+  `empty`/`bound`/`prepared`/`unavailable` status.
+- `PreparedView` assembly from a bound `MedicalViewState` plus links, locks
+  and `ViewProvenance`; assembly alone must not pin RAM/VRAM.
+- Shared-state groups: several views may reference the *same* `SpatialState`
+  or `CameraState` instance instead of an imperative notify chain.
+- `LINK`: intra-study co-referenced (requires matching verified
+  `FrameOfReferenceUID` and geometry snapshots) and inter-study
+  relative/transformed (requires a declared differential or a valid
+  `SpatialTransform`, an explicit `toleranceMm` and an out-of-domain policy).
+- `LOCK`: protects a named state (`spatial`, `camera`, `presentation`,
+  `projection`, `composition`, `binding`); it is not merely “disable mouse”.
+- `OVERRIDE`: a `LocalViewOverride` local to a `ComposerViewInstanceId`,
+  serializable, which never mutates the shared source view.
+- `ViewportSurfaceRegistry`: stable `surfaceId`/`viewportId`, lifecycle and
+  bind/unbind of a slot or view; up to 16 logical surfaces that are **not**
+  16 WebGL contexts.
+- `SurfaceLayoutManager`: pure placement geometry for a viewer slot rect or
+  a composer panel rect, preserving surface identity across re-layout.
+- `ResourceDemand` declaration and projection into the medical-engine
+  `ResourceManager` using stable, caller-owned lease ids.
+
+## Explicitly Excluded
+
+- Product UI, React, Electron shell, DOM chrome, mouse/tool interaction and
+  application workflow (Fase 6–7).
+- Figure-sheet layout, panels, annotations, TIFF/PNG flattening and hybrid
+  PDF assembly (Fase 5).
+- Any second renderer, shader, WebGL context, canvas or GPU lifecycle. The
+  view engine declares demand; `medical-engine` owns physical residency.
+- New scientific algorithms (resampling, registration, SUVbw). Registration
+  results may be consumed as an existing `SpatialTransform`; they are not
+  computed here.
+- DICOM parsing or geometry reinterpretation. Geometry arrives from the
+  Phase 2 worker via `medical-engine` evidence.
+
+## Architectural Invariants
+
+1. **UI-agnostic and DOM-free.** `view-engine` imports no React, no DOM and
+   no `@cornerstonejs/*`. Package graph stays acyclic per Rule 02.
+2. **Semantic lifetime is not resource residency.** A `ViewSlot` or
+   `PreparedView` reference never pins RAM or VRAM; only declared demand is
+   reconciled by `medical-engine`.
+3. **Demand is declarative.** The view engine declares priority and
+   required tiers; it never loads, evicts or measures bytes itself.
+4. **One surface identity, one rendering engine.** Surfaces have stable
+   identity independent of a WebGL context; the count of contexts is
+   backend-owned and must not be hard-coded to 16.
+5. **Link modes are physically distinct.** Different
+   `FrameOfReferenceUID`s are never treated as co-referenced without a valid
+   transform; missing evidence fails closed.
+6. **Lock and override are separate contracts.** A lock guards named state;
+   an override is local, visible in the model and serializable, and never
+   mutates its source.
+7. **No duplicated clinical science.** Geometry/FoR evidence and transforms
+   are consumed, not recomputed.
+8. **No invented placement defaults.** Viewport-to-panel framing belongs to
+   `figure-engine`; the view engine only provides viewer/composer host
+   rectangles.
+
+## Delivery Slices
+
+| Slice | Owner | Deliverable | Acceptance evidence |
+| --- | --- | --- | --- |
+| P4.0 | orchestrator | Baseline, contract audit, plan/runbook and ADR-010 | Entry state recorded; slice boundaries and boundary decisions documented |
+| P4.1 | engine engineer | `ImagingWorkspace` core: asset/study registry + `ViewGroup`/`ViewSlot` allocation and bind/unbind/status | Pure Node tests for capacity (16), role/group invariants, bind/unbind/status transitions; 17th slot refused |
+| P4.2 | engine engineer | `PreparedView` assembly from a bound view + `ViewProvenance` | Assembly produces a valid `PreparedView`; assembly alone issues no residency retain; missing binding/provenance fails closed |
+| P4.3 | engine engineer | Shared-state groups (`SharedStateGroup`) | Multiple views can reference one `SpatialState`/`CameraState`; identity is observable; no notify chains |
+| P4.4 | engine engineer | Link semantics (intra-study + inter-study) | Co-referenced link requires matching verified FoR/geometry; inter-study requires transform or differential + tolerance + out-of-domain; mismatches fail closed |
+| P4.5 | engine engineer | `LOCK` + `LocalViewOverride` | Lock blocks mutation of named state; override diverges, round-trips and leaves the source view unchanged |
+| P4.6 | engine engineer | `ViewportSurfaceRegistry` + `SurfaceLayoutManager` | Stable identity across bind/rebind/re-layout; `disposed` carries no binding; capacity 16 logical ≠ WebGL contexts; placement geometry is pure |
+| P4.7 | engine engineer | `ResourceDemand` projection into `ResourceManager` | Demand→lease reconciliation; shared asset retained once; eviction preserves semantic view identity and reload restores residency |
+| P4.8 | reviewer + QA | Independent phase review, gates and final handover | Reviewer/QA verdicts, all configured gates and the eight-point phase report recorded |
+
+P4.4 depends on P4.1 and P4.3; P4.7 depends on the accepted P4.1 slot model.
+Do not begin a later slice before the predecessor’s review and QA evidence
+is recorded.
+
+## Fixture and Test Policy
+
+- All view-engine tests are **pure Node tests** under `tests/view-engine/`
+  (no browser, no DOM). They may import the real Phase 3 fixture JSON
+  geometry evidence to build valid/invalid link cases.
+- The curated fixtures are the only co-reference evidence: `ct-axial` +
+  `pt-axial-coreg` (same FoR `…5001.4`, same `geometricDigest
+  sha256:4195de76…c360a70`) for the positive intra-study case; `pt-axial`
+  (frame `…5002.4`) for the mismatch negative.
+- No numeric image tolerance applies in Phase 4; co-reference eligibility is
+  an exact digest/FoR equality check. Inter-study relative navigation
+  carries an explicit `toleranceMm` and out-of-domain behavior; no implicit
+  default is invented.
+- Every slice must include negative/fail-closed cases; a missing fixture or
+  runner is `BLOCKED` or `NOT YET APPLICABLE`, never PASS.
+
+## Completion Gates
+
+| Gate | Required Phase 4 evidence |
+| --- | --- |
+| AgentLog | Eight-point handover for every P4 slice in `docs/agentlog/phase-4.md` |
+| Workspace model | Slot/group capacity, role and status invariants tested fail-closed |
+| Link semantics | Intra-study co-referenced and inter-study relative/transformed tested, including FoR mismatch refusal |
+| Lock/Override | Lock protection, override divergence, serialization and source immutability tested |
+| Surfaces | Stable identity across rebind/re-layout, lifecycle and capacity tested without any WebGL/DOM dependency |
+| Residency | Demand projection and reconciliation against the real `ResourceManager`; eviction preserves semantics |
+| Boundary | No UI/React/DOM/Cornerstone import; package graph acyclic; Rule 02 file-size limit respected |
+| Quality | Typecheck, Node tests, configured Python tests, build and source-integrity report actual results |
+| Review | `nuclear-reviewer` and `nuclear-qa` independently inspect the final Phase 4 diff and evidence before closure |
+
+## Stop Conditions
+
+Stop the active slice as `BLOCKED` rather than guessing when:
+
+- a required cross-package contract (e.g. an `ImagingWorkspace` snapshot
+  type) is absent and changing it would alter an architectural boundary
+  without an ADR;
+- the medical-engine `ResourceManager` cannot accept a demand/lease shape the
+  view engine needs without violating package ownership;
+- a link mode would require registration work that does not exist in the
+  worker/bridge;
+- a placement requirement would force DOM/React or WebGL ownership into
+  `view-engine`.
+
+## Exact Next Step
+
+Start **P4.0** only: record the baseline, audit the existing view contracts
+for gaps, and fix the slice boundaries and ADR-010. Do not implement the
+workspace model in P4.0.
