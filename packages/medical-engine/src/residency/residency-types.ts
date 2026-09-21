@@ -122,11 +122,19 @@ export interface ResourceResidencySnapshot {
   readonly leases: readonly ResourceLeaseSnapshot[];
 }
 
-/** Outcome of one acquisition or eviction attempt. */
+/**
+ * Outcome of one acquisition or eviction attempt.
+ *
+ * `budget-unverified` is distinct from `resident`: a declared budget exists for
+ * the required tier, but the backend exposed no measurement for that axis, so
+ * the acquisition was allowed to proceed without a verifiable budget guarantee.
+ * It is honest about being unproven, not proof that the budget is sufficient.
+ */
 export type ResidencyDisposition =
   | 'resident'
   | 'deferred'
   | 'budget-exhausted'
+  | 'budget-unverified'
   | 'loader-failed'
   | 'eviction-failed'
   | 'enumeration-failed';

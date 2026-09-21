@@ -261,6 +261,8 @@ export class ResourceManager {
     const measurement = measureSafely(this.backend, resource.plan, required);
     const needed = bytesForTier(measurement, required);
     const ceiling = declaredBudget(this.budget, field);
+    // A declared budget with no backend measurement is not enforceable: acquire honestly, but never claim verified residency.
+    const budgetUnverified = ceiling !== undefined && needed === undefined;
     if (ceiling !== undefined && needed !== undefined) {
       makeRoom(this.backend, this.resources, resource, needed, ceiling, context);
       if (projectedUsage(this.resources.values(), resource, needed) > ceiling) {
@@ -285,13 +287,12 @@ export class ResourceManager {
     }
     resource.tier = achieved;
     applyMeasurement(this.backend, resource);
-    return tierRank(achieved) < tierRank(required)
-      ? settlementOf(
-          resource,
-          'deferred',
-          required,
-          `Backend reached only '${achieved}' for required '${required}'; the volume is partially resident.`,
-        )
-      : settlementOf(resource, 'resident', required);
+    if (tierRank(achieved) < tierRank(required)) {
+      return settlementOf(resource, 'deferred', required, `Backend reached only '${achieved}' for required '${required}'; the volume is partially resident.`);
+    }
+    if (budgetUnverified) {
+      return settlementOf(resource, 'budget-unverified', required, `Declared budget field '${field}' is set but the residency backend exposes no '${field}' measurement for '${required}'; '${resource.volumeId}' was acquired without a verifiable budget guarantee, which is not proof of sufficiency.`);
+    }
+    return settlementOf(resource, 'resident', required);
   }
 }

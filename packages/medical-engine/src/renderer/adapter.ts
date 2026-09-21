@@ -27,7 +27,11 @@ import type {
   RendererCapabilities,
   RendererRuntimeHost,
 } from './host.js';
-import { bindVolume, releaseBoundVolume } from './volume-binding.js';
+import {
+  bindVolume,
+  releaseBoundVolume,
+  releaseBoundVolumeIfPresent,
+} from './volume-binding.js';
 import type { LoadedVolume, VolumeIngestionPlan } from './volume.js';
 
 /** Default engine id when the caller does not supply one. */
@@ -261,6 +265,16 @@ export class CornerstoneRendererAdapter {
   releaseVolume(volumeId: string): void {
     this.#assertStarted(`release volume '${volumeId}'`);
     releaseBoundVolume(volumeId);
+  }
+
+  /**
+   * Releases a cached volume when present, returning `false` instead of
+   * throwing for absence. Per-volume only (never a global purge); the
+   * non-started lifecycle guard still fails closed.
+   */
+  releaseVolumeIfPresent(volumeId: string): boolean {
+    this.#assertStarted(`release volume '${volumeId}' if present`);
+    return releaseBoundVolumeIfPresent(volumeId);
   }
 
   #assertStarted(action: string): void {

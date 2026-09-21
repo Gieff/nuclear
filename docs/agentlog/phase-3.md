@@ -2,9 +2,10 @@
 
 Status: **IN PROGRESS** — P3.0–P3.2.1 accepted (P3.1 closed via corrective
 P3.1.1, P3.2 closed via corrective P3.2.1); P3.3-A accepted (pure
-`ResourceManager` residency core), P3.3-B–P3.6 not started. Commit baseline:
-P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`, P3.2 `0cec49e`; P3.2.1 and
-P3.3-A commits recorded below.
+`ResourceManager` residency core) and P3.3-B accepted (real Cornerstone
+residency backend + controlled WebGL 2 evidence); P3.3-C–P3.6 not started.
+Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
+P3.2 `0cec49e`; P3.2.1, P3.3-A and P3.3-B commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
 `b793631`.
 
@@ -925,3 +926,153 @@ consumers, and `missing`/`mismatch`/`offline-cached` producing no live volume.
 Resolve the budget-measurement, `leaseVolumeConflict`-test and
 release-ambiguous-branch items above. Do not add state application (P3.4),
 `RenderTarget` (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.3-B: Cornerstone Residency Backend
+
+## 1. What Was Implemented
+
+P3.3-B binds the P3.3-A residency port to the real Cornerstone volume cache and
+proves the residency lifecycle against a real WebGL 2 harness.
+
+- **Real `VolumeResidencyBackend`** (`src/renderer/volume-residency-backend.ts`,
+  browser-only): `measure` reports the decoded scalar array's RAM bytes
+  (`plan.scalarData.byteLength`) and leaves `byteSizeVRAM` undefined because
+  Cornerstone exposes no VRAM byte count; `acquire` stages a real
+  `createLocalVolume` through the committed `volume-binding.ts` and reports
+  `gpu-ready` (live 3D-texture residency is P3.4 and is never claimed here);
+  `release` is per-volume and returns `false` for absence; enumeration is the
+  real `cache.getVolumes()`.
+- **Selective, per-volume eviction only.** `releaseBoundVolumeIfPresent` adds
+  the missing physical cleanup: Cornerstone 5.10.7 `removeVolumeLoadObject`
+  clears the derived slice images' `sharedCacheKey` but leaves
+  `<volumeId>_slice_<i>` entries in the image cache, so a same-`volumeId`
+  reload would throw `putImageSync: imageId already in cache`. The release now
+  also drops **that volume's own** `volume.imageIds` — still strictly
+  per-volume, no purge-all.
+- **Adapter surface** (`adapter.ts`): `releaseVolumeIfPresent(volumeId)` keeps
+  the started-lifecycle guard and delegates. Exported only from
+  `renderer/index.ts`, never `src/index.ts`.
+- **Closed P3.3-A review findings**:
+  - new typed disposition **`budget-unverified`**: a declared budget axis with
+    no backend measurement acquires honestly and is reported as unverified,
+    never as `resident` or `budget-exhausted`;
+  - tests for the previously untested `RESIDENCY_LEASE_VOLUME_CONFLICT` path;
+  - test for the release-false + enumeration-confirmed-absent branch.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/medical-engine/src/renderer/volume-residency-backend.ts` (67 lines)
+- `tests/rendering/resource-residency.test.ts` (172 lines)
+- `tests/rendering/fixtures/residency-entry.ts` (268 lines, browser probe)
+- `tests/residency/resource-manager-findings.test.ts` (87 lines — tests 17–19,
+  split out of the P3.3-A suite to respect the 300-line limit)
+
+Modified:
+- `packages/medical-engine/src/renderer/volume-binding.ts` (125 lines — added
+  `releaseBoundVolumeIfPresent`)
+- `packages/medical-engine/src/renderer/adapter.ts` (288 lines — added
+  `releaseVolumeIfPresent`)
+- `packages/medical-engine/src/renderer/index.ts` (+1 export)
+- `packages/medical-engine/src/residency/residency-types.ts` (+`budget-unverified`)
+- `packages/medical-engine/src/residency/resource-manager.ts` (298 lines)
+- `tests/residency/resource-manager.test.ts` (285 lines — back to P3.3-A size)
+
+Unchanged: `src/index.ts` (residency barrel only, never the renderer backend),
+`shared-types`, the Python worker, the plans, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- **`gpu-ready` is the honest ceiling in P3.3.** A staged local volume is
+  cache-resident but not yet a live WebGL 3D texture; `gpu-resident` is only
+  observable after a render and is P3.4 work. A demand for `gpu-resident`
+  against this backend settles `deferred`, not a false success.
+- **RAM measured / VRAM unknown.** No VRAM byte count is fabricated; the
+  `gpuBytes` axis is consequently unverifiable with the Cornerstone backend and
+  reports `budget-unverified` (the `cpuBytes` axis remains enforceable).
+- **Derived-image cleanup is required for evict→reload** and is scoped to the
+  released volume's own `imageIds` (verified against the installed 5.10.7
+  `_decacheVolume` / `createLocalVolume` / `putImageSync` source).
+- No new ADR: this implements the addendum's P3.3-B wiring and ADR-003/004
+  boundaries.
+
+## 4. Tests Added & Executed
+
+Added: 3 pure tests (now in `tests/residency/resource-manager-findings.test.ts`)
+and 4 real-harness tests (`tests/rendering/resource-residency.test.ts`).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **114 pass / 0 fail** (26 suites; 107 prior + 7 new) |
+| `npm run test:renderer` | **41 pass / 0 fail** (37 prior + 4 new) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| P2.5 source integrity | **2/2 pass** |
+
+Real-harness evidence (SwiftShader WebGL 2, `softwareRasterizer: true`):
+1. two leases share one real volume — it stays `gpu-ready` and cached until the
+   second release, then `cache.getVolumes()` is empty;
+2. evict → reload reconstructs the **same** `volumeId` and re-caches it with no
+   residual entry;
+3. a fusion retains CT and PET separately; evicting CT leaves PET `gpu-ready`
+   and cached;
+4. `missing`/`mismatch`/`offline-cached` each refuse
+   `RESIDENCY_SOURCE_UNAVAILABLE` and leave the cache empty.
+
+Every harness test asserts empty `pageErrors`/`consoleErrors`. No `|| true`.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- No new ADR required.
+- This report satisfies the AgentLog Gate for P3.3-B.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: code **PASS** on all seven review targets; overall
+  **CONCERNS** on two process gates only (this AgentLog entry and the 338-line
+  test file). Both are resolved here: this report is written and tests 17–19
+  moved to `tests/residency/resource-manager-findings.test.ts` (all files
+  ≤300 lines).
+- QA verdict: **PASS** on every command gate (typecheck, Node 114/114,
+  renderer 41/41, build, Python 178, mypy 45, integrity 2/2), independently
+  confirming the real harness and the deterministic scoping w.r.t. `oracle/`;
+  the only pending row was this report.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema, shared contract, fixture semantics or Python change.
+  The new pixel-format/backend types are in-package, and the renderer backend
+  is unreachable from the package barrel.
+
+## 7. Known Limitations & Technical Debt
+
+- **Strict `releaseBoundVolume`/`adapter.releaseVolume` asymmetry.** The strict
+  P3.2 release still does not drop derived slice images, so a
+  `releaseVolume`→`loadVolume` cycle on the same id fails closed with
+  `VOLUME_CONSTRUCTION_FAILED` (typed, cause preserved). The residency
+  lifecycle uses only the if-present path. P3.2.1 must not be reopened
+  (addendum); record as a follow-up for P3.3-C or before any consumer adopts
+  `releaseVolume` for lifecycle.
+- **`budget-unverified` is per acquisition event.** A later `settle()` on the
+  same resource early-returns `resident` without re-checking the still
+  unmeasured axis. Honest within each pass; note it if a persistent signal is
+  required.
+- **`resource-manager.ts` is 298/300 lines**; further additions need a new
+  internal module.
+- Test sources remain outside the `tsc` graph (inherited P3.0 debt); the probe
+  and harness tests execute via esbuild/Node type stripping without static
+  typechecking.
+- All residency evidence is the software backend; hardware GPU remains
+  `NOT YET APPLICABLE`.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.3-C — independent phase review/QA and P3.4 entry conditions**:
+confirm no semantic asset is deleted by eviction and that no global purge
+exists anywhere, decide the strict-release asymmetry follow-up, and record the
+P3.4 preconditions (PET `units`/Bq/mL-vs-g/mL coherence, a declarative
+`@nuclear/rendering-presets` surface, and CT/PET/fusion `MedicalViewState`
+fixtures with provenance). Do not add state application (P3.4), `RenderTarget`
+(P3.5), UI or view-engine work in P3.3-C.

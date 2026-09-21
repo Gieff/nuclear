@@ -93,3 +93,33 @@ export function releaseBoundVolume(volumeId: string): void {
   }
   cache.removeVolumeLoadObject(volumeId);
 }
+
+/**
+ * Releases one cached volume if present, reporting absence instead of throwing.
+ *
+ * Residency eviction is per-volume and idempotent by nature: a resource may
+ * already be gone when the manager confirms release. `false` therefore means
+ * "not cached", never "failed"; callers that need a hard error use
+ * `releaseBoundVolume`. There is deliberately no purge-all variant.
+ *
+ * Cornerstone's `removeVolumeLoadObject`/`_decacheVolume` clears the derived
+ * slice images' `sharedCacheKey` but leaves each `${volumeId}_slice_<i>` entry
+ * in the image cache. `createLocalVolume` re-registers those ids with
+ * `cache.putImageSync` and throws "imageId already in cache" on a second load,
+ * so a per-volume release must also drop this volume's own derived images or
+ * the documented evict -> reload path cannot reconstruct the same `volumeId`.
+ * This stays strictly per-volume: only `volume.imageIds` is touched.
+ */
+export function releaseBoundVolumeIfPresent(volumeId: string): boolean {
+  const volume = cache.getVolume(volumeId);
+  if (volume === undefined) {
+    return false;
+  }
+  cache.removeVolumeLoadObject(volumeId);
+  for (const imageId of volume.imageIds) {
+    if (cache.getImage(imageId) !== undefined) {
+      cache.removeImageLoadObject(imageId);
+    }
+  }
+  return true;
+}
