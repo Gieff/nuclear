@@ -207,11 +207,19 @@ Prima di P3.4:
 - P3.3 deve dimostrare share/evict/reload e lasciare il volume in stato
   render-ready in modo osservabile;
 - va chiusa la discrepanza `PetQuantitationResult.units` versus
-  `asset.metadata.pet.units`;
+  `asset.metadata.pet.units`; **(CHIUSA da ADR-005, 2026-09-21 — l'autorità è
+  `asset.metadata.pet?.units`; nessun campo `units` viene aggiunto a
+  `PetQuantitationResult`.)**
 - va chiusa la discrepanza semantica Bq/mL versus `g/mL` dei fixture PET;
+  **(CHIUSA da ADR-005, 2026-09-21 — la semantica di display `suv-bw / g/mL` e
+  il dominio di trasporto `scalarDataDomain === 'rescaled-bqml'` sono assi
+  separati; il fattore `suvFactor` è ratificato in `g/Bq`.)**
 - `@nuclear/rendering-presets` deve avere una superficie dichiarativa senza
   fallback clinici silenziosi;
 - devono esistere fixture di `MedicalViewState` CT, PET e fusion con provenance.
+  **(CONSEGNATE da ADR-005 + P3.4-A.2, 2026-09-21 — `mockPetView`,
+  `mockFusionView` e le relative `ViewProvenance`/`PreparedView` sono esplicite
+  e validate fail-closed.)**
 
 Prima di P3.5:
 

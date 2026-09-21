@@ -3,8 +3,9 @@
 Status: **IN PROGRESS** — P3.0–P3.2.1 accepted (P3.1 closed via corrective
 P3.1.1, P3.2 closed via corrective P3.2.1); P3.3 closed (P3.3-A `16c40b4`,
 P3.3-B `3fbc011`, P3.3.1 corrective `9ede6d7`, conclusive P3.3-C review/QA
-**PASS**); P3.4-A accepted and P3.4-A.1 accepted (corrective radiometry
-hardening under ADR-005); P3.4-B–P3.6 not started.
+**PASS**); P3.4-A accepted, P3.4-A.1 accepted (corrective radiometry hardening
+under ADR-005) and P3.4-A.2 accepted (ADR-006 per-layer fusion
+`MedicalViewState` contract); P3.4-B–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -1567,3 +1568,135 @@ now without any open preflight decision: apply the ADR-005 binding and the
 declarative CT/PET presets to the Cornerstone viewport (spec §7 `setProperties`),
 with CT/PT/fusion positives and the addendum's fail-closed negatives, plus the
 real-harness evidence. Do not add `RenderTarget` (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.4-A.2: MedicalViewState Fusion Contract Readiness
+
+## 1. What Was Implemented
+
+The user blocked P3.4-B because `MedicalViewState` could not represent a
+complete fusion: a single `PresentationState` plus bare `DataBinding` layers and
+an undeclared-string `layerOpacity` forced the renderer to infer the PET
+transfer mode, gamma, fusion slider and the distinct CT/PET presentations. This
+slice (ADR-006) makes an incomplete fusion **unrepresentable** and supplies the
+required CT/PET/fusion fixtures. It introduces no Cornerstone, rendering, UI or
+view-engine code.
+
+- **ADR-006** ratifies a per-layer fusion presentation contract with no
+  view-level fallback.
+- **`@nuclear/shared-types`** gained `PetFusionTransfer`
+  (`transferMode`, `gamma`, `blendSlider`), `CompositionLayer`
+  (`binding`, `presentation`, optional `fusion`), `FusionBlendMode`, the
+  `Single`/`Fusion`/`MultiLayer` composition states, and a
+  `MedicalViewState = SingleMedicalViewState | ComposedMedicalViewState` union.
+  A composed view structurally has **no** top-level `presentation`; the
+  duplicate `layerOpacity` map was removed in favour of per-layer
+  `presentation.opacity`.
+- **Validators** enforce fusion completeness fail-closed: `blend === 'alpha'`,
+  ≥2 layers, exactly one `base` (declares `presentation.voi`, no `fusion`) and
+  ≥1 `overlay` (explicit `colormapId`, exactly one of `voi`/`suvRange`, valid
+  `fusion`), with `transferMode ∈ {highlighted, alpha}`, `gamma > 0`,
+  `blendSlider ∈ [0,100]`; composed views with a top-level `presentation` are
+  rejected.
+- **Fixtures** for CT (existing `mockMedicalView`), PET (`mockPetView`) and
+  fusion (`mockFusionView`) bind the committed `mockCtAsset`/`mockPetAsset`
+  ids; `mockPetViewProvenance`/`mockFusionViewProvenance` and
+  `mockPetPreparedView`/`mockFusionPreparedView` carry provenance.
+- **Addendum** annotations mark the two historical P3.4 PET preconditions
+  (units discrepancy, Bq/mL vs g/mL) closed by ADR-005.
+
+## 2. Files Changed / Created
+
+Created (docs):
+- `docs/decisions/ADR-006-per-layer-fusion-presentation.md`
+
+Modified:
+- `packages/shared-types/src/view-state.ts` (135 lines)
+- `packages/shared-types/src/index.ts` (185 lines — +8 type exports)
+- `tests/contracts/view-validators.ts` (100 lines)
+- `tests/contracts/view-contracts.test.ts` (100 lines — +2 tests)
+- `tests/fixtures/view-contracts.fixture.ts` (157 lines)
+- `docs/plans/PHASE_3_MEDCANVAS_RECOVERY_ADDENDUM.md` (closure annotations)
+
+Unchanged: all `packages/*` other than `shared-types`, the Python worker,
+renderer/presets, `CHANGELOG.md`, the version. `@nuclear/shared-types` remains a
+leaf with zero runtime dependencies.
+
+## 3. Architectural Assumptions Made
+
+- `MedicalViewState` is a discriminated union: `single` keeps the authoritative
+  view-level `presentation`; composed modes carry per-layer presentations and no
+  view-level presentation. `PreparedView.state` remains a `MedicalViewState`.
+- Fusion layers are validated by role, not by modality: `base` = underlay,
+  `overlay` = fusion layer. The contract therefore needs no modality inference.
+- The PET colormap and range remain caller-declared; the contract requires them
+  on a fusion overlay but supplies no default (ADR-005 / invariant 7).
+- `layerOpacity` removal is safe because per-layer `presentation.opacity` is
+  now the single source of truth; no source reference remains.
+
+## 4. Tests Added & Executed
+
+Added: 2 contract tests (positives for CT/PET/fusion + prepared views; a
+discriminating negative battery for fusion completeness, transfer bounds and the
+no-fallback rule).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **154 pass / 0 fail** (31 suites; 152 prior + 2 new) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:renderer` | **43 pass / 0 fail** |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| `tests/contracts/view-contracts.test.ts` | **9 pass / 0 fail** (7 prior + 2) |
+| P2.5 source integrity | **2/2 pass** |
+
+Negatives cover: missing overlay `fusion`; base carrying `fusion`; overlay with
+both `voi` and `suvRange`; overlay without `colormapId` (undefined and empty);
+base without `voi`; invalid `transferMode`; `gamma 0/-1`; `blendSlider 101/-1`;
+fusion with one layer, no overlay, or a duplicate base; a composed view with a
+top-level `presentation`; a single view without `presentation`.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-006 records the decision; the addendum's two historical preconditions are
+  annotated closed.
+- This report satisfies the AgentLog Gate for P3.4-A.2.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: **PASS** with non-blocking concerns; the two actionable ones
+  (missing negative for a duplicate `base`, and for an empty `colormapId`) were
+  closed before commit, so the mutation battery now fully kills the role-count
+  and colormap-emptiness mutations.
+- QA verdict: **PASS** on all gates (typecheck, Node 154/154, build, renderer
+  43/43, Python 178, mypy 45, integrity 2/2, contract 9/9, leaf purity,
+  no-`layerOpacity` residue); the only pending row was this report.
+
+## 6. Project Model Impact
+
+- **Yes — persisted contract change.** `MedicalViewState`/`CompositionState`
+  changed shape and `layerOpacity` was removed. This is a Phase 1 contract
+  evolution ratified by ADR-006; there is no legacy import to migrate. No
+  `.ncp` schema version bump was performed (persistence is Phase 1/`project-model`
+  work); P3.4-B and later must consume the new union.
+
+## 7. Known Limitations & Technical Debt
+
+- **`multi-layer` validation is intentionally shallow** (well-formed layers
+  only; no base/overlay/fusion rules). Non-PET multi-layer semantics must be
+  modelled explicitly if ever needed (ADR-006 revision condition).
+- **`LocalViewOverride` presentation overrides remain view-level**; for a
+  composed view a per-layer presentation override will be needed in Phase 4.
+  This is a known follow-up, not silently handled.
+- Test sources remain outside the `tsc` graph (inherited P3.0 debt).
+- No Cornerstone application/capture, `RenderTarget` or hardware GPU evidence
+  yet — P3.4-B/P3.4-C/P3.5.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-B — `MedicalViewState` application**: map the new
+`Single`/`Composed` union and the ADR-005 quantitative binding onto the
+Cornerstone viewport (CT underlay + PET overlay; `setProperties` per spec §7,
+opacity `(s/100)^0.42`, `highlighted`/`alpha` transfer), with CT/PT/fusion
+positives and the addendum's fail-closed negatives, plus real-harness evidence.
+Do not add `RenderTarget` (P3.5), UI or view-engine work.

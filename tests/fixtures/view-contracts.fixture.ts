@@ -12,12 +12,13 @@ import type {
   ProjectionState,
   SpatialState,
   StateLock,
+  ViewProvenance,
   ViewportSurface,
 } from '../../packages/shared-types/src/index.js';
 import type {
   AssetId, ComposerViewInstanceId, FrameOfReferenceUID, PreparedViewId, PreviewId, SurfaceId, ViewId, ViewportId,
 } from '../../packages/shared-types/src/index.js';
-import { mockCtAsset, mockPetAsset, mockRigidFollowupTransform, mockViewProvenance } from './clinical-contracts.fixture.ts';
+import { mockCtAsset, mockIdentityTransform, mockPetAsset, mockRigidFollowupTransform, mockViewProvenance } from './clinical-contracts.fixture.ts';
 
 const id = <T extends string>(value: string): T => value as T;
 const identity: CoordinateTransformSet = {
@@ -44,6 +45,40 @@ const composition: CompositionState = { mode: 'single', layers: [binding] };
 
 export const mockMedicalView: MedicalViewState = {
   id: id<ViewId>('view-ct'), dataBinding: binding, spatial, camera, presentation, projection, composition,
+  coordinateTransforms: identity,
+};
+
+const petSpatial: SpatialState = { ...spatial, frameOfReferenceUID: mockPetAsset.geometry.frameOfReferenceUID };
+const petPresentation: PresentationState = {
+  suvRange: [0, 8], colormapId: 'PET', invert: false, opacity: 1, interpolation: 'linear', modalityPresentation: 'pet',
+};
+const fusionCtPresentation: PresentationState = {
+  voi: [-160, 240], colormapId: 'gray', invert: false, opacity: 1, interpolation: 'linear', modalityPresentation: 'ct',
+};
+const fusionPetPresentation: PresentationState = {
+  suvRange: [0, 8], colormapId: 'PET', invert: false, opacity: 1, interpolation: 'linear', modalityPresentation: 'pet',
+};
+
+export const mockPetView: MedicalViewState = {
+  id: id<ViewId>('view-pet'), dataBinding: { assetId: mockPetAsset.id, role: 'base' }, spatial: petSpatial, camera,
+  presentation: petPresentation, projection: { mode: 'slice' },
+  composition: { mode: 'single', layers: [{ assetId: mockPetAsset.id, role: 'base' }] },
+  coordinateTransforms: identity,
+};
+
+export const mockFusionView: MedicalViewState = {
+  id: id<ViewId>('view-fusion'), dataBinding: { assetId: mockCtAsset.id, role: 'base' }, spatial, camera,
+  projection: { mode: 'slice' },
+  composition: {
+    mode: 'fusion', blend: 'alpha',
+    layers: [
+      { binding: { assetId: mockCtAsset.id, role: 'base' }, presentation: fusionCtPresentation },
+      {
+        binding: { assetId: mockPetAsset.id, role: 'overlay' }, presentation: fusionPetPresentation,
+        fusion: { transferMode: 'highlighted', gamma: 1, blendSlider: 50 },
+      },
+    ],
+  },
   coordinateTransforms: identity,
 };
 
@@ -82,6 +117,38 @@ export const mockPreparedView: PreparedView = {
     pixelDimensions: [1024, 1024], colorProfile: 'sRGB', generatedAt: '2026-09-20T10:00:00Z',
     rendererMetadata: { rendererName: 'nuclear-medical-renderer', rendererVersion: '0.1.0' },
   },
+};
+
+export const mockPetViewProvenance: ViewProvenance = {
+  studyInstanceUID: mockPetAsset.studyInstanceUID,
+  sourceAssetIds: [mockPetAsset.id],
+  sourceSeriesInstanceUIDs: [mockPetAsset.seriesInstanceUID],
+  sourceFingerprints: [mockPetAsset.sourceFingerprint],
+  engineVersion: '0.1.0',
+  createdAt: '2026-09-20T10:30:00Z',
+  renderStateHash: 'sha256:petview0001',
+};
+
+export const mockFusionViewProvenance: ViewProvenance = {
+  studyInstanceUID: mockCtAsset.studyInstanceUID,
+  sourceAssetIds: [mockCtAsset.id, mockPetAsset.id],
+  sourceSeriesInstanceUIDs: [mockCtAsset.seriesInstanceUID, mockPetAsset.seriesInstanceUID],
+  sourceFingerprints: [mockCtAsset.sourceFingerprint, mockPetAsset.sourceFingerprint],
+  appliedTransforms: [mockIdentityTransform.id],
+  appliedPresetIds: ['ct-soft-tissue'],
+  engineVersion: '0.1.0',
+  createdAt: '2026-09-20T10:30:00Z',
+  renderStateHash: 'sha256:fusionview0001',
+};
+
+export const mockPetPreparedView: PreparedView = {
+  id: id<PreparedViewId>('prepared-pet'), sourceViewId: mockPetView.id, state: mockPetView,
+  links: [], locks: [], provenance: mockPetViewProvenance,
+};
+
+export const mockFusionPreparedView: PreparedView = {
+  id: id<PreparedViewId>('prepared-fusion'), sourceViewId: mockFusionView.id, state: mockFusionView,
+  links: [], locks: [], provenance: mockFusionViewProvenance,
 };
 
 export const mockSurface: ViewportSurface = {

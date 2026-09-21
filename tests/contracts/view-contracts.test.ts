@@ -5,7 +5,8 @@ import {
   isMedicalViewState, isPreparedView, isStateLock, isViewGroup, isViewLink, isViewSlot, isViewportSurface,
 } from './view-validators.ts';
 import {
-  mockIntraStudyLink, mockInterStudyLink, mockLocalOverride, mockMedicalView, mockPreparedView, mockSurface,
+  mockFusionPreparedView, mockFusionView, mockIntraStudyLink, mockInterStudyLink, mockLocalOverride, mockMedicalView,
+  mockPetPreparedView, mockPetView, mockPreparedView, mockSurface,
 } from '../fixtures/view-contracts.fixture.ts';
 
 describe('NuClear Phase 1.3 — View contracts', () => {
@@ -13,6 +14,36 @@ describe('NuClear Phase 1.3 — View contracts', () => {
     assert.ok(isMedicalViewState(mockMedicalView));
     assert.ok(isCoordinateTransformSet(mockMedicalView.coordinateTransforms));
     assert.deepEqual(mockMedicalView.coordinateTransforms.viewportSizePx, [512, 512]);
+  });
+
+  it('accepts single CT/PET views and composed fusion views with per-layer presentation', () => {
+    assert.ok(isMedicalViewState(mockPetView));
+    assert.ok(isMedicalViewState(mockFusionView));
+    assert.ok(isPreparedView(mockPetPreparedView));
+    assert.ok(isPreparedView(mockFusionPreparedView));
+  });
+
+  it('enforces per-layer fusion completeness, transfer bounds and no presentation fallback', () => {
+    const fusion = mockFusionView.composition as { layers: Array<Record<string, unknown>> };
+    const baseLayer = fusion.layers[0]; const overlayLayer = fusion.layers[1];
+    const fusionView = (layers: unknown[]) => ({ ...mockFusionView, composition: { mode: 'fusion', blend: 'alpha', layers } });
+    assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, fusion: undefined }])), false);
+    assert.equal(isMedicalViewState(fusionView([{ ...baseLayer, fusion: { transferMode: 'highlighted', gamma: 1, blendSlider: 50 } }, overlayLayer])), false);
+    assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, presentation: { ...overlayLayer.presentation as object, voi: [0, 8] } }])), false);
+    assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, presentation: { ...overlayLayer.presentation as object, colormapId: undefined } }])), false);
+    assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, presentation: { ...overlayLayer.presentation as object, colormapId: '' } }])), false);
+    assert.equal(isMedicalViewState(fusionView([baseLayer, baseLayer, overlayLayer])), false);
+    assert.equal(isMedicalViewState(fusionView([{ ...baseLayer, presentation: { ...baseLayer.presentation as object, voi: undefined } }, overlayLayer])), false);
+    assert.equal(isMedicalViewState(fusionView([{ ...baseLayer, presentation: { ...baseLayer.presentation as object, opacity: 2 } }, overlayLayer])), false);
+    assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, fusion: { ...overlayLayer.fusion as object, transferMode: 'blend' } }])), false);
+    assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, fusion: { ...overlayLayer.fusion as object, gamma: 0 } }])), false);
+    assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, fusion: { ...overlayLayer.fusion as object, gamma: -1 } }])), false);
+    assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, fusion: { ...overlayLayer.fusion as object, blendSlider: 101 } }])), false);
+    assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, fusion: { ...overlayLayer.fusion as object, blendSlider: -1 } }])), false);
+    assert.equal(isMedicalViewState(fusionView([baseLayer])), false);
+    assert.equal(isMedicalViewState(fusionView([baseLayer, { ...baseLayer, binding: { ...baseLayer.binding as object, role: 'reference' } }])), false);
+    assert.equal(isMedicalViewState({ ...mockFusionView, presentation: { ...baseLayer.presentation as object } }), false);
+    assert.equal(isMedicalViewState({ ...mockMedicalView, presentation: undefined }), false);
   });
 
   it('rejects persisted screen-pixel substitutes and invalid camera state', () => {
@@ -56,7 +87,7 @@ describe('NuClear Phase 1.3 — View contracts', () => {
   it('rejects malformed geometry, presentation, payload, identity and residency references', () => {
     assert.equal(isMedicalViewState({ ...mockMedicalView, spatial: { ...mockMedicalView.spatial, viewUp: [0, 0, 1] } }), false);
     assert.equal(isMedicalViewState({ ...mockMedicalView, presentation: { ...mockMedicalView.presentation, suvRange: [10, 2] } }), false);
-    assert.equal(isMedicalViewState({ ...mockMedicalView, composition: { ...mockMedicalView.composition, layerOpacity: { 'asset-ct': 2 } } }), false);
+    assert.equal(isMedicalViewState({ ...mockFusionView, composition: { ...mockFusionView.composition, layers: [{ ...(mockFusionView.composition as { layers: Array<Record<string, unknown>> }).layers[0] }, { ...(mockFusionView.composition as { layers: Array<Record<string, unknown>> }).layers[1], presentation: { ...((mockFusionView.composition as { layers: Array<Record<string, unknown>> }).layers[1].presentation as object), opacity: 2 } }] } }), false);
     assert.equal(isIntraStudyLink({ ...mockIntraStudyLink, geometryEvidence: { ...mockIntraStudyLink.geometryEvidence, snapshots: [] } }), false);
     assert.equal(isIntraStudyLink({ ...mockIntraStudyLink, geometryEvidence: { ...mockIntraStudyLink.geometryEvidence, assetIds: [mockIntraStudyLink.geometryEvidence.assetIds[0], mockIntraStudyLink.geometryEvidence.assetIds[0]] } }), false);
     assert.equal(isIntraStudyLink({ ...mockIntraStudyLink, geometryEvidence: { ...mockIntraStudyLink.geometryEvidence, snapshots: mockIntraStudyLink.geometryEvidence.snapshots.map((snapshot) => ({ ...snapshot, frameOfReferenceUID: 'wrong-frame' })) } }), false);

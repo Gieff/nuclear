@@ -24,12 +24,34 @@ const spatialState = (value: unknown): boolean => {
 const cameraState = (value: unknown): boolean => record(value) && finite(value.zoom) && value.zoom > 0 && tuple(value.panMm, 2) && tuple(value.focalPointMm, 2) && finite(value.rotationDeg) && ['manual', 'fit-width', 'fit-height', 'fit-extent'].includes(String(value.fitMode));
 const presentationState = (value: unknown): boolean => record(value) && typeof value.invert === 'boolean' && finite(value.opacity) && value.opacity >= 0 && value.opacity <= 1 && (value.voi === undefined || (tuple(value.voi, 2) && value.voi[0] <= value.voi[1])) && (value.suvRange === undefined || (tuple(value.suvRange, 2) && value.suvRange[0] >= 0 && value.suvRange[0] <= value.suvRange[1]));
 const projectionState = (value: unknown): boolean => record(value) && ['slice', 'MIP', 'MinIP', 'Average'].includes(String(value.mode)) && (value.slabThicknessMm === undefined || (finite(value.slabThicknessMm) && value.slabThicknessMm > 0)) && (value.parameters === undefined || (record(value.parameters) && Object.values(value.parameters).every((item) => typeof item === 'string' || typeof item === 'boolean' || finite(item))));
+const petFusionTransfer = (value: unknown): boolean => record(value) && ['highlighted', 'alpha'].includes(String(value.transferMode)) && finite(value.gamma) && value.gamma > 0 && finite(value.blendSlider) && value.blendSlider >= 0 && value.blendSlider <= 100;
+const compositionLayer = (value: unknown): boolean => record(value) && binding(value.binding) && presentationState(value.presentation) && (value.fusion === undefined || petFusionTransfer(value.fusion));
+const fusionLayersValid = (layers: readonly unknown[]): boolean => {
+  let bases = 0; let overlays = 0;
+  for (const layer of layers) {
+    if (!compositionLayer(layer) || !record(layer) || !record(layer.binding)) return false;
+    const role = layer.binding.role;
+    if (role === 'base') {
+      bases += 1;
+      if (!record(layer.presentation) || layer.presentation.voi === undefined || layer.fusion !== undefined) return false;
+    } else if (role === 'overlay') {
+      overlays += 1;
+      if (!record(layer.presentation)) return false;
+      const presentation = layer.presentation;
+      const colormapOK = typeof presentation.colormapId === 'string' && presentation.colormapId.length > 0;
+      const exactlyOneRange = (presentation.voi !== undefined) !== (presentation.suvRange !== undefined);
+      if (!colormapOK || layer.fusion === undefined || !petFusionTransfer(layer.fusion) || !exactlyOneRange) return false;
+    }
+  }
+  return bases === 1 && overlays >= 1;
+};
 const compositionState = (value: unknown): boolean => {
-  if (!record(value) || !Array.isArray(value.layers) || value.layers.length === 0 || !value.layers.every(binding) || !['single', 'fusion', 'multi-layer'].includes(String(value.mode))) return false;
-  if (value.mode === 'single' && value.layers.length !== 1) return false;
-  if (value.mode === 'fusion' && value.layers.length < 2) return false;
-  if (value.mode === 'fusion' && !value.layers.some((item) => record(item) && item.role === 'base') || value.mode === 'fusion' && !value.layers.some((item) => record(item) && item.role === 'overlay')) return false;
-  return value.layerOpacity === undefined || (record(value.layerOpacity) && Object.values(value.layerOpacity).every((item) => finite(item) && item >= 0 && item <= 1));
+  if (!record(value) || !Array.isArray(value.layers) || value.layers.length === 0 || !['single', 'fusion', 'multi-layer'].includes(String(value.mode))) return false;
+  const layers = value.layers as unknown[];
+  if (value.mode === 'single') return value.blend === undefined && layers.length === 1 && binding(layers[0]);
+  if (value.mode === 'fusion') return value.blend === 'alpha' && layers.length >= 2 && fusionLayersValid(layers);
+  if (value.mode === 'multi-layer') return layers.every((layer) => compositionLayer(layer)) && (value.blend === undefined || ['alpha', 'additive', 'difference', 'checkerboard'].includes(String(value.blend)));
+  return false;
 };
 const resourceDemand = (value: unknown): boolean => record(value) && typeof value.assetId === 'string' && ['visible-interactive', 'visible-read-only', 'prepared-hidden', 'prefetch-candidate', 'unused'].includes(String(value.priority)) && Array.isArray(value.requiredTiers) && value.requiredTiers.every((tier) => ['metadata-only', 'source-available', 'cpu-cached', 'gpu-ready', 'gpu-resident', 'loading', 'evicted'].includes(String(tier)));
 const geometrySnapshot = (value: unknown): boolean => record(value) && typeof value.assetId === 'string' && typeof value.frameOfReferenceUID === 'string' && isSourceFingerprint(value.sourceFingerprint) && typeof value.geometricDigest === 'string' && direction(value.orientation) && vector(value.spacingMm) && value.spacingMm.every((item) => item > 0) && vector(value.originLpsMm) && record(value.boundsLpsMm) && vector(value.boundsLpsMm.min) && vector(value.boundsLpsMm.max) && record(value.workerMetadata) && typeof value.workerMetadata.workerVersion === 'string' && typeof value.workerMetadata.operation === 'string' && typeof value.workerMetadata.timestamp === 'string';
@@ -39,8 +61,21 @@ export const isCoordinateTransformSet = (value: unknown): boolean => record(valu
 export const isMedicalViewState = (value: unknown): value is MedicalViewState => {
   if (!record(value) || typeof value.id !== 'string' || !binding(value.dataBinding)) return false;
   const composition = value.composition;
-  if (!spatialState(value.spatial) || !cameraState(value.camera) || !presentationState(value.presentation) || !projectionState(value.projection) || !compositionState(composition) || !isCoordinateTransformSet(value.coordinateTransforms)) return false;
-  return record(composition) && composition.layers.some((item) => record(item) && item.assetId === value.dataBinding.assetId && item.role === value.dataBinding.role);
+  if (!spatialState(value.spatial) || !cameraState(value.camera) || !projectionState(value.projection) || !compositionState(composition) || !isCoordinateTransformSet(value.coordinateTransforms)) return false;
+  if (!record(composition)) return false;
+  const dataBinding = value.dataBinding as Record<string, unknown>;
+  if (composition.mode === 'single') {
+    if (!presentationState(value.presentation)) return false;
+    const layer = composition.layers[0];
+    return record(layer) && layer.assetId === dataBinding.assetId && layer.role === dataBinding.role;
+  }
+  if (composition.mode === 'fusion' || composition.mode === 'multi-layer') {
+    if (value.presentation !== undefined) return false;
+    const first = composition.layers[0];
+    if (!record(first) || !record(first.binding)) return false;
+    return first.binding.assetId === dataBinding.assetId && first.binding.role === dataBinding.role;
+  }
+  return false;
 };
 
 export const isIntraStudyLink = (value: unknown): value is IntraStudyLink => {

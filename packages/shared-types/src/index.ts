@@ -114,8 +114,16 @@ export type {
   PrimitiveValue,
   ProjectionState,
   CompositionMode,
+  PetFusionTransfer,
+  CompositionLayer,
+  FusionBlendMode,
+  SingleCompositionState,
+  FusionCompositionState,
+  MultiLayerCompositionState,
   CompositionState,
   CoordinateTransformSet,
+  SingleMedicalViewState,
+  ComposedMedicalViewState,
   MedicalViewState,
 } from './view-state.js';
 export type {

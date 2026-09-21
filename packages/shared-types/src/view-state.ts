@@ -63,12 +63,45 @@ export interface ProjectionState {
 
 export type CompositionMode = 'single' | 'fusion' | 'multi-layer';
 
-export interface CompositionState {
-  readonly mode: CompositionMode;
-  readonly layers: readonly DataBinding[];
-  readonly blend?: 'alpha' | 'additive' | 'difference' | 'checkerboard';
-  readonly layerOpacity?: Readonly<Record<string, number>>;
+/** PET fusion transfer parameters (radiometry spec §2–§4). */
+export interface PetFusionTransfer {
+  readonly transferMode: 'highlighted' | 'alpha';
+  readonly gamma: number;
+  /** Interactive blend slider s ∈ [0,100]; overall opacity = (s/100)^0.42. */
+  readonly blendSlider: number;
 }
+
+/** One composition layer with its own authoritative presentation. */
+export interface CompositionLayer {
+  readonly binding: DataBinding;
+  readonly presentation: PresentationState;
+  /** Required on a fusion overlay; absent on the underlay. */
+  readonly fusion?: PetFusionTransfer;
+}
+
+export type FusionBlendMode = 'alpha';
+
+export interface SingleCompositionState {
+  readonly mode: 'single';
+  readonly layers: readonly [DataBinding];
+}
+
+export interface FusionCompositionState {
+  readonly mode: 'fusion';
+  readonly blend: FusionBlendMode;
+  readonly layers: readonly CompositionLayer[];
+}
+
+export interface MultiLayerCompositionState {
+  readonly mode: 'multi-layer';
+  readonly layers: readonly CompositionLayer[];
+  readonly blend?: 'alpha' | 'additive' | 'difference' | 'checkerboard';
+}
+
+export type CompositionState =
+  | SingleCompositionState
+  | FusionCompositionState
+  | MultiLayerCompositionState;
 
 /** Explicit transforms between persisted clinical/render spaces. */
 export interface CoordinateTransformSet {
@@ -79,13 +112,24 @@ export interface CoordinateTransformSet {
   readonly viewportSizePx: readonly [number, number];
 }
 
-export interface MedicalViewState {
+interface MedicalViewStateBase {
   readonly id: ViewId;
   readonly dataBinding: DataBinding;
   readonly spatial: SpatialState;
   readonly camera: CameraState;
-  readonly presentation: PresentationState;
   readonly projection: ProjectionState;
-  readonly composition: CompositionState;
   readonly coordinateTransforms: CoordinateTransformSet;
 }
+
+/** Single-layer view: one binding and one authoritative presentation. */
+export interface SingleMedicalViewState extends MedicalViewStateBase {
+  readonly presentation: PresentationState;
+  readonly composition: SingleCompositionState;
+}
+
+/** Composed view: per-layer bindings AND presentations; NO view-level presentation. */
+export interface ComposedMedicalViewState extends MedicalViewStateBase {
+  readonly composition: FusionCompositionState | MultiLayerCompositionState;
+}
+
+export type MedicalViewState = SingleMedicalViewState | ComposedMedicalViewState;
