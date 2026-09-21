@@ -24,6 +24,8 @@ Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
 `b793631`.
+Release: monorepo **0.2.0**, annotated tag `v0.2.0` (release handover at the end
+of this file).
 
 ---
 
@@ -3981,3 +3983,125 @@ the now-complete `ResourceManager` and must not reimplement engine behaviour.
 Before any release activity, note that changelog promotion and tagging require
 an **explicit user request** (`/promote-changelog 3`); commits remain local
 until the user explicitly authorizes a push.
+
+---
+
+# Handover Report — Release: Monorepo v0.2.0
+
+## 1. What Was Implemented
+
+- **Ran the governed release flow** (`npm run bump 0.2.0`): synchronized every
+  workspace `package.json` and all internal `@nuclear/*` ranges, the Python
+  package (`python/pyproject.toml`, `dicom/__init__.py`, `worker/__init__.py`),
+  the ratified `tests/fixtures/protocol/response.handshake.json` workerVersion
+  and the provisioned venv metadata, and reconciled the root
+  `package-lock.json` through the script's `npm install --package-lock-only`
+  step. A `--dry-run` was inspected first and wrote nothing.
+- **Re-stamped the rendering-fixture worker evidence**: a release-blocking gap
+  was found because the committed `expected-geometry.json` /
+  `expected-quantitation.json` fixtures embed `workerMetadata.workerVersion`,
+  so after the worker bump the Python regeneration/acceptance tests failed
+  (8 failures). The fixtures were regenerated with the documented generator
+  (`python/tests/synthetic_pixel_volume.py tests/rendering/fixtures/volumes`);
+  the resulting diff is **only** the `workerVersion` literal
+  (`0.1.2` → `0.2.0`) in five evidence files — every scientific value, digest,
+  DICOM instance, payload and geometry field is unchanged.
+- **Promoted `CHANGELOG.md`** from the agentlog via the sandboxed
+  `nuclear-changelog-writer`: a `[0.2.0] - 2026-09-21` section with ten distilled
+  capability bullets spanning the headless rendering engine, volume loading,
+  residency, view-state application, fusion contracts, quantitative PET
+  binding, the DICOM palette catalog, ordinary raster capture, the temporary
+  high-resolution render target and the governed, independently reviewed phase
+  closure. Internal slice codes, paths, hashes and identifiers are absent;
+  `[Unreleased]` remains present and empty.
+- **Created the annotated tag `v0.2.0`** on the release commit (repo convention:
+  the tag carries the `v` prefix, matching `v0.1.0`/`v0.1.1`/`v0.1.2`).
+  Nothing was pushed; the branch and tag are left to the user.
+
+## 2. Files Changed / Created
+
+- Version metadata (bump commit): root `package.json`, `package-lock.json`,
+  `packages/*/package.json` (7 workspaces), `python/pyproject.toml`,
+  `python/dicom/__init__.py`, `python/worker/__init__.py`,
+  `tests/fixtures/protocol/response.handshake.json`, plus the regenerated
+  `tests/rendering/fixtures/volumes/*/expected-geometry.json` (3) and
+  `expected-quantitation.json` (2).
+- `CHANGELOG.md` (new `[0.2.0]` section).
+- `docs/agentlog/phase-3.md` (release status line and this handover).
+
+Not modified: any product/source/test logic, contract semantics or `.ncp`
+schema. The only functional non-version change is the fixture `workerVersion`
+literal; no scientific behavior changed.
+
+## 3. Architectural Assumptions Made
+
+- A release is the explicit user action that authorizes changelog promotion and
+  tagging; Phase 3 closure deliberately left `CHANGELOG.md` untouched and this
+  is a separate step (ADR-001).
+- The single monorepo SemVer is the authority; the Python worker version, the
+  ratified handshake fixture and the committed rendering-fixture evidence all
+  track it so worker provenance stays consistent.
+- The rendering-fixture evidence is **captured worker output**, so a version
+  bump requires regenerating it with the documented generator; the Python tests
+  (`test_regeneration_is_byte_identical`, the geometry/quantitation acceptance
+  tests) are the guard that only the provenance literal changed and no
+  scientific value drifted.
+
+## 4. Tests Added & Executed
+
+No tests were added. The full configured suite was run on the bumped and
+regenerated tree:
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm run build` | clean (exit 0) |
+| `npm test` | **258 pass / 0 fail** (58 suites) |
+| `node --test --test-concurrency=1 "tests/rendering/**/*.test.ts"` | **85 pass / 0 fail** (17 suites) |
+| `npm run test:python` | **189 passed** |
+| `npm run typecheck:python` | clean over 47 files |
+| `node --test tests/medical/worker-source-integrity.test.ts` | **2 pass / 0 fail** |
+
+Version consistency verified across root and workspace manifests, the lockfile,
+the Python package, the venv metadata, the handshake fixture and the five
+rendering-fixture evidence files.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- `CHANGELOG.md` `[0.2.0]` was compiled by the dedicated changelog writer and
+  audited for forbidden content (no paths, hashes, task codes or code
+  identifiers); `[Unreleased]` remains present and empty.
+- This release handover completes the release-side evidence; no ADR changed
+  (ADR-001 is respected). The release is tagged `v0.2.0`.
+
+## 6. Project Model Impact
+
+- None. Only version metadata, fixture provenance literals and documentation
+  changed; no contract, fixture semantics or `.ncp` schema was touched.
+
+## 7. Known Limitations & Technical Debt
+
+- **`bump-version.mjs` does not regenerate or re-stamp the committed rendering
+  fixture evidence.** A release must run
+  `python/worker/.venv/bin/python python/tests/synthetic_pixel_volume.py tests/rendering/fixtures/volumes`
+  after the bump, otherwise the Python regeneration tests fail. Extending the
+  bump flow (or documenting it in the release runbook) is the recommended
+  tooling follow-up.
+- The provisioned venv dist-info rename is local and Git-ignored; a fresh
+  environment must reinstall the editable package to observe the new version.
+- The tag uses the `v` prefix (`v0.2.0`) per repository convention; the version
+  itself is `0.2.0`.
+- All Phase 3 carried risks remain open and unchanged: hardware-GPU and a true
+  production bundle are `NOT YET APPLICABLE`, test sources are outside the
+  `tsc` graph, two renderer files sit at the 300-line limit, intra-engine
+  multi-viewport isolation is not yet demonstrated, and capture validates the
+  declared-state camera rather than the live camera.
+
+## 8. Exact Next Recommended Task
+
+- **Push `v0.2.0`** (user-owned; the branch and tag are local).
+- Then proceed to **Phase 4 — view engine** (surfaces, view slots,
+  synchronization, linking, locks), declaring demand and priority against the
+  completed residency manager without reimplementing engine behaviour.
+- Optional tooling follow-up: make the version bump regenerate or re-stamp the
+  rendering-fixture evidence automatically.
