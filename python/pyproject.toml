@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nuclear-scientific"
-version = "0.1.2"
+version = "0.2.0"
 description = "NuClear scientific worker: DICOM parsing, physical geometry verification, and quantitative SUVbw determination"
 readme = "README.md"
 requires-python = ">=3.12"
