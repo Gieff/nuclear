@@ -17,7 +17,8 @@ viewport application), P3.4-B.2.2.2.x corrections accepted, P3.4-B.2.2.4
 accepted (different-FoR refusal, viewport-measured size, real-cache residency)
 and P3.4-B.2.2.5 accepted (positive same-FoR fusion evidence); P3.4-C accepted
 (ordinary raster capture, provenance, spec §6 transport check and per-state
-isolation; review/QA **PASS**); P3.5–P3.6 not started.
+isolation; review/QA **PASS**); P3.5 accepted (temporary high-resolution
+`RenderTarget` primitive, ADR-009); P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -3638,3 +3639,171 @@ same `MedicalViewState` and capture path, returning a native-size non-empty
 raster without mutating the live canvas dimensions/camera, with typed
 allocation-failure and disposal. Do not add figure composition, TIFF/PNG
 flattening, hybrid PDF, UI or view-engine work in P3.5-A.
+
+---
+
+# Handover Report — P3.5: Temporary High-Resolution `RenderTarget`
+
+Consolidated report for P3.5-A (pure dimensioning/spec validation and the
+browser temporary target primitive) and P3.5-B (render equivalence, full live
+invariance, allocation/disposal evidence). `@nuclear/shared-types` was not
+touched; no figure composition, TIFF/PNG flattening or hybrid PDF was produced;
+UI, view-engine and figure-engine were not touched. Cornerstone remains the sole
+renderer. Nothing was staged or committed at the time of writing.
+
+## 1. What Was Implemented
+
+- **Ratified decision (ADR-009).** The architecture (§30.1) allows a temporary
+  offscreen/target surface and states the principle "same rendering path does
+  not require the same physical canvas". What was undocumented — how the
+  target's physical pixels relate to `MedicalViewState.coordinateTransforms` —
+  is now ratified before any code.
+- **P3.5-A — pure dimensioning and spec validation**
+  (`view-application/render-target.ts`, Node-safe, no Cornerstone/DOM):
+  `computeRenderTargetPixelDimensions(sizeMm, dpi)` implements the mandated
+  `round(mm / 25.4 * dpi)` per axis with an arithmetic half-up rounding (the
+  P2.5 gate forbids the `Math.` token anywhere under `src/**`, comments
+  included) and refuses non-finite/non-positive inputs;
+  `validateTemporaryRenderTargetSpec(spec, sizeMm)` refuses the wrong `kind`,
+  non-positive/non-integer `pixelDimensions`, a non-finite/non-positive `dpi`,
+  a `liveCanvasPolicy` other than `never-resize-live-canvas`, an unknown
+  `alpha`, a blank `colorProfile`, and a declared pixel size that disagrees with
+  the physical size/DPI; `deriveTemporaryRenderTargetPlan(plan, pixelDimensions)`
+  copies the plan verbatim except `transforms.viewportSizePx`, which becomes the
+  target's pixel size (ADR-009 decision 3). Typed `RenderTargetError`:
+  `RENDER_TARGET_SPEC_INVALID`, `RENDER_TARGET_DIMENSIONS_MISMATCH`,
+  `RENDER_TARGET_ALLOCATION_FAILED`, `RENDER_TARGET_DISPOSAL_FAILED`.
+- **P3.5-A — browser temporary target**
+  (`renderer/temporary-render-target.ts`, browser-only, exported solely from
+  `renderer/index.ts`): `captureTemporaryRenderTarget(input, options)` starts a
+  **separate temporary `CornerstoneRendererAdapter`** on a caller-supplied host
+  sized exactly to the computed pixels, applies the same semantic state through
+  the ordinary `applyViewApplication`, obtains the raster through the ordinary
+  `captureMedicalRaster` path (provenance and spec §6 checks included), then
+  stops the adapter and removes its container in a `finally`. Allocation
+  failures are wrapped as `RENDER_TARGET_ALLOCATION_FAILED`; a cleanup failure
+  after a successful capture is `RENDER_TARGET_DISPOSAL_FAILED`; the original
+  operation error is never masked. There is no fallback to resizing the live
+  canvas or upscaling a preview.
+- **P3.5-B — real-harness evidence.** 300 DPI native dimensions, ordinary/target
+  provenance equivalence from the same state, a full live snapshot (element,
+  canvas, aspect ratio, complete `getCamera()`, blend mode, actor count and
+  per-layer properties) value-identical before/after plus immutable plan/state
+  inputs, allocation failure with no raster and no registered engine, and
+  disposal after an apply refusal with no leaked engine or container.
+
+## 2. Files Changed / Created
+
+Product (`@nuclear/medical-engine`):
+| File | Lines | Change |
+| --- | --- | --- |
+| `src/view-application/render-target.ts` | 202 (new) | pure formula, spec validation, plan retargeting, `RenderTargetError` |
+| `src/view-application/index.ts` | 10 | re-export the render-target module |
+| `src/renderer/temporary-render-target.ts` | 190 (new) | browser temporary target primitive |
+| `src/renderer/index.ts` | 18 | `+ export * from './temporary-render-target.js'` |
+
+Tests:
+| File | Lines | Change |
+| --- | --- | --- |
+| `tests/view-application/render-target-dimensions.test.ts` | 229 (new) | pure dimensions/refusals/derivation |
+| `tests/rendering/temporary-render-target.test.ts` | 72 (new) | P3.5-A 8cm@600 smoke |
+| `tests/rendering/temporary-render-target-b.test.ts` | 215 (new) | P3.5-B evidence |
+| `tests/rendering/fixtures/target-entry.ts` | 29 (new) | probe wiring |
+| `tests/rendering/fixtures/target-probe-types.ts` | 139 (new) | probe ack types |
+| `tests/rendering/fixtures/target-test-support.ts` | 71 (new) | Node-side probe helpers |
+| `tests/rendering/fixtures/target-snapshot.ts` | 98 (new) | full live snapshot |
+| `tests/rendering/fixtures/target-scenarios.ts` | 93 (new) | target scenarios |
+| `tests/rendering/fixtures/target-scenario-support.ts` | 187 (new) | shared scenario helpers |
+| `tests/rendering/fixtures/target-scenarios-failure.ts` | 107 (new) | allocation/apply-refused scenarios |
+
+Docs: `docs/decisions/ADR-009-temporary-high-resolution-render-target.md` (new)
+and this report.
+
+Untouched: `@nuclear/shared-types`, the Python worker, UI, view-engine,
+figure-engine, `CHANGELOG.md`, the version (`0.1.2`).
+
+## 3. Architectural Assumptions Made
+
+- A distinct physical target is a **separate temporary Cornerstone engine** on a
+  caller-supplied sized host; this guarantees the live canvas/camera/aspect/state
+  cannot be mutated, and reuses the exact ordinary apply/capture path.
+- The interactive `viewportSizePx` cannot describe a different physical target,
+  so it is retargeted; `patientToViewPlane`/`viewPlaneToViewport` are carried
+  verbatim and not recomputed, because P3 does not consume them for rendering
+  and deriving a new view-plane→pixel mapping belongs to the publication/figure
+  layer (ADR-009; a Phase 5 target mapping must be supplied explicitly).
+- The DOM gateway stays injected: the primitive receives
+  `createHost(pixelDimensions) => RendererRuntimeHost` and never reaches for
+  `document` (ADR-003).
+- Rounding is half-up arithmetic rather than `Math.round`, to satisfy the P2.5
+  source-integrity gate without weakening the ratified formula.
+
+## 4. Tests Added & Executed
+
+Pure (5 tests): exact dimensions for 300/600 DPI; non-finite/non-positive size
+or DPI refusals; spec acceptance + every malformed field refusal; plan
+retargeting carries all other fields verbatim; `RenderTargetError` code/message.
+
+Harness P3.5-A (1 test): 8cm×8cm @600 → native 1890×1890, `byteLength
+14288400`, `nonEmptyPixelCount 3572100`, provenance `Grayscale`/`rescaled-hu`,
+software rasterizer, live element/canvas/camera/actor-count invariant.
+
+Harness P3.5-B (5 tests): 300 DPI 945×945 (`byteLength 3572100`,
+`nonEmptyPixelCount 893025`), no residual engine; ordinary/target provenance
+JSON-equal; full live snapshot and plan/state inputs value-identical; allocation
+failure `RENDER_TARGET_ALLOCATION_FAILED` with no raster/engine/container; apply
+refusal `VIEW_VOLUME_NOT_RESIDENT` disposes the temporary engine and container.
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **258 pass / 0 fail** (58 suites) |
+| `node --test --test-concurrency=1 "tests/rendering/**/*.test.ts"` | **85 pass / 0 fail** (17 suites) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:python` | **189 passed** |
+| `npm run typecheck:python` | clean over 47 files |
+| `node --test tests/medical/worker-source-integrity.test.ts` | **2 pass / 0 fail** |
+
+Named tolerances: dimensions/byteLength/non-emptiness are exact; RGBA is not
+asserted byte-identical across runs (software rasterizer). Provenance equality
+is JSON-exact; live snapshots are deep-equal (value invariants).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-009 ratifies the target mechanism, the same-state/retargeted-pixels rule,
+  the injected host factory, fail-closed allocation/disposal and the exclusions.
+- This report satisfies the Agentlog Gate for P3.5.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Independent review/QA verdicts are recorded below once executed.
+
+## 6. Project Model Impact
+
+- New Node-visible `RenderTargetError` family and pure render-target module in
+  the `view-application` barrel; the browser primitive is exported only from
+  `renderer/index.ts`. No `@nuclear/shared-types` / `.ncp` change.
+
+## 7. Known Limitations & Technical Debt
+
+- **`viewPlaneToViewport` is not recomputed for the target.** The target's
+  physical pixel size is enforced by the target canvas; the carried
+  view-plane→pixel matrix is not consumed by P3. Phase 5 must supply an explicit
+  target mapping if needed (ADR-009 revision condition).
+- **All raster evidence is SwiftShader software WebGL 2**; hardware-GPU
+  behaviour remains `NOT YET APPLICABLE`. `npm run build` is `tsc -b` only.
+- The `createHost`-itself-throws branch of `RENDER_TARGET_ALLOCATION_FAILED` is
+  not separately exercised (the tested allocation path is the
+  `createEngineContainer`/engine-start failure); the apply-failure disposal path
+  is a precondition refusal rather than a mid-raster render error.
+- Capture still validates only the declared state camera, not the live camera
+  (inherited P3.4-C limitation, relevant once interaction lands).
+- Test sources remain outside the `tsc` graph (inherited P3.0 debt).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.6 — independent phase review, renderer-harness gates and final
+handover**: run the read-only reviewer/QA over the whole Phase 3 diff, confirm
+the residency/renderer/source-integrity gates, run `npm run docs` if applicable,
+and record the final eight-point Phase 3 report with runtime/hardware facts,
+package versions, fixture provenance, remaining platform risks and Phase 4
+entry conditions. Do not promote the changelog or create a tag without an
+explicit release request.

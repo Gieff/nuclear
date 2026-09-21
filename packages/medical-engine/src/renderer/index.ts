@@ -15,3 +15,4 @@ export * from './volume-residency-backend.js';
 export * from './dicom-palette-registration.js';
 export * from './view-application-adapter.js';
 export * from './medical-capture.js';
+export * from './temporary-render-target.js';

@@ -7,3 +7,4 @@
 
 export * from './view-application.js';
 export * from './capture.js';
+export * from './render-target.js';
