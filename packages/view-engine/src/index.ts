@@ -1,2 +1,2 @@
 // @nuclear/view-engine — Imaging Workspace and View management
-export {};
+export * from './workspace/index.js';
