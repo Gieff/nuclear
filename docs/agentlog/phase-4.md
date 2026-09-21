@@ -490,8 +490,24 @@ Phase 1 fixture incoherence (`'asset-ct'` vs `'asset-ct-001'`).
 
 C8 brought every TypeScript file under `tests/**` into the `tsc` type graph
 under the inherited `strict` settings, and made that a **non-optional gate**.
-Baseline was **83 errors across 26 files**; the slice fixes all of them without
-changing a single test's behaviour, assertion, expected value or name.
+Baseline was **83 errors across 26 files**; the slice fixes all of them. With
+**one explicitly declared exception** (below), the changes are type-only and do
+not alter a test's assertion, expected value or name.
+
+**Declared runtime exception (corrected after review).** The original C8 report
+claimed “no behaviour changed” while `tests/rendering/fixtures/volume-entry.ts`
+had changed a real call from `voxelManager?.getCompleteScalarDataArray()` to
+`voxelManager?.getCompleteScalarDataArray?.() ?? new Float32Array(0)`. That is a
+runtime change: when `voxelManager` exists but the method is absent, the probe
+previously threw and now continued with empty scalar data. The chosen semantics
+is **the method is indispensable → explicit failure**: the guard was extracted
+to the Node-safe `tests/rendering/fixtures/scalar-data-access.ts`
+(`requireCompleteScalarData`), which throws a named error when the source or
+method is absent and otherwise calls the method with the source as `this`;
+`volume-entry.ts` uses it, and `tests/rendering/scalar-data-access.test.ts`
+covers the present/absent/undefined branches. The browser `volume-load` suite
+still passes, confirming the real `VoxelManager` exposes the method, so the
+observable behaviour on every real path is unchanged.
 
 - **New `tsconfig.test.json`** (root): extends `tsconfig.base.json`, keeps
   `strict`/`noImplicitAny`/`noUnusedLocals`/`noUnusedParameters`,
@@ -523,6 +539,8 @@ changing a single test's behaviour, assertion, expected value or name.
 Created:
 - `tsconfig.test.json` (root, 16 lines)
 - `tests/rendering/fixtures/renderer-probe-global.ts` (23 lines, ambient types only)
+- `tests/rendering/fixtures/scalar-data-access.ts` (corrective; Node-safe fail-closed guard)
+- `tests/rendering/scalar-data-access.test.ts` (corrective; 4 tests)
 
 Modified:
 - `package.json` (root scripts: `typecheck`, `typecheck:tests`)
@@ -535,8 +553,10 @@ No file under `packages/**` or `python/**` changed.
 
 - Test sources now participate in static type checking; the long-carried
   Phase 3 debt “`tests/**` outside the `tsc` graph” is **closed**.
-- Type-only edits are acceptable across accepted Phase 3 test files because
-  the runtime suite is unchanged (283/283, identical suite topology).
+- With the single declared exception in §1 (`volume-entry.ts` scalar-data
+  access, now fail-closed and unit-tested), edits across accepted Phase 3 test
+  files are type-only; the runtime suite is otherwise unchanged (identical
+  suite topology, 283 pre-existing tests).
 - `tests/contracts/view-validators.ts` was touched **type-only** (predicates,
   a captured local); `isIntraStudyLink` runtime logic is unchanged, so C3 can
   still add the snapshot↔asset↔series correlation.
@@ -552,10 +572,12 @@ type-checked.
 | --- | --- |
 | `npx tsc -p tsconfig.test.json` | exit 0 (83 → 0 errors) |
 | `npm run typecheck` (`tsc -b && tsc -p tsconfig.test.json`) | exit 0 |
-| `npm test` | **283 pass / 0 fail / 60 suites** (0 skipped/todo) — unchanged |
+| `npm test` | **287 pass / 0 fail / 61 suites** (0 skipped/todo): 283/60 baseline + 4 corrective guard tests |
 | `npm run build` | clean (exit 0) |
 | `node --test tests/view-engine/workspace-core.test.ts` | 11/11 |
 | `node --test tests/view-engine/prepared-view.test.ts` | 14/14 |
+| `node --test tests/rendering/scalar-data-access.test.ts` | 4/4 (guard: present → data; absent/undefined → throws) |
+| `node --test tests/rendering/volume-load.test.ts` | 4/4 browser probe unchanged on the real path |
 | `npm run test:python` | 189 passed (unchanged) |
 | `npm run typecheck:python` | 47 files clean (unchanged) |
 | Gate-failure proof | intended test type error → `tsc` exit 2 (root + nested), probe removed |
@@ -578,6 +600,10 @@ non-blocking) and `nuclear-qa` **PASS** for the executable scope.
 
 ## 7. Known Limitations & Technical Debt
 
+- **C8 review exception (resolved).** The only runtime change in C8 was
+  `tests/rendering/fixtures/volume-entry.ts` reading complete scalar data; it
+  is now fail-closed through `requireCompleteScalarData` and unit-tested, so
+  the “type-only” claim holds except for this declared, tested correction.
 - **Real frozen-contract defect surfaced**: `figure-validators.ts` requires a
   top-level `coordinateSpace` for every annotation kind, but
   `FigureRoiAnnotation` carries it only inside `geometry`

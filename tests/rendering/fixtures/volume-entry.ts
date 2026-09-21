@@ -29,6 +29,7 @@ import {
 } from './volume-fixture.ts';
 import type { VolumeProbeInput } from './volume-fixture.ts';
 import { createBrowserHost, probeWebGL2 } from './adapter-host.ts';
+import { requireCompleteScalarData } from './scalar-data-access.ts';
 
 const ENGINE_ID = 'nuclear-volume-probe';
 
@@ -145,7 +146,9 @@ function install(input: VolumeProbeInput): VolumeProbeSuccess {
     throw new Error(`volume '${plan.volumeId}' was not cached after loadVolume`);
   }
   const [nx, ny, nz] = volume.dimensions;
-  const scalarArray = volume.voxelManager?.getCompleteScalarDataArray?.() ?? new Float32Array(0);
+  // The complete scalar array is REQUIRED by this probe: `voxelManager` or the
+  // method being absent is an explicit failure, never an empty-data fallback.
+  const scalarArray = requireCompleteScalarData(volume.voxelManager, `volume '${plan.volumeId}'`);
   return {
     ok: true,
     declaredScalarDataDomain: plan.scalarDataDomain,
