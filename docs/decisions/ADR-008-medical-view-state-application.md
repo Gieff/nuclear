@@ -364,3 +364,34 @@ live in `renderer/view-application-guards.ts`, which imports
 `@cornerstonejs/core` and is therefore not exported from `src/index.ts`.
 
 New refusal code: `VIEW_TRANSFORM_UNSUPPORTED`.
+
+## Addendum — P3.4-B.2.2.5 (positive same-Frame-of-Reference fusion evidence)
+
+**The browser positive CT+PET fusion is restored via a committed co-referenced
+fixture.** The P3.4-B.2.2.4 addendum left the controlled harness with no
+positive fusion because the committed `ct-axial`/`pt-axial` fixtures have
+distinct `FrameOfReferenceUID`s. A new committed fixture,
+`tests/rendering/fixtures/volumes/pt-axial-coreg/`, shares the CT's
+`StudyInstanceUID` and `FrameOfReferenceUID` (`…5001.1` / `…5001.4`) while
+keeping its own `SeriesInstanceUID` (`…5001.5`) and `rescaled-bqml` pixels. A
+committed `expected-quantitation.json` records the SUVbw factor
+(`0.00022864801061323923`), which the Node test reads and injects into the probe
+rather than hardcoding.
+
+Because the PET volume is in the view plane's own Frame of Reference,
+`validateLayerGeometry` accepts it with **no `SpatialTransform`**. The real
+Cornerstone read-back asserts: both actors are set; the PET layer resolves the
+`dicom-pet` → `PET` palette; its transport `voiRange` matches
+`suvRangeToBqml([0, 8], suvFactor)`; its overall opacity is
+`getFusionOpacity(50) = 0.5 ^ 0.42`; its `opacityMapping` equals
+`getPETOpacityMapping(lower, upper, 0, 1, 'highlighted')`; the CT base reads
+`Grayscale`; and the blend mode is `COMPOSITE`.
+
+**Different-Frame-of-Reference fusion remains refused.** The committed
+`pt-axial` fixture (frame `…5002.4`) is retained as the negative:
+`validateLayerGeometry` still refuses it with `VIEW_TRANSFORM_UNSUPPORTED` even
+when a valid millimetre `SpatialTransform` is supplied, because transform
+application is not implemented. The other fail-closed negatives are unchanged,
+and a new zero-pixel-size viewport negative confirms `mountedViewportSize`
+refuses `VIEW_VIEWPORT_READBACK_FAILED` before any viewport mutation.
+

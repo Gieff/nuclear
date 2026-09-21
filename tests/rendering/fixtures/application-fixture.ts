@@ -2,22 +2,21 @@
  * NuClear P3.4-B.2.2.2 — browser-side application fixtures (test infrastructure).
  *
  * Pure helpers shared by the application probe: a correctly sized runtime host,
- * fixture-derived volume plans, resident geometry evidence, a PET→CT frame
- * bridge and the fusion/CT `MedicalViewState` builders. No DOM is created here
- * (the host factory does that at call time) and nothing is reachable from
- * product code.
+ * fixture-derived volume plans, resident geometry evidence and the single-CT
+ * `MedicalViewState` builders. Fusion-specific helpers (PET→CT frame bridge,
+ * fusion state/plan builders and the co-referenced positive) live in the sibling
+ * `application-fusion-fixture.ts` so every fixture file stays within the
+ * 300-line gate. No DOM is created here (the host factory does that at call
+ * time) and nothing is reachable from product code.
  */
 
-import type { AssetId, MedicalViewState, SpatialTransform } from '../../../packages/shared-types/src/index.ts';
+import type { MedicalViewState } from '../../../packages/shared-types/src/index.ts';
 import type {
   VolumeIngestionPlan,
 } from '../../../packages/medical-engine/src/renderer/index.ts';
 import type { RendererRuntimeHost } from '../../../packages/medical-engine/src/renderer/index.ts';
 import { compileMedicalViewApplication } from '../../../packages/medical-engine/src/view-application/index.ts';
 import type { ViewGeometryEvidence } from '../../../packages/medical-engine/src/view-application/index.ts';
-import type { QuantitativePetBinding } from '../../../packages/medical-engine/src/radiometry/index.ts';
-import { resolvePetQuantitationBinding } from '../../../packages/medical-engine/src/radiometry/index.ts';
-import { mockPetAsset } from '../../fixtures/clinical-contracts.fixture.ts';
 import { buildVolumeIngestionPlan } from '../../../packages/medical-engine/src/renderer/index.ts';
 import { buildAsset, decodeBase64, readTypedArray, requireComputed } from './volume-fixture.ts';
 import type { VolumeProbeInput } from './volume-fixture.ts';
@@ -25,7 +24,10 @@ import { probeWebGL2 } from './adapter-host.ts';
 
 /** Committed rendering-fixture asset ids (`tests/rendering/fixtures/volumes`). */
 export const CT_ASSET_ID = 'fixture.volume.ct-axial';
+/** Different-Frame-of-Reference PT fixture used by the refusal negatives. */
 export const PET_ASSET_ID = 'fixture.volume.pt-axial';
+/** Co-referenced PT fixture (same Study and Frame as the CT) for positive fusion. */
+export const COREG_PET_ASSET_ID = 'fixture.volume.pt-axial-coreg';
 
 /** The mounted viewport is sized to match `transforms.viewportSizePx`. */
 export const VIEWPORT_SIZE_PX = [512, 512] as const;
@@ -40,13 +42,27 @@ export const PET_COLORMAP_ID = 'dicom-pet';
  */
 export const CT_COLORMAP_ID = 'gray';
 
-/** The ADR-005 binding for the committed PT fixture's quantitation factor. */
-export const PET_BINDING: QuantitativePetBinding = resolvePetQuantitationBinding(
-  mockPetAsset,
-  'rescaled-bqml',
-);
+/** Test-only identity 4x4 homogeneous matrix. */
+export const IDENTITY_MATRIX = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
-const IDENTITY_MATRIX = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+/** Test-only axial DICOM ImageOrientationPatient (row, then column cosines). */
+export const IDENTITY_ORIENTATION = [1, 0, 0, 0, 1, 0] as const;
+
+/** The neutral camera the pure compiler accepts (no zoom/pan/rotation/focal). */
+export const NEUTRAL_CAMERA = {
+  zoom: 1,
+  panMm: [0, 0],
+  rotationDeg: 0,
+  focalPointMm: [0, 0],
+  fitMode: 'manual',
+};
+
+/** Carried coordinate transforms matching the 512×512 mounted host. */
+export const IDENTITY_TRANSFORMS = {
+  patientToViewPlane: [...IDENTITY_MATRIX],
+  viewPlaneToViewport: [...IDENTITY_MATRIX],
+  viewportSizePx: [...VIEWPORT_SIZE_PX],
+};
 
 /** Creates a real DOM host whose engine element is exactly width×height px. */
 export function createSizedHost(width: number, height: number): RendererRuntimeHost {
@@ -117,57 +133,6 @@ export function ctEvidence(ct: VolumeIngestionPlan): ViewGeometryEvidence {
   return { volumes: new Map([[CT_ASSET_ID, residentGeometry(ct)]]) };
 }
 
-/** A valid, test-only identity PET→CT frame bridge in millimetres. */
-export function petToCtTransform(pet: VolumeIngestionPlan, ct: VolumeIngestionPlan): SpatialTransform {
-  return {
-    id: 'fixture-transform-pet-to-ct',
-    sourceFrameOfReferenceUID: pet.frameOfReferenceUID,
-    targetFrameOfReferenceUID: ct.frameOfReferenceUID,
-    transformType: 'identity',
-    matrix4x4: [...IDENTITY_MATRIX],
-    units: 'mm',
-    provenance: {
-      method: 'identity',
-      description: 'test-only PET -> CT frame bridge for P3.4-B.2.2.2',
-      workerVersion: '0.1.0',
-      timestamp: '2026-09-21T00:00:00Z',
-    },
-    validity: { isValid: true, errorMarginMm: 0, outOfDomainBehavior: 'clamp' },
-  } as unknown as SpatialTransform;
-}
-
-/** Evidence for a CT+PET fusion; `includeTransform` may omit the PET bridge. */
-export function fusionEvidence(
-  pet: VolumeIngestionPlan,
-  ct: VolumeIngestionPlan,
-  options: { readonly includeTransform?: boolean } = {},
-): ViewGeometryEvidence {
-  const volumes = new Map([
-    [CT_ASSET_ID, residentGeometry(ct)],
-    [PET_ASSET_ID, residentGeometry(pet)],
-  ]);
-  return options.includeTransform === false
-    ? { volumes }
-    : {
-        volumes,
-        spatialTransforms: new Map([[PET_ASSET_ID, petToCtTransform(pet, ct)]]),
-      };
-}
-
-const NEUTRAL_CAMERA = {
-  zoom: 1,
-  panMm: [0, 0],
-  rotationDeg: 0,
-  focalPointMm: [0, 0],
-  fitMode: 'manual',
-};
-
-const IDENTITY_TRANSFORMS = {
-  patientToViewPlane: [...IDENTITY_MATRIX],
-  viewPlaneToViewport: [...IDENTITY_MATRIX],
-  viewportSizePx: [...VIEWPORT_SIZE_PX],
-};
-
 /** A single CT `MedicalViewState` in the loaded CT volume's frame. */
 export function buildCtState(
   ct: VolumeIngestionPlan,
@@ -205,83 +170,6 @@ export function buildCtState(
       viewportSizePx: [...viewportSizePx],
     },
   } as unknown as MedicalViewState;
-}
-
-/** A CT-base + PET-overlay fusion `MedicalViewState` in the CT frame. */
-export function buildFusionState(
-  pet: VolumeIngestionPlan,
-  ct: VolumeIngestionPlan,
-  options: { readonly ctColormapId?: string; readonly sliceOffsetMm?: number } = {},
-): MedicalViewState {
-  return {
-    id: 'view-fusion',
-    dataBinding: { assetId: CT_ASSET_ID, role: 'base' },
-    spatial: {
-      frameOfReferenceUID: ct.frameOfReferenceUID,
-      orientation: [...ct.metadata.ImageOrientationPatient],
-      viewPlaneNormal: [0, 0, 1],
-      viewUp: [0, 1, 0],
-      referenceLocation: [0, 0, 0],
-      sliceOffsetMm: options.sliceOffsetMm ?? 0,
-    },
-    camera: { ...NEUTRAL_CAMERA },
-    projection: { mode: 'slice' },
-    composition: {
-      mode: 'fusion',
-      blend: 'alpha',
-      layers: [
-        {
-          binding: { assetId: CT_ASSET_ID, role: 'base' },
-          presentation: {
-            voi: [-1000, 1000],
-            colormapId: options.ctColormapId ?? CT_COLORMAP_ID,
-            invert: false,
-            opacity: 1,
-            interpolation: 'linear',
-            modalityPresentation: 'ct',
-          },
-        },
-        {
-          binding: { assetId: PET_ASSET_ID, role: 'overlay' },
-          presentation: {
-            suvRange: [0, 8],
-            colormapId: PET_COLORMAP_ID,
-            invert: false,
-            interpolation: 'linear',
-            modalityPresentation: 'pet',
-          },
-          fusion: { transferMode: 'highlighted', gamma: 1, blendSlider: 50 },
-        },
-      ],
-    },
-    coordinateTransforms: { ...IDENTITY_TRANSFORMS },
-  } as unknown as MedicalViewState;
-}
-
-/** Compiles a fusion plan with the per-asset volume ids and PET binding. */
-export function compileFusion(
-  pet: VolumeIngestionPlan,
-  ct: VolumeIngestionPlan,
-  options: { readonly ctColormapId?: string; readonly sliceOffsetMm?: number } = {},
-) {
-  return compileMedicalViewApplication({
-    state: buildFusionState(pet, ct, options),
-    volumeIds: new Map([
-      [CT_ASSET_ID, ct.volumeId],
-      [PET_ASSET_ID, pet.volumeId],
-    ]),
-    petBindings: new Map([[PET_ASSET_ID as AssetId, PET_BINDING]]),
-  });
-}
-
-/** A fusion plan whose volume ids use a non-NuClear scheme, for the bridge guard. */
-export function nonLocalFusionPlan(pet: VolumeIngestionPlan, ct: VolumeIngestionPlan) {
-  const plan = compileFusion(pet, ct);
-  const layers = plan.layers.map((layer) => ({
-    ...layer,
-    volumeId: `other-scheme:${layer.volumeId}`,
-  }));
-  return { ...plan, layers };
 }
 
 /** Compiles a single CT plan with its own volume id. */

@@ -15,6 +15,7 @@ export type NegativeScenario =
   | 'for-mismatch'
   | 'invalid-transform'
   | 'viewport-size-mismatch'
+  | 'zero-size-viewport'
   | 'unresolved-palette'
   | 'slice-position'
   | 'unsupported-scheme';
@@ -38,6 +39,11 @@ export interface NuclearApplicationProbe {
   viewport(): ApplicationAck;
   applyCt(input: VolumeProbeInput, colormapId?: string, slabThicknessMm?: number): Promise<ApplicationAck>;
   applyFusion(inputs: { ct: VolumeProbeInput; pet: VolumeProbeInput }): Promise<ApplicationAck>;
+  applyCoregFusion(inputs: {
+    ct: VolumeProbeInput;
+    pet: VolumeProbeInput;
+    suvFactor: number;
+  }): Promise<ApplicationAck>;
   negative(
     inputs: { ct: VolumeProbeInput; pet: VolumeProbeInput },
     scenario: NegativeScenario,

@@ -1,16 +1,13 @@
 /**
- * NuClear P3.4-B.2.2.2 — browser-side `ViewApplicationPlan` application probe
- * (test infrastructure).
+ * NuClear P3.4-B.2.2 — browser-side `ViewApplicationPlan` application probe.
  *
  * Bundled by esbuild into `tests/rendering/.harness/` and driven by the
- * controlled WebGL 2 Playwright harness. It starts the real
+ * controlled WebGL 2 Playwright harness: it starts the real
  * `CornerstoneRendererAdapter` with `{ viewportType: 'orthographic' }` on a
  * 512×512 host, loads the committed CT/PT fixtures through the real Node-safe
  * planner, compiles a real fusion/CT plan and applies it through the real
  * `applyViewApplication`. Every result is plain and serializable because custom
- * `Error` fields do not survive `page.evaluate`.
- *
- * This file is NOT product UI and is never reachable from product code.
+ * `Error` fields do not survive `page.evaluate`. Test-only; never product UI.
  */
 
 import { getUseGenericViewport } from '@cornerstonejs/core';
@@ -30,14 +27,18 @@ import {
   PET_ASSET_ID,
   VIEWPORT_SIZE_PX,
   compileCt,
-  compileFusion,
   createSizedHost,
   ctEvidence,
+  planFromInput,
+} from './application-fixture.ts';
+import {
+  compileCoregFusion,
+  compileFusion,
+  coregFusionEvidence,
   fusionEvidence,
   nonLocalFusionPlan,
   petToCtTransform,
-  planFromInput,
-} from './application-fixture.ts';
+} from './application-fusion-fixture.ts';
 
 const ENGINE_ID = 'nuclear-application-probe';
 
@@ -141,6 +142,31 @@ async function applyFusion(inputs: {
   }
 }
 
+/** Applies the positive same-Frame-of-Reference CT+PET fusion (`pt-axial-coreg`). */
+async function applyCoregFusion(inputs: {
+  ct: VolumeProbeInput;
+  pet: VolumeProbeInput;
+  suvFactor: number;
+}): Promise<ApplicationAck> {
+  try {
+    const renderer = ensureAdapter();
+    const ct = planFromInput(inputs.ct);
+    const pet = planFromInput(inputs.pet);
+    renderer.loadVolume(ct);
+    renderer.loadVolume(pet);
+    const plan = compileCoregFusion(pet, ct, inputs.suvFactor);
+    const applied = await applyViewApplication(renderer, {
+      plan,
+      evidence: coregFusionEvidence(ct, pet),
+    });
+    return { ok: true, applied, actorCount: actorCount() };
+  } catch (error) {
+    const ack = describeError(error);
+    ack.actorCount = actorCount();
+    return ack;
+  }
+}
+
 /** Runs one fail-closed negative and reports the typed code and actor count. */
 async function runNegative(
   renderer: CornerstoneRendererAdapter,
@@ -167,6 +193,19 @@ async function negative(
     if (scenario === 'evidence-not-cached') {
       // Evidence claims the CT volume is resident, but it is deliberately never
       // materialized in Cornerstone's cache: only the real cache check can refuse.
+      return await runNegative(renderer, {
+        plan: compileCt(ct),
+        evidence: ctEvidence(ct),
+      });
+    }
+
+    if (scenario === 'zero-size-viewport') {
+      // Materialize a volume, then collapse the live viewport element to zero
+      // pixels so `mountedViewportSize` must refuse before any actor is set.
+      renderer.loadVolume(ct);
+      const viewport = renderer.getViewport() as unknown as { element: HTMLDivElement };
+      viewport.element.style.width = '0px';
+      viewport.element.style.height = '0px';
       return await runNegative(renderer, {
         plan: compileCt(ct),
         evidence: ctEvidence(ct),
@@ -253,6 +292,7 @@ globalThis.__nuclearApplicationProbe = {
   viewport: inspectViewport,
   applyCt,
   applyFusion,
+  applyCoregFusion,
   negative,
   teardown,
 };

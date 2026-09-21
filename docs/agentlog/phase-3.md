@@ -3287,3 +3287,127 @@ New/updated renderer tests (`tests/rendering/view-application.test.ts`):
 
 Proceed to **P3.4-C — ordinary raster capture** as previously recommended,
 keeping the camera refusal explicit in the capture path.
+
+---
+
+# Handover Report — P3.4-B.2.2.5: Positive Same-FoR Fusion Evidence, Zero-Size Viewport Negative, Fixture Split
+
+Engine-only slice. Capture (P3.4-C), `RenderTarget` (P3.5), UI, view-engine and
+`@nuclear/shared-types` were not touched; no product code changed. Nothing was
+staged or committed.
+
+## 1. What Was Implemented
+
+- **Positive same-Frame-of-Reference CT+PET fusion harness test.** The new
+  committed `pt-axial-coreg` fixture (same `StudyInstanceUID` and
+  `FrameOfReferenceUID` as `ct-axial`, own series, `rescaled-bqml`) is loaded
+  beside the CT through the existing fixture-only ingestion path. A real fusion
+  `MedicalViewState` (CT base `gray`; PET overlay `dicom-pet`, `suvRange [0, 8]`,
+  `fusion { transferMode: 'highlighted', gamma: 1, blendSlider: 50 }`) is
+  compiled with `petBindings` keyed by the coreg PET asset id and a binding built
+  from the committed `expected-quantitation.json` `suvFactor` (read in Node and
+  injected into the probe, not hardcoded). Evidence reports both volumes in the
+  CT frame with `[1, 0, 0, 0, 1, 0]` orientation and **no** `spatialTransforms`,
+  so the geometry guard accepts it without a transform. The real Cornerstone
+  read-back asserts both actors, PET `colormap.name === 'PET'`, PET
+  `voiRange.upper ≈ 8 / suvFactor` (1e-6), PET opacity ≈ `0.5 ^ 0.42` (1e-12),
+  PET `opacityMapping` equal to
+  `getPETOpacityMapping(lower, upper, 0, 1, 'highlighted')`, CT `Grayscale`,
+  blend `COMPOSITE`, and empty page/console errors.
+- **Different-FoR refusal retained.** `pt-axial` remains the negative that
+  refuses `VIEW_TRANSFORM_UNSUPPORTED`; all other fail-closed negatives
+  (missing-resident, evidence-not-cached, for-mismatch, invalid-transform,
+  viewport-size-mismatch, unresolved-palette, slice-position,
+  unsupported-scheme) are unchanged.
+- **Zero-size viewport negative.** New `zero-size-viewport` scenario: the
+  scenario materializes the CT volume, collapses the live viewport element to
+  `0×0` px, then applies; `mountedViewportSize` refuses
+  `VIEW_VIEWPORT_READBACK_FAILED` before any actor is set (`getActors().length`
+  is asserted 0) with empty page/console errors. The sized host is untouched;
+  each harness test owns a fresh page.
+- **File-size headroom.** `application-fixture.ts` (299 → 187) splits its
+  fusion helpers into new `application-fusion-fixture.ts` (207); shared Node-side
+  helpers move to new `application-test-support.ts` (129). The new positive suite
+  is `view-application-fusion.test.ts` (89); `view-application.test.ts` is 153
+  and `application-entry.ts` is 299. Every file ≤ 300.
+- **ADR-008 addendum** records the restored positive same-FoR evidence, the
+  committed factor, the no-transform acceptance, and that different-FoR remains
+  refused.
+
+## 2. Files Changed / Created
+
+| File | Lines | Change |
+| --- | --- | --- |
+| `tests/rendering/fixtures/application-fixture.ts` | 187 (was 299) | split: CT-only fixtures; shared constants exported |
+| `tests/rendering/fixtures/application-fusion-fixture.ts` | 207 (new) | fusion evidence/state/plan + coreg positive helpers |
+| `tests/rendering/fixtures/application-entry.ts` | 299 (was 259) | `applyCoregFusion`; `zero-size-viewport`; rewritten imports |
+| `tests/rendering/fixtures/application-probe-types.ts` | 62 (was 56) | `zero-size-viewport`; `applyCoregFusion` probe method |
+| `tests/rendering/fixtures/application-test-support.ts` | 129 (new) | shared Node-side probe/fixture/assert helpers |
+| `tests/rendering/view-application.test.ts` | 153 (was 242) | helpers extracted; zero-size scenario added |
+| `tests/rendering/view-application-fusion.test.ts` | 89 (new) | positive same-FoR fusion read-back suite |
+| `docs/decisions/ADR-008-medical-view-state-application.md` | 397 (was 366) | P3.4-B.2.2.5 addendum |
+| `docs/agentlog/phase-3.md` | this | handover report |
+
+Untouched: all product code under `packages/**`, the Python worker,
+`@nuclear/shared-types`, capture, `RenderTarget`, UI, view-engine.
+
+## 3. Architectural Assumptions Made
+
+- A coincident `FrameOfReferenceUID` is the authoritative co-reference signal,
+  so the committed `pt-axial-coreg` fixture is legitimately fusable with no
+  `SpatialTransform`; supplying one would be inert.
+- The PET binding for the positive is built from the committed quantitation
+  factor rather than re-deriving SUVbw from DICOM fields (ADR-005).
+- The zero-size negative collapses the real mounted element rather than mocking
+  the measurement, exercising the same `viewport.element.clientWidth` path the
+  guard reads in production.
+
+## 4. Tests Added & Executed
+
+New renderer test (`tests/rendering/view-application-fusion.test.ts`):
+- `1. a same-Frame-of-Reference CT+PET fusion sets both actors and reads back the PET palette, range, opacity and mapping`
+
+New renderer negative (`tests/rendering/view-application.test.ts`):
+- `4.zero-size-viewport refuses with VIEW_VIEWPORT_READBACK_FAILED and leaves the viewport unmodified`
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **219 pass / 0 fail** (47 suites) |
+| `node --test --test-concurrency=1 "tests/rendering/**/*.test.ts"` | **59 pass / 0 fail** (13 suites) |
+| `npm run build` | clean (exit 0) |
+
+Asserted PET values (committed `suvFactor = 0.00022864801061323923`):
+`voiRange.upper = 34988.27730249573` Bq/mL and fusion opacity
+`0.7474246243174693` (`0.5 ^ 0.42`).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-008 gains a P3.4-B.2.2.5 addendum.
+- This report satisfies the Agentlog Gate for P3.4-B.2.2.5.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+
+## 6. Project Model Impact
+
+- None. No product type, error code or `.ncp` schema changed; the work is
+  confined to `tests/rendering/**` and documentation.
+
+## 7. Known Limitations & Technical Debt
+
+- Spatial transform application still does not exist, so an inter-study
+  (different-Frame-of-Reference) fusion remains refused with
+  `VIEW_TRANSFORM_UNSUPPORTED`.
+- The positive evidence supplies the CT frame and axial identity orientation for
+  both volumes; it does not re-read each volume's native geometry, though the
+  co-referenced fixture carries exactly that geometry.
+- Renderer evidence remains SwiftShader software WebGL 2; no hardware-GPU gate.
+- Test sources remain outside the `tsc` graph.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-C — ordinary raster capture** as previously recommended:
+capture the medical raster from the applied volume viewport through the adapter
+(no screen-pixel state persisted), verify provenance and dimensions, prove state
+isolation between two views, and keep the camera refusal explicit in the capture
+path. Do not add the temporary high-resolution `RenderTarget` (P3.5), UI or
+view-engine work.

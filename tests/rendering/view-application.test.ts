@@ -6,70 +6,27 @@
  * committed CT/PT fixtures and applies real compiled plans. These tests assert
  * the actual viewport read-back (geometry, palette, opacity, blend mode,
  * orientation) and that every refusal is typed and leaves no volume set.
+ *
+ * The positive same-Frame-of-Reference fusion (committed `pt-axial-coreg`)
+ * lives in `view-application-fusion.test.ts`; shared helpers live in
+ * `fixtures/application-test-support.ts`.
  */
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
-import type { Page } from 'playwright';
 
 import { createRendererHarness } from './fixtures/renderer-harness.mjs';
-
-const APPLICATION_ENTRY_PATH = fileURLToPath(
-  new URL('./fixtures/application-entry.ts', import.meta.url),
-);
+import {
+  APPLICATION_ENTRY_PATH,
+  assertComponentsNear,
+  callProbe,
+  describeAck,
+  readFixture,
+} from './fixtures/application-test-support.ts';
+import type { AppliedState } from './fixtures/application-test-support.ts';
 
 /** Declared MIP slab for the observed read-back test (well above Cornerstone's 0.1 mm clamp). */
 const SLAB_THICKNESS_MM = 12;
-const ORIENTATION_TOLERANCE = 1e-6;
-
-type FixtureName = 'ct-axial' | 'pt-axial';
-
-interface FixtureFiles {
-  fixture: Record<string, unknown>;
-  pixels: Record<string, unknown>;
-  expectedGeometry: Record<string, unknown>;
-}
-
-interface AppliedLayer {
-  assetId: string;
-  volumeId: string;
-  properties: {
-    voiRange: { lower: number; upper: number };
-    colormap: {
-      name: string;
-      opacity: number;
-      opacityMapping?: { value: number; opacity: number }[];
-    };
-    invert: boolean;
-    interpolationType: number;
-  };
-}
-
-interface AppliedState {
-  viewId: string;
-  volumeIds: string[];
-  blendMode: string;
-  slabThicknessMm?: number;
-  requestedOrientation: { viewPlaneNormal: number[]; viewUp: number[] };
-  camera: { viewPlaneNormal: number[]; viewUp: number[] };
-  layers: AppliedLayer[];
-}
-
-interface ApplicationAck {
-  ok: boolean;
-  name?: string;
-  code?: string;
-  message?: string;
-  actorCount?: number;
-  applied?: AppliedState;
-  constructorName?: string;
-  type?: string;
-  useGenericViewport?: boolean;
-  elementSizePx?: number[];
-  methodSurface?: Record<string, boolean>;
-}
 
 const SCENARIOS: readonly { readonly scenario: string; readonly code: string }[] = [
   { scenario: 'missing-resident', code: 'VIEW_VOLUME_NOT_RESIDENT' },
@@ -77,57 +34,11 @@ const SCENARIOS: readonly { readonly scenario: string; readonly code: string }[]
   { scenario: 'for-mismatch', code: 'VIEW_FOR_MISMATCH' },
   { scenario: 'invalid-transform', code: 'VIEW_TRANSFORM_INVALID' },
   { scenario: 'viewport-size-mismatch', code: 'VIEW_VIEWPORT_SIZE_MISMATCH' },
+  { scenario: 'zero-size-viewport', code: 'VIEW_VIEWPORT_READBACK_FAILED' },
   { scenario: 'unresolved-palette', code: 'VIEW_COLORMAP_UNKNOWN' },
   { scenario: 'slice-position', code: 'VIEW_SLICE_POSITION_UNSUPPORTED' },
   { scenario: 'unsupported-scheme', code: 'VIEW_VOLUME_SCHEME_UNSUPPORTED' },
 ];
-
-function readJson(path: URL): Record<string, unknown> {
-  return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
-}
-
-function readFixture(name: FixtureName): FixtureFiles {
-  const dir = new URL(`./fixtures/volumes/${name}/`, import.meta.url);
-  return {
-    fixture: readJson(new URL('fixture.json', dir)),
-    pixels: readJson(new URL('pixels.json', dir)),
-    expectedGeometry: readJson(new URL('expected-geometry.json', dir)),
-  };
-}
-
-function callProbe(page: Page, name: string, args: unknown[]): Promise<ApplicationAck> {
-  return page.evaluate(
-    ({ probeName, probeArgs }: { probeName: string; probeArgs: unknown[] }) => {
-      const scope = globalThis as unknown as {
-        __nuclearApplicationProbe?: Record<string, (...a: unknown[]) => unknown>;
-      };
-      const probe = scope.__nuclearApplicationProbe;
-      if (!probe) {
-        throw new Error('__nuclearApplicationProbe is not installed');
-      }
-      return probe[probeName](...probeArgs);
-    },
-    { probeName: name, probeArgs: args },
-  ) as Promise<ApplicationAck>;
-}
-
-function describeAck(ack: ApplicationAck): string {
-  return `${ack.name ?? ''} ${ack.code ?? ''} ${ack.message ?? ''}`.trim();
-}
-
-function assertNear(actual: number, expected: number, tolerance: number, label: string): void {
-  assert.ok(
-    Math.abs(actual - expected) <= tolerance,
-    `${label}: ${actual} != ${expected} (tolerance ${tolerance})`,
-  );
-}
-
-function assertComponentsNear(actual: number[], expected: number[], label: string): void {
-  assert.equal(actual.length, expected.length, `${label}: arity`);
-  for (let i = 0; i < expected.length; i += 1) {
-    assertNear(actual[i], expected[i], ORIENTATION_TOLERANCE, `${label}[${i}]`);
-  }
-}
 
 describe('NuClear P3.4-B.2.2.2 — Cornerstone volume viewport application', () => {
   it('1. ORTHOGRAPHIC creates a real volume viewport with the volume method surface', async () => {
