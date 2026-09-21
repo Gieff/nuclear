@@ -6,3 +6,4 @@
  */
 
 export * from './view-application.js';
+export * from './capture.js';

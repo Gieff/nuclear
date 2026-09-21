@@ -15,10 +15,15 @@ const {
   CORNERSTONE_INTERPOLATION_TYPES,
   VIEW_APPLICATION_ERROR_CODES,
   ViewApplicationError,
+  CAPTURE_SCALAR_RELATIVE_TOLERANCE,
+  PET_TRANSPORT_SCALAR_DOMAIN,
+  assertPetTransportEvidence,
+  buildCaptureProvenance,
   compileMedicalViewApplication,
   resolveViewColormapName,
   toCornerstoneInterpolationType,
   validateLayerGeometry,
+  validateViewCamera,
   validateViewportSize,
 } = await import('../../../packages/medical-engine/src/view-application/index.ts');
 
@@ -52,10 +57,15 @@ export {
   CORNERSTONE_INTERPOLATION_TYPES,
   VIEW_APPLICATION_ERROR_CODES,
   ViewApplicationError,
+  CAPTURE_SCALAR_RELATIVE_TOLERANCE,
+  PET_TRANSPORT_SCALAR_DOMAIN,
+  assertPetTransportEvidence,
+  buildCaptureProvenance,
   compileMedicalViewApplication,
   resolveViewColormapName,
   toCornerstoneInterpolationType,
   validateLayerGeometry,
+  validateViewCamera,
   validateViewportSize,
   suvRangeToBqml,
   resolvePetQuantitationBinding,
@@ -145,6 +155,41 @@ export const twoPetFusionState: FusionState = {
     mode: 'fusion',
     blend: 'alpha',
     layers: [fusionBaseLayer, fusionPetOverlay, secondPetOverlay],
+  },
+};
+
+// A `multi-layer` composition with two CT/generic layers sharing compatible
+// global properties. P3.4-B routes every multi-layer layer to the
+// CT/generic builder, so capture provenance must report `modality: 'generic'`
+// for every layer (never `'ct'`).
+const multiLayerPresentation = {
+  voi: [-160, 240] as readonly [number, number],
+  colormapId: 'gray',
+  invert: false,
+  opacity: 1,
+  interpolation: 'linear' as const,
+  modalityPresentation: 'ct' as const,
+};
+export const mockMultiLayerView: MedicalViewState = {
+  id: mockMedicalView.id,
+  dataBinding: mockMedicalView.dataBinding,
+  spatial: mockMedicalView.spatial,
+  camera: mockMedicalView.camera,
+  projection: mockMedicalView.projection,
+  coordinateTransforms: mockMedicalView.coordinateTransforms,
+  composition: {
+    mode: 'multi-layer',
+    blend: 'alpha',
+    layers: [
+      {
+        binding: { assetId: mockMedicalView.dataBinding.assetId, role: 'base' },
+        presentation: multiLayerPresentation,
+      },
+      {
+        binding: { assetId: mockMedicalView.dataBinding.assetId, role: 'overlay' },
+        presentation: { ...multiLayerPresentation, opacity: 0.5 },
+      },
+    ],
   },
 };
 

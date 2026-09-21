@@ -17,15 +17,13 @@
  * guessed. Nothing is inferred and no error is swallowed.
  */
 
-import { Enums, cache, registerImageLoader, utilities } from '@cornerstonejs/core';
+import { Enums, cache, registerImageLoader } from '@cornerstonejs/core';
 import type { VolumeViewport } from '@cornerstonejs/core';
 
 import {
   VIEW_APPLICATION_ERROR_CODES,
   ViewApplicationError,
   toCornerstoneInterpolationType,
-  validateLayerGeometry,
-  validateViewportSize,
 } from '../view-application/index.js';
 import type {
   ViewApplicationPlan,
@@ -33,11 +31,7 @@ import type {
   ViewLayerApplication,
 } from '../view-application/index.js';
 import type { CornerstoneRendererAdapter } from './adapter.js';
-import { registerDicomPalettes } from './dicom-palette-registration.js';
-import {
-  assertVolumesCached,
-  mountedViewportSize,
-} from './view-application-guards.js';
+import { LOCAL_VOLUME_SCHEME, runViewApplicationPreconditions } from './view-application-guards.js';
 
 /** Input for one browser-side application of a compiled plan. */
 export interface ApplyViewApplicationInput {
@@ -86,55 +80,12 @@ export interface AppliedViewState {
   readonly layers: readonly AppliedLayerState[];
 }
 
-/** True only for the neutral reference location and zero slice offset. */
-function isNeutralSlice(referenceLocation: readonly number[], sliceOffsetMm: number): boolean {
-  return (
-    referenceLocation[0] === 0 &&
-    referenceLocation[1] === 0 &&
-    referenceLocation[2] === 0 &&
-    sliceOffsetMm === 0
-  );
-}
-
 /** Throws a typed read-back refusal; keeps every missing field fail-closed. */
 function readbackMissing(subject: string, label: string): never {
   throw new ViewApplicationError(
     VIEW_APPLICATION_ERROR_CODES.viewportReadbackFailed,
     `viewport read-back for '${subject}' is missing ${label} after apply`,
   );
-}
-
-/** Verifies every declared colormap resolves in Cornerstone before any mutation. */
-function assertColormapsResolvable(plan: ViewApplicationPlan): void {
-  for (const layer of plan.layers) {
-    const name = layer.properties.colormap.name;
-    if (utilities.colormap.resolveColormap(name) === undefined) {
-      throw new ViewApplicationError(
-        VIEW_APPLICATION_ERROR_CODES.colormapUnknown,
-        `colormap '${name}' for asset '${layer.assetId}' is not resolvable by Cornerstone after DICOM palette registration; refusing before any volume is set`,
-      );
-    }
-  }
-}
-
-/** Refuses any faithful-but-unimplemented slice positioning request. */
-function assertSlicePositionSupported(input: ApplyViewApplicationInput): void {
-  const { plan, slicePosition } = input;
-  if (!isNeutralSlice(plan.spatial.referenceLocation, plan.spatial.sliceOffsetMm)) {
-    throw new ViewApplicationError(
-      VIEW_APPLICATION_ERROR_CODES.slicePositionUnsupported,
-      `view '${plan.viewId}' carries slice referenceLocation [${plan.spatial.referenceLocation.join(', ')}] at offset ${plan.spatial.sliceOffsetMm} mm: faithful slice positioning is not implemented, refusing rather than guessing`,
-    );
-  }
-  if (
-    slicePosition !== undefined &&
-    !isNeutralSlice(slicePosition.referenceLocation, slicePosition.sliceOffsetMm)
-  ) {
-    throw new ViewApplicationError(
-      VIEW_APPLICATION_ERROR_CODES.slicePositionUnsupported,
-      `view '${plan.viewId}' requests an explicit slice position: faithful slice positioning is not implemented, refusing rather than guessing`,
-    );
-  }
 }
 
 /** Reads the actual applied properties of one layer back out of the viewport. */
@@ -172,25 +123,6 @@ function readBackLayer(viewport: VolumeViewport, layer: ViewLayerApplication): A
           : readbackMissing(volumeId, 'interpolationType'),
     },
   };
-}
-
-/**
- * The only volume-id scheme NuClear's local-volume bridge can serve.
- * `createLocalVolume` materializes every slice into Cornerstone's image cache
- * as `<volumeId>_slice_<i>` under this scheme.
- */
-const LOCAL_VOLUME_SCHEME = 'nuclear-volume';
-
-/** Refuses non-local volume ids before any viewport mutation or loader registration. */
-function assertLocalVolumeScheme(plan: ViewApplicationPlan): void {
-  for (const layer of plan.layers) {
-    if (!layer.volumeId.startsWith(`${LOCAL_VOLUME_SCHEME}:`)) {
-      throw new ViewApplicationError(
-        VIEW_APPLICATION_ERROR_CODES.volumeSchemeUnsupported,
-        `volume '${layer.volumeId}' for asset '${layer.assetId}' is not a '${LOCAL_VOLUME_SCHEME}:' local volume; registering an image loader for any other scheme is not allowed`,
-      );
-    }
-  }
 }
 
 /**
@@ -234,14 +166,7 @@ export async function applyViewApplication(
 ): Promise<AppliedViewState> {
   const { plan, evidence } = input;
 
-  assertLocalVolumeScheme(plan);
-  registerDicomPalettes();
-  validateLayerGeometry(plan, evidence);
-  assertVolumesCached(plan);
-  const viewport = adapter.getViewport() as VolumeViewport;
-  validateViewportSize(plan.transforms, mountedViewportSize(viewport));
-  assertColormapsResolvable(plan);
-  assertSlicePositionSupported(input);
+  const viewport = runViewApplicationPreconditions(adapter, plan, evidence, input.slicePosition);
 
   const volumeIds = plan.layers.map((layer) => layer.volumeId);
 

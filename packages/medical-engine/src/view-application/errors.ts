@@ -21,6 +21,7 @@ export const VIEW_APPLICATION_ERROR_CODES = {
   viewportReadbackFailed: 'VIEW_VIEWPORT_READBACK_FAILED',
   perLayerPropertyUnsupported: 'VIEW_PER_LAYER_PROPERTY_UNSUPPORTED',
   volumeSchemeUnsupported: 'VIEW_VOLUME_SCHEME_UNSUPPORTED',
+  scalarDomainUnverified: 'VIEW_SCALAR_DOMAIN_UNVERIFIED',
 } as const;
 
 export type ViewApplicationErrorCode =

@@ -12,8 +12,12 @@ P3.4-B.1 accepted (ADR-007 DICOM palette catalog), P3.4-B.1.1 accepted
 accepted (pure `MedicalViewState` → Cornerstone application compiler),
 P3.4-B.2.1.1 accepted (per-asset PET binding map), P3.4-B.2.2.1 accepted (spatial/transform carrying and
 camera disposition), P3.4-B.2.2.1.1 accepted (full spatial identity +
-fail-closed geometry/FoR validation) and P3.4-B.2.2.2 accepted (browser volume
-viewport application); P3.4-C–P3.6 not started.
+fail-closed geometry/FoR validation), P3.4-B.2.2.2 accepted (browser volume
+viewport application), P3.4-B.2.2.2.x corrections accepted, P3.4-B.2.2.4
+accepted (different-FoR refusal, viewport-measured size, real-cache residency)
+and P3.4-B.2.2.5 accepted (positive same-FoR fusion evidence); P3.4-C accepted
+(ordinary raster capture, provenance, spec §6 transport check and per-state
+isolation; review/QA **PASS**); P3.5–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -3411,3 +3415,226 @@ capture the medical raster from the applied volume viewport through the adapter
 isolation between two views, and keep the camera refusal explicit in the capture
 path. Do not add the temporary high-resolution `RenderTarget` (P3.5), UI or
 view-engine work.
+
+---
+
+# Handover Report — P3.4-C: Ordinary Medical Raster Capture, Provenance and Per-State Isolation
+
+Consolidated report for the three bounded sub-slices P3.4-C.1 (pure descriptor
+and refusals), P3.4-C.2 (real browser capture and spec §6 runtime check) and
+P3.4-C.3 (round-trip and per-view isolation). `RenderTarget`/DPI/export (P3.5),
+figure composition, UI, view-engine and `@nuclear/shared-types` were not
+touched. Cornerstone remains the sole renderer. Nothing was staged or committed
+at the time of writing; the report is appended before the single atomic commit.
+
+## 1. What Was Implemented
+
+- **P3.4-C.1 — pure capture contracts and refusals (Node-safe).**
+  `packages/medical-engine/src/view-application/capture.ts` defines the
+  serializable `MedicalCaptureDescriptor` / `ViewCaptureProvenance` /
+  `ViewCaptureRasterRef` / `ViewCaptureRendererFacts` contracts, the pure
+  `buildCaptureProvenance(plan, layers, blendMode)` builder, the
+  `PET_TRANSPORT_SCALAR_DOMAIN = 'rescaled-bqml'` guard
+  `assertPetTransportEvidence` and the named tolerance
+  `CAPTURE_SCALAR_RELATIVE_TOLERANCE = 1e-6`. `ViewLayerApplication` gained an
+  explicit `modality: 'ct' | 'pet' | 'generic'` routed by the compiler exactly
+  like the existing PET/CT branch (fusion base and single `ct` → `ct`; fusion
+  overlay and single `pet` presentation → `pet`; multi-layer and other
+  presentations → `generic`) — never inferred from asset metadata (ADR-008
+  decision 2). The internal camera validator was exported as
+  `validateViewCamera`; a new typed code `VIEW_SCALAR_DOMAIN_UNVERIFIED` was
+  added.
+- **P3.4-C.2 — real browser capture.**
+  `packages/medical-engine/src/renderer/medical-capture.ts` (browser-only,
+  exported solely from `renderer/index.ts`) implements
+  `captureMedicalRaster(adapter, input)`. The P3.4-B precondition sequence
+  (local-volume scheme → DICOM palette registration → geometry/Frame-of-
+  Reference → real-cache residency → mounted viewport size → colormap
+  resolvability → slice neutrality) was extracted verbatim into
+  `renderer/view-application-guards.ts:runViewApplicationPreconditions`, which
+  both `applyViewApplication` and capture call, so capture cannot observe a
+  viewport state application would itself have refused. Capture additionally
+  enforces, before any pixel read: state/plan identity (`VIEW_STATE_INVALID`),
+  capture-time camera neutrality (`VIEW_CAMERA_UNSUPPORTED`), proof that every
+  plan layer volume is an applied viewport actor (`VIEW_VOLUME_NOT_RESIDENT`)
+  and complete evidence/PET domain (`VIEW_SCALAR_DOMAIN_UNVERIFIED`).
+- **Spec §6 runtime check.** For every PET layer, capture reads the real
+  Cornerstone transport scalars from the volume's own cached slice images
+  (`cache.getVolume(volumeId).imageIds[i]` → `cache.getImage(id).getPixelData()`)
+  and compares them element-wise against the caller-supplied committed payload
+  under 1e-6, refusing `VIEW_SCALAR_DOMAIN_UNVERIFIED` on a wrong domain,
+  missing scalars, length mismatch or out-of-tolerance value. The committed
+  `pt-axial-coreg` payload reads back as 48 float32 scalars spanning
+  `[200000, 247000]` Bq/mL; the `ct-axial` payload as 48 scalars spanning
+  `[-24, 23]` (`rescaled-hu`) — both exactly the committed `pixels.json`.
+- **Raster read-back.** Cornerstone renders into an offscreen WebGL render
+  window (`WebGLContextPool` → `vtkOffscreenMultiRenderWindow`) and blits the
+  result into the visible `canvas.cornerstone-canvas`, a **2D presentation
+  surface** (its `webgl`/`webgl2` contexts are null). Capture awaits
+  Cornerstone's real `Enums.Events.IMAGE_RENDERED` event after
+  `viewport.render()` (bounded timeout → `VIEW_VIEWPORT_READBACK_FAILED`),
+  verifies the canvas corresponds 1:1 to the mounted viewport and reads
+  `getImageData`. No second renderer, no Canvas re-rasterization of medical
+  data, no resize/crop/upscale; no canvas coordinate becomes persisted state.
+- **P3.4-C.3 — round-trip and isolation.** The harness serializes the applied
+  state + compiled plan through JSON, re-applies them to a fresh adapter +
+  viewport and captures again, asserting source binding, camera, presentation,
+  projection, composition and coordinate transforms preserved within 1e-6. Two
+  independent `MedicalViewState`s on two viewports retain their own modality,
+  palette, VOI and viewport-global `invert`/`interpolationType`; palettes are
+  registered globally but per-view state is isolated and no preset default is
+  substituted.
+
+## 2. Files Changed / Created
+
+Product (`@nuclear/medical-engine`):
+| File | Lines | Change |
+| --- | --- | --- |
+| `src/view-application/capture.ts` | 185 (new) | pure descriptor/provenance + PET transport guard |
+| `src/view-application/types.ts` | 130 | `ViewLayerApplication.modality` |
+| `src/view-application/layers.ts` | 205 | modality routing in the builders |
+| `src/view-application/view-application.ts` | 259 | explicit modality routing; `validateViewCamera` exported |
+| `src/view-application/errors.ts` | 50 | `VIEW_SCALAR_DOMAIN_UNVERIFIED` |
+| `src/view-application/index.ts` | 9 | re-export the capture module |
+| `src/renderer/medical-capture.ts` | 299 (new) | browser `captureMedicalRaster` + §6 check |
+| `src/renderer/view-application-guards.ts` | 174 | shared `runViewApplicationPreconditions` (extracted) |
+| `src/renderer/view-application-adapter.ts` | 220 (was 295) | uses the shared sequence; helpers moved out |
+| `src/renderer/index.ts` | 17 | `+ export * from './medical-capture.js'` |
+
+Tests:
+| File | Lines | Change |
+| --- | --- | --- |
+| `tests/view-application/view-application-capture.test.ts` | 297 (new) | pure provenance/refusal/camera/modality tests |
+| `tests/view-application/fixtures/view-application-fixtures.ts` | 209 | exports for the new capture contracts |
+| `tests/rendering/medical-capture.test.ts` | 178 (new) | positive CT/fusion capture + 15 negatives + mutation |
+| `tests/rendering/fixtures/capture-entry.ts` | 289 (new) | browser capture probe |
+| `tests/rendering/fixtures/capture-negative.ts` | 257 (new) | fail-closed scenario builders |
+| `tests/rendering/fixtures/capture-probe-types.ts` | 145 (new) | probe/ack types |
+| `tests/rendering/fixtures/capture-test-support.ts` | 37 (new) | Node-side probe helpers |
+| `tests/rendering/fixtures/capture-roundtrip.ts` | 261 (new) | round-trip/isolation runners |
+| `tests/rendering/medical-capture-roundtrip.test.ts` | 195 (new) | round-trip/isolation tests |
+
+Docs: `docs/decisions/ADR-008-medical-view-state-application.md` (P3.4-C
+addendum) and this report.
+
+Untouched: `@nuclear/shared-types`, the Python worker, UI, view-engine,
+figure-engine, `CHANGELOG.md`, the version (`0.1.2`).
+
+## 3. Architectural Assumptions Made
+
+- The compiled `ViewApplicationPlan` remains the single renderer-facing state;
+  capture consumes the same plan that was applied and adds only the
+  camera-bearing `MedicalViewState` (needed because the plan intentionally does
+  not carry camera) plus caller-declared transport evidence.
+- The shared precondition extraction is the guard-order guarantee: capture and
+  apply cannot drift, and a refused capture leaves the applied viewport and
+  camera untouched (proven by the mutation test).
+- Cornerstone's visible canvas is the presentation surface of the same
+  rendering path; reading it is not a second renderer. The offscreen GL canvas
+  is not part of Cornerstone's public API and was deliberately not reached
+  into.
+- The render-await is Cornerstone's own `IMAGE_RENDERED` event because
+  `viewport.render()` only schedules the frame; reading synchronously yields a
+  black raster.
+- `modality` is an explicitly routed plan fact, never read from asset metadata
+  (ADR-008 decision 2).
+- Capture is a pure reader: it writes no state and returns a serializable
+  descriptor; screen-pixel values cannot become persisted medical state.
+
+## 4. Tests Added & Executed
+
+Added pure tests (8, `tests/view-application/view-application-capture.test.ts`):
+provenance carried verbatim; two-layer fusion provenance; PET wrong-domain and
+missing/non-finite scalar refusals; missing evidence refusal; camera neutrality;
+modality routing for single/fusion/multi-layer; transport-guard no-op for non-
+PET.
+
+Added harness tests (18, `tests/rendering/medical-capture.test.ts`): native
+512×512 RGBA single-CT capture with full provenance and the real CT transport
+fingerprint; same-FoR CT+PET fusion §6 certification against the committed
+payload; 15 fail-closed negatives; a refused guard-order capture proven not to
+mutate the applied viewport/camera.
+
+Added harness tests (2, `tests/rendering/medical-capture-roundtrip.test.ts`):
+capture/restore round-trip; two-view isolation.
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **247 pass / 0 fail** (52 suites) |
+| `node --test --test-concurrency=1 "tests/rendering/**/*.test.ts"` | **79 pass / 0 fail** (15 suites) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:python` | **189 passed** |
+| `npm run typecheck:python` | clean over 47 files |
+| `node --test tests/medical/worker-source-integrity.test.ts` | **2 pass / 0 fail** |
+
+Negatives exercised (15 scenarios → 11 codes): `VIEW_VOLUME_NOT_RESIDENT`
+(not-applied, missing-resident, evidence-not-cached), `VIEW_CAMERA_UNSUPPORTED`
+(non-neutral camera), `VIEW_SLICE_POSITION_UNSUPPORTED`, `VIEW_FOR_MISMATCH`,
+`VIEW_TRANSFORM_INVALID`, `VIEW_TRANSFORM_UNSUPPORTED` (different-FoR with a
+valid transform), `VIEW_COLORMAP_UNKNOWN`, `VIEW_VIEWPORT_SIZE_MISMATCH`,
+`VIEW_VIEWPORT_READBACK_FAILED` (zero-size element), `VIEW_VOLUME_SCHEME_UNSUPPORTED`
+(unsupported scheme and guard-order), `VIEW_SCALAR_DOMAIN_UNVERIFIED`
+(PET scalar mismatch, PET domain mismatch).
+
+Named tolerances: `CAPTURE_SCALAR_RELATIVE_TOLERANCE = 1e-6` for the §6
+transport comparison (relative; exact at 0); `ROUND_TRIP_TOLERANCE = 1e-6` for
+round-trip vectors. Raster bytes are not compared across runs (software
+rasterizer; per the Phase 3 policy, byte-identical RGBA across drivers is not
+required).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-008 gains the P3.4-C addendum recording the descriptor/provenance split,
+  the shared precondition sequence, the capture-time camera refusal, the spec §6
+  transport check, the read-back mechanism and the exclusions.
+- This report satisfies the Agentlog Gate for P3.4-C.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Independent `nuclear-reviewer` verdict: **PASS** (zero blocking findings).
+  Independent `nuclear-qa` verdict: **PASS** on the technical scope; the only
+  failing applicable gate at QA time was the Agentlog Gate, resolved by this
+  report. Hardware-GPU raster evidence remains `NOT YET APPLICABLE`.
+
+## 6. Project Model Impact
+
+- One new Node-visible error code (`VIEW_SCALAR_DOMAIN_UNVERIFIED`) and one
+  additive field on the internal `ViewLayerApplication` plan type (`modality`).
+  The pure capture module is exported from the package barrel (it has no
+  Cornerstone import); the browser capture module is exported only from
+  `renderer/index.ts`. No `@nuclear/shared-types` or `.ncp` change.
+
+## 7. Known Limitations & Technical Debt
+
+- **Camera coherence is declared-state only.** Capture re-asserts
+  `validateViewCamera(state.camera)` but does not compare the live
+  `viewport.getCamera()` against the declared state. `applyViewApplication`
+  sets orientation only from the plan, so the declared camera is the sole
+  authority until the interaction layer exists; capture must compare the live
+  camera once pan/zoom interaction lands.
+- **Non-neutral camera, non-neutral slice and different-FoR transforms remain
+  refused or merely carried.** Ordinary capture is not a claim that P3.4 is
+  complete or that P3.5 export exists.
+- **Isolation uses two adapters (two engines) rather than two viewports in one
+  engine.** Criterion satisfied literally and global `invert`/
+  `interpolationType` are proven distinct; the same-engine variant would be
+  stronger evidence and is a follow-up.
+- **`medical-capture.ts` is 299/300 lines** and `renderer/adapter.ts` is exactly
+  300 — the next additions must decompose (e.g. extract the §6 scalar
+  verification into its own module).
+- **Duplicate `assetId` entries in `input.layers` silently last-win** in the
+  evidence map; a malformed-input hardening opportunity, not reachable from the
+  contract-validated plan.
+- **All raster evidence is SwiftShader software WebGL 2**
+  (`softwareRasterizer: true`, maxTextureSize 8192); hardware-GPU behaviour is
+  `NOT YET APPLICABLE`. `npm run build` is `tsc -b` only; a true production
+  bundle gate remains `NOT YET APPLICABLE` until the desktop shell.
+- Test sources remain outside the `tsc` graph (inherited P3.0 debt).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.5-A — temporary high-resolution `RenderTarget` primitive**: an
+offscreen Cornerstone target sized by `round(mm / 25.4 * DPI)`, applying the
+same `MedicalViewState` and capture path, returning a native-size non-empty
+raster without mutating the live canvas dimensions/camera, with typed
+allocation-failure and disposal. Do not add figure composition, TIFF/PNG
+flattening, hybrid PDF, UI or view-engine work in P3.5-A.

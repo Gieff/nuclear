@@ -100,12 +100,14 @@ function unsupportedCameraFields(camera: CameraState): string[] {
 }
 
 /**
- * Refuses, as a deliberate typed decision, any camera other than the neutral
- * declaration. Mapping a live camera faithfully is not yet implemented
- * (P3.4-B.2.2), so the compiler refuses instead of silently dropping or
- * inventing zoom/pan/rotation/focal/fit semantics.
+ * Pure camera validator (P3.4-C.1): refuses, as a deliberate typed decision,
+ * any camera other than the neutral declaration. Mapping a live camera
+ * faithfully is not yet implemented (P3.4-B.2.2), so the compiler refuses
+ * instead of silently dropping or inventing zoom/pan/rotation/focal/fit
+ * semantics. Exported so the capture path can re-assert the same disposition
+ * without duplicating the rule.
  */
-function assertCameraSupported(camera: CameraState): void {
+export function validateViewCamera(camera: CameraState): void {
   const unsupported = unsupportedCameraFields(camera);
   if (unsupported.length > 0) {
     refuse(
@@ -189,7 +191,7 @@ export function compileMedicalViewApplication(
   const composition = state.composition;
   const layers: ViewLayerApplication[] = [];
 
-  assertCameraSupported(state.camera);
+  validateViewCamera(state.camera);
 
   if (composition.mode === 'single') {
     if (!('presentation' in state)) {
@@ -209,7 +211,13 @@ export function compileMedicalViewApplication(
             petBindings,
             volumeIds,
           )
-        : buildCtLayer(binding.assetId, binding.role, presentation, volumeIds),
+        : buildCtLayer(
+            binding.assetId,
+            binding.role,
+            presentation,
+            volumeIds,
+            presentation.modalityPresentation === 'ct' ? 'ct' : 'generic',
+          ),
     );
   } else if (composition.mode === 'fusion') {
     const [base, ...overlays] = composition.layers;
@@ -219,6 +227,7 @@ export function compileMedicalViewApplication(
         base.binding.role,
         base.presentation,
         volumeIds,
+        'ct',
       ),
     );
     for (const overlay of overlays) {
@@ -232,6 +241,7 @@ export function compileMedicalViewApplication(
           layer.binding.role,
           layer.presentation,
           volumeIds,
+          'generic',
         ),
       );
     }

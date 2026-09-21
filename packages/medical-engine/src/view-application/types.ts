@@ -29,6 +29,12 @@ export interface ViewLayerApplication {
   readonly assetId: string;
   readonly volumeId: string;
   readonly role: 'base' | 'overlay';
+  /**
+   * Explicit, plan-level modality routing (ADR-008 decision 2): never inferred
+   * from asset metadata or scalar ranges. A PET layer is the only layer that
+   * carries a Bq/mL transport obligation.
+   */
+  readonly modality: 'ct' | 'pet' | 'generic';
   readonly properties: {
     readonly voiRange: { readonly lower: number; readonly upper: number };
     readonly colormap: ViewColormapApplication;

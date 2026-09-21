@@ -395,3 +395,86 @@ application is not implemented. The other fail-closed negatives are unchanged,
 and a new zero-pixel-size viewport negative confirms `mountedViewportSize`
 refuses `VIEW_VIEWPORT_READBACK_FAILED` before any viewport mutation.
 
+## Addendum — P3.4-C (ordinary raster capture, provenance and per-state isolation)
+
+P3.4-C adds an ordinary, UI-agnostic medical raster capture capability on the
+**same rendering path** already used by `applyViewApplication`. It is not the
+temporary high-resolution `RenderTarget` (P3.5) and it introduces no second
+renderer, no Canvas re-rasterization of medical data and no export fallback.
+
+**Pure descriptor vs browser capture.** The serializable descriptor and
+provenance contracts, the pure provenance builder and the PET transport-domain
+guard live in `view-application/capture.ts` (Node-safe, no Cornerstone) and are
+exported from the package barrel. `renderer/medical-capture.ts` is browser-only,
+imports `@cornerstonejs/core` and is exported solely from `renderer/index.ts`.
+
+`captureMedicalRaster(adapter, input)` returns a `MedicalCaptureDescriptor`
+with: the view id; **native pixel dimensions measured from the mounted viewport
+element** (never caller-declared); the RGBA raster (`width`, `height`,
+`format:'rgba8'`, `byteLength`, `nonEmptyPixelCount`, base64 bytes); semantic
+provenance (`viewId`, per layer `assetId`/`volumeId`/`role`/`modality`/palette
+name/scalar domain/VOI range, the view blend mode and the applied orientation);
+and renderer facts (`renderer`, `softwareRasterizer`). No canvas coordinate,
+DOM handle or screen-pixel value becomes persisted medical state.
+
+**Layer modality is explicit in the plan.** `ViewLayerApplication` gained
+`modality: 'ct' | 'pet' | 'generic'`, routed by the compiler exactly like the
+existing PET/CT branch (fusion overlay and single `pet` presentation → `pet`;
+fusion base and single `ct` → `ct`; multi-layer and other presentations →
+`generic`). This is an additive plan fact, never inferred from asset metadata
+(decision 2 above).
+
+**Capture preserves every P3.4-B refusal.** The P3.4-B precondition sequence
+(local-volume scheme → DICOM palette registration → geometry/Frame-of-Reference
+→ real-cache residency → mounted viewport size → colormap resolvability → slice
+neutrality) is extracted verbatim into
+`renderer/view-application-guards.ts:runViewApplicationPreconditions`, which
+both `applyViewApplication` and `captureMedicalRaster` call, so capture cannot
+observe a viewport that state application would itself have refused.
+`captureMedicalRaster` additionally enforces, before any pixel read: state/plan
+identity (`VIEW_STATE_INVALID`), capture-time camera neutrality
+(`validateViewCamera` → `VIEW_CAMERA_UNSUPPORTED`), proof that every plan layer
+volume is an applied viewport actor (`VIEW_VOLUME_NOT_RESIDENT`), and complete
+capture evidence/PET transport domain (`VIEW_SCALAR_DOMAIN_UNVERIFIED`).
+Consequently there is **no capture** for a non-neutral camera, a non-neutral
+slice or a different-Frame-of-Reference layer, and a refused capture never
+mutates the applied viewport or camera.
+
+**Spec §6 runtime check.** For every PET layer, `captureMedicalRaster` reads the
+real Cornerstone transport scalars from the volume's own cached slice images
+(`cache.getVolume(volumeId).imageIds[i]` → `cache.getImage(id).getPixelData()`)
+and compares them element-wise against the caller-supplied committed payload
+under the named relative tolerance `CAPTURE_SCALAR_RELATIVE_TOLERANCE` (1e-6).
+A wrong declared domain, missing scalars, length mismatch or out-of-tolerance
+value refuses `VIEW_SCALAR_DOMAIN_UNVERIFIED`, so a PET raster is only certified
+when Cornerstone actually exposes the `rescaled-bqml` values. The committed
+`pt-axial-coreg` fixture reads back exactly `[200000, 247000]` across 48
+scalars.
+
+**Raster read-back.** Cornerstone renders into an offscreen WebGL render window
+(`WebGLContextPool` → `vtkOffscreenMultiRenderWindow`) and blits the result into
+the visible `canvas.cornerstone-canvas`, which is a **2D presentation surface**
+(its `webgl`/`webgl2` contexts are null). Capture awaits Cornerstone's real
+`Enums.Events.IMAGE_RENDERED` event after `viewport.render()` (a bounded timeout
+refuses `VIEW_VIEWPORT_READBACK_FAILED`), verifies the canvas corresponds 1:1 to
+the measured viewport, and reads `getImageData`. This is reading the renderer's
+own output; it is not a Canvas approximation and it never resizes, crops or
+upscales the live canvas.
+
+**Round-trip and isolation.** The controlled harness serializes the applied
+state + compiled plan through JSON, re-applies them to a fresh adapter +
+viewport and captures again; source binding, camera, presentation, projection,
+composition and coordinate transforms are preserved within 1e-6. Two
+independent `MedicalViewState`s captured on two viewports keep their own
+palette, VOI, `modality` and viewport-global `invert`/`interpolationType`; the
+globally registered palettes are shared but per-view state is not, and no preset
+default is substituted.
+
+New refusal code: `VIEW_SCALAR_DOMAIN_UNVERIFIED`.
+
+**Explicitly excluded** (unchanged): the temporary high-resolution
+`RenderTarget` and DPI/export policy (P3.5); figure composition, annotations,
+TIFF/PNG flattening, hybrid PDF (P3.5 / Phase 5); UI, view-engine and the
+desktop shell; resampling, registration or new scientific algorithms; any
+`@nuclear/shared-types` change.
+

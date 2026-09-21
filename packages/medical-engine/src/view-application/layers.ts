@@ -122,6 +122,7 @@ export function buildCtLayer(
   role: BindingRole,
   presentation: PresentationState,
   volumeIds: ReadonlyMap<string, string>,
+  modality: 'ct' | 'generic',
 ): ViewLayerApplication {
   const volumeId = resolveVolumeId(assetId, volumeIds);
   const range = requireFiniteRange(presentation.voi, `voi for asset '${assetId}'`);
@@ -129,6 +130,7 @@ export function buildCtLayer(
     assetId,
     volumeId,
     role: requireRenderRole(role, assetId),
+    modality,
     properties: {
       voiRange: { lower: range[0], upper: range[1] },
       colormap: {
@@ -155,6 +157,7 @@ export function buildSinglePetLayer(
     assetId,
     volumeId,
     role: requireRenderRole(role, assetId),
+    modality: 'pet',
     properties: {
       voiRange: { lower: range[0], upper: range[1] },
       colormap: {
@@ -187,6 +190,7 @@ export function buildFusionOverlayLayer(
     assetId,
     volumeId,
     role: requireRenderRole(layer.binding.role, assetId),
+    modality: 'pet',
     properties: {
       voiRange: { lower: range[0], upper: range[1] },
       colormap: {
