@@ -8,9 +8,9 @@ under ADR-005), P3.4-A.2 accepted (ADR-006 per-layer fusion `MedicalViewState`
 contract), P3.4-A.3 accepted (corrective single-source PET overlay opacity) and
 P3.4-A.3bis accepted (representability precision); P3.4-B in progress —
 P3.4-B.1 accepted (ADR-007 DICOM palette catalog), P3.4-B.1.1 accepted
-(canonical colormap id, whole-LUT digest, registration dedupe) and P3.4-B.2.1
-accepted (pure `MedicalViewState` → Cornerstone application compiler);
-P3.4-B.2.2–P3.6 not started.
+(canonical colormap id, whole-LUT digest, registration dedupe), P3.4-B.2.1
+accepted (pure `MedicalViewState` → Cornerstone application compiler) and
+P3.4-B.2.1.1 accepted (per-asset PET binding map); P3.4-B.2.2–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -2290,3 +2290,123 @@ with CT/PT/fusion positives and the addendum's fail-closed negatives
 (non-resident/unbound volume, geometry/FoR mismatch, unresolved palette). Treat
 the certified `PresetError`/`PetBindingError` as an owned boundary. Do not add
 `RenderTarget` (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.4-B.2.1.1: Per-Asset PET Binding Map (corrective)
+
+## 1. What Was Implemented
+
+A clinical-architectural review found that `FusionCompositionState` allows
+multiple PET overlays while `ViewApplicationInput` exposed a single
+`petBinding`, so a multi-PET fusion would have applied one asset's `suvFactor`
+to every overlay — a wrong quantitative factor. This corrective replaces it.
+
+- **Per-asset bindings.** `ViewApplicationInput.petBindings` is now a required
+  `ReadonlyMap<AssetId, QuantitativePetBinding>`; every PET layer (single PET or
+  each fusion overlay) resolves **its own** entry by `assetId`. A missing entry
+  refuses `VIEW_PET_BINDING_REQUIRED` naming that asset; there is **no
+  cross-asset fallback** (the message says so explicitly).
+- **Tests.** Added: a two-PET fusion applying two different `suvFactor`s with
+  per-overlay VOI/opacity/mapping isolation; a map missing only the second
+  overlay; and a single PET asset absent from the map while a foreign guest is
+  present (proves no fallback).
+- **ADR-008 addendum** records the per-asset rule and explicitly scopes the
+  pure plan to layer properties + projection, stating that **`SpatialState`,
+  `CameraState` and `CoordinateTransformSet` are not yet represented and must be
+  applied or explicitly refused by P3.4-B.2.2** (the whole `MedicalViewState`
+  must be semantically applied, never silently dropped).
+- **Test-file split.** The compiler test file had grown to 456 lines; it was
+  split into a shared fixtures module plus two suites (all ≤300 lines), with all
+  16 tests preserved verbatim.
+
+## 2. Files Changed / Created
+
+Modified:
+- `packages/medical-engine/src/view-application/types.ts` (86)
+- `packages/medical-engine/src/view-application/layers.ts` (201)
+- `packages/medical-engine/src/view-application/view-application.ts` (121)
+- `docs/decisions/ADR-008-medical-view-state-application.md` (addendum)
+
+Created (test split):
+- `tests/view-application/fixtures/view-application-fixtures.ts` (158)
+- `tests/view-application/view-application-single-layer.test.ts` (142)
+- `tests/view-application/view-application-fusion.test.ts` (243)
+
+Deleted:
+- `tests/view-application/view-application.test.ts` (456 — replaced by the two
+  suites above)
+
+Unchanged: `@nuclear/shared-types`, the renderer, palette/radiometry modules,
+`CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- `petBindings` is required (not optional): every compile call supplies the map,
+  even for CT-only views. This is an in-package API change with no consumers
+  outside `medical-engine` and its tests.
+- The map key is the branded `AssetId`; the layer builders hold plain strings,
+  so a type-level cast bridges them (no runtime risk).
+- The certified `PresetError`/`PetBindingError` propagation remains as ADR-008
+  declares; B.2.2 owns that boundary if needed.
+
+## 4. Tests Added & Executed
+
+Added: 3 per-asset binding tests (16 total in the split suites).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **186 pass / 0 fail** (40 suites; 183 prior + 3) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:renderer` | **45 pass / 0 fail** (rerun after the known harness flake) |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| P2.5 source integrity | **2/2** |
+
+The reviewer mutation-tested the lookup (forcing a fallback to the first map
+value) and confirmed tests 15/16 fail while test 14 stays green — the sentinel
+design is correct.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-008 addendum records the per-asset rule and the B.2.2 spatial/camera/
+  transform obligation.
+- This report satisfies the AgentLog Gate for P3.4-B.2.1.1.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: **PASS** (one advisory on the now-split test-file length,
+  resolved here).
+- QA verdict: **PASS** on all applicable gates (typecheck, Node 186/186,
+  compiler suite 16/16, build, renderer 45/45 after one reproduced flake,
+  Python 178, mypy 45, integrity 2/2); the only pending row was this report.
+
+## 6. Project Model Impact
+
+- In-package compiler input shape changed (`petBinding` → `petBindings`);
+  no shared-types/`.ncp` change.
+
+## 7. Known Limitations & Technical Debt
+
+- The compiler's PET path does not yet cover `SpatialState`, `CameraState` or
+  `CoordinateTransformSet`; B.2.2 must apply or explicitly refuse them.
+- Certified `PresetError`/`PetBindingError` propagate outside the
+  `ViewApplicationError` vocabulary (ADR-008 declares this).
+- `multi-layer` and `reference`-role refusals remain implemented but not
+  directly tested.
+- Test sources remain outside the `tsc` graph; intermittent renderer-harness
+  startup flake remains (rerun green).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-B.2.2 — browser volume viewport and application**: empirically
+establish the volume viewport type (`ViewportType.ORTHOGRAPHIC` resolves to the
+modern planar path in 5.10.7 — verify, do not assume), add the adapter
+capability, register the ADR-007 palettes, and apply a compiled
+`ViewApplicationPlan` via `setVolumes` + per-volume `setProperties` (using
+`toCornerstoneInterpolationType`) + `setBlendMode`/`setSlabThickness`. The
+viewport must also **semantically apply or explicitly refuse** `SpatialState`,
+`CameraState` and `CoordinateTransformSet` — not merely VOI/colormap/projection.
+Assert the applied state via Cornerstone getters with CT/PT/fusion positives and
+the addendum's fail-closed negatives (non-resident/unbound volume, geometry/FoR
+mismatch, unresolved palette). Do not add `RenderTarget` (P3.5), UI or
+view-engine work.

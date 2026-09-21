@@ -77,3 +77,36 @@ required — and it must be testable without a GPU.
   allowlist explicitly with tests.
 - If `multi-layer` gains non-PET transfer semantics, model them explicitly
   rather than reusing the PET path.
+
+## Addendum — P3.4-B.2.1.1 (per-asset PET binding map)
+
+A `MedicalViewState.composition` may carry more than one PET overlay
+(`FusionCompositionState.layers`), so one view-level binding is unsound: it
+would silently apply one asset's `suvFactor` to another asset's overlay.
+
+- `ViewApplicationInput.petBindings` is therefore a **required**
+  `ReadonlyMap<AssetId, QuantitativePetBinding>`. Every PET layer resolves its
+  binding by its own `binding.assetId`; a layer with no entry is refused with
+  `VIEW_PET_BINDING_REQUIRED` naming that asset. There is **no cross-asset
+  fallback** — the compiler never substitutes another asset's binding, and it
+  still never derives a factor from `asset.metadata`.
+- A compiled plan is per-layer: each PET overlay's `voiRange`, overall opacity
+  (`getFusionOpacity(blendSlider)`) and `opacityMapping`
+  (`getPETOpacityMapping`) are computed independently from that overlay's own
+  binding, transfer and declared range.
+
+### Scope of the current pure plan
+
+The pure compiler currently covers **layer properties and projection only**.
+The contract requires the whole `MedicalViewState` to be semantically applied,
+and three state blocks are not yet represented in `ViewApplicationPlan`:
+
+- `SpatialState`
+- `CameraState`
+- `CoordinateTransformSet`
+
+These must be **applied or explicitly refused by P3.4-B.2.2**; they must not be
+silently dropped. In particular, `CoordinateTransformSet` is the explicit
+coordinate-space bridge (patient LPS mm → view-plane mm → viewport render
+pixels), and `CameraState.panMm`/`focalPointMm` are measured in view-plane
+millimetres, never screen pixels.

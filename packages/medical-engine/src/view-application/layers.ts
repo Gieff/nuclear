@@ -10,6 +10,7 @@
  */
 
 import type {
+  AssetId,
   BindingRole,
   FusionOverlayLayer,
   PresentationState,
@@ -76,12 +77,13 @@ function requireRenderRole(role: BindingRole, assetId: string): 'base' | 'overla
 
 function requirePetBinding(
   assetId: string,
-  petBinding: QuantitativePetBinding | undefined,
+  petBindings: ReadonlyMap<AssetId, QuantitativePetBinding>,
 ): QuantitativePetBinding {
+  const petBinding = petBindings.get(assetId as AssetId);
   if (petBinding === undefined) {
     refuse(
       VIEW_APPLICATION_ERROR_CODES.petBindingRequired,
-      `PET layer for asset '${assetId}' requires an ADR-005 QuantitativePetBinding; the fusion path never derives one`,
+      `PET layer for asset '${assetId}' has no entry in petBindings; provide its ADR-005 QuantitativePetBinding keyed by assetId (another asset's binding is never substituted)`,
     );
   }
   return petBinding;
@@ -143,10 +145,10 @@ export function buildSinglePetLayer(
   assetId: string,
   role: BindingRole,
   presentation: PresentationState,
-  petBinding: QuantitativePetBinding | undefined,
+  petBindings: ReadonlyMap<AssetId, QuantitativePetBinding>,
   volumeIds: ReadonlyMap<string, string>,
 ): ViewLayerApplication {
-  const binding = requirePetBinding(assetId, petBinding);
+  const binding = requirePetBinding(assetId, petBindings);
   const volumeId = resolveVolumeId(assetId, volumeIds);
   const range = resolvePetTransportRange(presentation, binding, assetId);
   return {
@@ -167,11 +169,11 @@ export function buildSinglePetLayer(
 
 export function buildFusionOverlayLayer(
   layer: FusionOverlayLayer,
-  petBinding: QuantitativePetBinding | undefined,
+  petBindings: ReadonlyMap<AssetId, QuantitativePetBinding>,
   volumeIds: ReadonlyMap<string, string>,
 ): ViewLayerApplication {
   const assetId = layer.binding.assetId;
-  const binding = requirePetBinding(assetId, petBinding);
+  const binding = requirePetBinding(assetId, petBindings);
   const volumeId = resolveVolumeId(assetId, volumeIds);
   const range = resolvePetTransportRange(layer.presentation, binding, assetId);
   const opacityMapping = getPETOpacityMapping(

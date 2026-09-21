@@ -9,7 +9,11 @@
  * `toCornerstoneInterpolationType`. This module imports no Cornerstone.
  */
 
-import type { MedicalViewState, ProjectionMode } from '@nuclear/shared-types';
+import type {
+  AssetId,
+  MedicalViewState,
+  ProjectionMode,
+} from '@nuclear/shared-types';
 import type { QuantitativePetBinding } from '../radiometry/index.js';
 
 export interface ViewColormapApplication {
@@ -55,8 +59,12 @@ export interface ViewApplicationInput {
   readonly state: MedicalViewState;
   /** assetId -> validated Cornerstone volumeId. */
   readonly volumeIds: ReadonlyMap<string, string>;
-  /** ADR-005 binding; required for every PET layer, never inferred. */
-  readonly petBinding?: QuantitativePetBinding;
+  /**
+   * ADR-005 binding per PET asset; every PET layer must find its own entry
+   * keyed by its `assetId`. Required: a missing map is a caller error, and a
+   * layer with no entry is refused rather than falling back to another asset.
+   */
+  readonly petBindings: ReadonlyMap<AssetId, QuantitativePetBinding>;
 }
 
 /**

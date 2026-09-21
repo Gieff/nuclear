@@ -55,14 +55,15 @@ export type { CornerstoneInterpolationType } from './types.js';
 
 /**
  * Compiles a `MedicalViewState` into a serializable Cornerstone application
- * plan. Refuses fail-closed on an unbound asset, a PET layer without an
- * ADR-005 binding, an unresolvable colormap, an ambiguous/missing PET range,
- * a missing CT window and a non-slice projection without a positive slab.
+ * plan. Refuses fail-closed on an unbound asset, a PET layer whose own
+ * `assetId` has no ADR-005 binding in `petBindings` (no cross-asset fallback),
+ * an unresolvable colormap, an ambiguous/missing PET range, a missing CT
+ * window and a non-slice projection without a positive slab.
  */
 export function compileMedicalViewApplication(
   input: ViewApplicationInput,
 ): ViewApplicationPlan {
-  const { state, volumeIds, petBinding } = input;
+  const { state, volumeIds, petBindings } = input;
   const composition = state.composition;
   const layers: ViewLayerApplication[] = [];
 
@@ -81,7 +82,7 @@ export function compileMedicalViewApplication(
             binding.assetId,
             binding.role,
             presentation,
-            petBinding,
+            petBindings,
             volumeIds,
           )
         : buildCtLayer(binding.assetId, binding.role, presentation, volumeIds),
@@ -97,7 +98,7 @@ export function compileMedicalViewApplication(
       ),
     );
     for (const overlay of overlays) {
-      layers.push(buildFusionOverlayLayer(overlay, petBinding, volumeIds));
+      layers.push(buildFusionOverlayLayer(overlay, petBindings, volumeIds));
     }
   } else {
     for (const layer of composition.layers) {
