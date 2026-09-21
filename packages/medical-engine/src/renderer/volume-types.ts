@@ -18,27 +18,23 @@ import type { WorkerGeometryResult } from '../worker/types.js';
 /** Physical interpretation of the decoded scalar-data array. */
 export type ScalarDataDomain = 'stored-values' | 'rescaled-hu' | 'rescaled-bqml';
 
-/** Typed arrays accepted as local-volume scalar data. */
+/**
+ * Typed arrays accepted as local-volume scalar data.
+ *
+ * Restricted to exactly the five constructors `@cornerstonejs/core@5.10.7`
+ * `volumeLoader.createLocalVolume` can derive a `byteLength` for; an Int32Array,
+ * Uint32Array or Float64Array reaches the cache with an undefined `byteLength`
+ * and fails with a raw error instead of a typed refusal (P3.2.1).
+ */
 export type VolumeScalarArray =
   | Int8Array
   | Uint8Array
   | Int16Array
   | Uint16Array
-  | Int32Array
-  | Uint32Array
-  | Float32Array
-  | Float64Array;
+  | Float32Array;
 
 /** Declared element type of the payload (never inferred from a path or range). */
-export type VolumeScalarDataType =
-  | 'int8'
-  | 'uint8'
-  | 'int16'
-  | 'uint16'
-  | 'int32'
-  | 'uint32'
-  | 'float32'
-  | 'float64';
+export type VolumeScalarDataType = 'int8' | 'uint8' | 'int16' | 'uint16' | 'float32';
 
 /** Declared signedness of the payload. `not-applicable` is used by float types. */
 export type VolumeSignedness = 'signed' | 'unsigned' | 'not-applicable';

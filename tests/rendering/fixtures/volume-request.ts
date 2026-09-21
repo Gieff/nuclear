@@ -101,9 +101,18 @@ export function decodeScalarData(pixels: RawPixels): VolumeScalarArray {
   const bytes = Buffer.from(pixels.values, 'base64');
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   switch (pixels.dtype) {
+    case 'int8':
+      return new Int8Array(bytes);
+    case 'uint8':
+      return new Uint8Array(bytes);
     case 'int16': {
       const out = new Int16Array(bytes.byteLength / 2);
       for (let i = 0; i < out.length; i += 1) out[i] = view.getInt16(i * 2, true);
+      return out;
+    }
+    case 'uint16': {
+      const out = new Uint16Array(bytes.byteLength / 2);
+      for (let i = 0; i < out.length; i += 1) out[i] = view.getUint16(i * 2, true);
       return out;
     }
     case 'float32': {
@@ -112,7 +121,8 @@ export function decodeScalarData(pixels: RawPixels): VolumeScalarArray {
       return out;
     }
     default:
-      throw new Error(`unsupported fixture dtype '${pixels.dtype}'`);
+      // Runtime guard for a cast that bypasses the restricted contract.
+      throw new Error(`Unsupported scalar payload dtype '${String(pixels.dtype)}'`);
   }
 }
 

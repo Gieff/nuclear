@@ -95,26 +95,14 @@ export function readTypedArray(bytes: Uint8Array, dtype: VolumeScalarDataType): 
       for (let i = 0; i < out.length; i += 1) out[i] = view.getUint16(i * 2, littleEndian);
       return out;
     }
-    case 'int32': {
-      const out = new Int32Array(bytes.byteLength / 4);
-      for (let i = 0; i < out.length; i += 1) out[i] = view.getInt32(i * 4, littleEndian);
-      return out;
-    }
-    case 'uint32': {
-      const out = new Uint32Array(bytes.byteLength / 4);
-      for (let i = 0; i < out.length; i += 1) out[i] = view.getUint32(i * 4, littleEndian);
-      return out;
-    }
     case 'float32': {
       const out = new Float32Array(bytes.byteLength / 4);
       for (let i = 0; i < out.length; i += 1) out[i] = view.getFloat32(i * 4, littleEndian);
       return out;
     }
-    case 'float64': {
-      const out = new Float64Array(bytes.byteLength / 8);
-      for (let i = 0; i < out.length; i += 1) out[i] = view.getFloat64(i * 8, littleEndian);
-      return out;
-    }
+    default:
+      // Runtime guard for a cast that bypasses the restricted contract.
+      throw new Error(`Unsupported scalar payload dtype '${String(dtype)}'`);
   }
 }
 

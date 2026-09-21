@@ -89,3 +89,35 @@ explicitly *not* a claim of generic real-source pixel ingestion.
   the fixture-only authority.
 - If Cornerstone's local-volume metadata contract changes such that geometry
   or pixel format can be supplied more authoritatively.
+
+## Addendum — P3.2.1 Payload Contract Hardening (corrective)
+
+The original ADR left the scalar contract open to every TypeScript typed array.
+That was wrong: Cornerstone 5.10.7's `createLocalVolume` computes a volume byte
+length for **only five** arrays (`Int8Array`, `Uint8Array`, `Int16Array`,
+`Uint16Array`, `Float32Array`); `int32`/`uint32`/`float64` leave `byteLength`
+undefined and surface a raw cache error instead of a typed refusal. Since
+Cornerstone requires the caller to supply valid scalar data and metadata, that
+validation belongs to NuClear.
+
+P3.2.1 therefore:
+
+- restricts `VolumeScalarArray`/`VolumeScalarDataType` to those five types and
+  backstops the union with a runtime membership guard;
+- validates before any cache interaction: dtype ↔ actual typed-array
+  constructor, signedness coherence, bit layout, `SamplesPerPixel`, positive
+  integer grid agreement, voxel count, non-finite `float32` values, and
+  `scalarDataDomain` ↔ `asset.valueSemantics` coherence (fixture-only, no
+  conversion);
+- translates a `createLocalVolume` failure into a typed
+  `VOLUME_CONSTRUCTION_FAILED` preserving the cause, after removing any residual
+  cache entry.
+
+**Bit-layout interpretation.** `BitsAllocated`/`BitsStored`/`HighBit` describe
+the *stored source encoding*, while `dtype` describes the *scalar array*. When
+`scalarDataDomain === 'stored-values'` the array is that encoding, so
+`bitsAllocated` must equal the element width. For `rescaled-hu`/`rescaled-bqml`
+the array is a derived representation, so a rescaled `float32` may declare the
+narrower source layout (the committed PT fixture is source 16-bit); the declared
+source width must still be one of 8/16/32 and satisfy
+`1 ≤ bitsStored ≤ bitsAllocated` and `highBit === bitsStored − 1`.

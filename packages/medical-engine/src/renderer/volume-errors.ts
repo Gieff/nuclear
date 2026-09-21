@@ -15,6 +15,8 @@ export const VOLUME_INGESTION_ERROR_CODES = {
   evidenceUnavailable: 'VOLUME_EVIDENCE_UNAVAILABLE',
   geometryDisagreement: 'VOLUME_GEOMETRY_DISAGREEMENT',
   payloadInvalid: 'VOLUME_PAYLOAD_INVALID',
+  constructionFailed: 'VOLUME_CONSTRUCTION_FAILED',
+  scalarSemanticsDisagreement: 'VOLUME_SCALAR_SEMANTICS_DISAGREEMENT',
 } as const;
 
 /** String-union mirror of `VOLUME_INGESTION_ERROR_CODES` values. */

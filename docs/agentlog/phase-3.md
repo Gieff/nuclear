@@ -1,8 +1,9 @@
 # Phase 3 — Headless Medical Engine, Residency & RenderTarget
 
-Status: **IN PROGRESS** — P3.0–P3.2 accepted (P3.1 closed via corrective
-P3.1.1); P3.3–P3.6 not started. Commit baseline: P3.0 `04bdbaa`, P3.1
-`ab0f69b`, P3.1.1 `e9a9f26`; P3.2 corrective/feature commit recorded below.
+Status: **IN PROGRESS** — P3.0–P3.2.1 accepted (P3.1 closed via corrective
+P3.1.1, P3.2 closed via corrective P3.2.1); P3.3–P3.6 not started. Commit
+baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`, P3.2 `0cec49e`;
+P3.2.1 commit recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
 `b793631`.
 
@@ -615,3 +616,144 @@ accounting, deterministic eviction, honest unknown VRAM, and reload without
 semantic asset deletion. Reuse the P3.2 `loadVolume`/`releaseVolume` primitives
 and revisit the raw allocation-failure and shared-code debt above. Do not add
 state application (P3.4), `RenderTarget` (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.2.1: Payload Contract Hardening (corrective)
+
+## 1. What Was Implemented
+
+The user rejected P3.2 closure because the scalar contract admitted
+`int32 | uint32 | float64`, for which Cornerstone 5.10.7's
+`volumeLoader.createLocalVolume` computes no `byteLength`
+(`node_modules/@cornerstonejs/core/dist/esm/loaders/volumeLoader.js` lines
+~156-176 handle only `Uint8Array|Int8Array`, `Uint16Array|Int16Array` and
+`Float32Array`). Such a payload passed the planner and reached the cache with an
+undefined byte length, producing a raw error instead of a typed refusal.
+`0cec49e` remains the P3.2 baseline; this is an atomic targeted correction.
+
+- **Scalar contract restricted** to the five types Cornerstone actually sizes:
+  `VolumeScalarArray = Int8Array | Uint8Array | Int16Array | Uint16Array |
+  Float32Array`; `VolumeScalarDataType = 'int8' | 'uint8' | 'int16' | 'uint16' |
+  'float32'`. A runtime membership guard backstops the union against an
+  untyped/cast caller.
+- **Pure payload validation** (`volume-validation.ts`) runs before any cache
+  interaction and refuses with `VOLUME_PAYLOAD_INVALID`: dtype ↔ actual typed
+  array constructor, signedness coherence, bit layout (`bitsAllocated` width,
+  `1 ≤ bitsStored ≤ bitsAllocated`, `highBit === bitsStored - 1`),
+  `samplesPerPixel === 1`, non-empty `photometricInterpretation`, three positive
+  integer dimensions equal to the worker grid, voxel count, and non-finite
+  `float32` values.
+- **Declared-domain ↔ `valueSemantics` coherence** (fixture-only) refuses with
+  the new `VOLUME_SCALAR_SEMANTICS_DISAGREEMENT`: `rescaled-hu` → `hounsfield`
+  (`HU`), `rescaled-bqml` → `activity-concentration` (`Bq/mL`),
+  `stored-values` → `raw-counts | generic-intensity`. No conversion is
+  performed.
+- **Typed construction failure** (`volume-binding.ts`): a `createLocalVolume`
+  failure becomes `VOLUME_CONSTRUCTION_FAILED` preserving the original cause,
+  after removing any residual cache entry (including a volume that registered
+  before throwing). The fail-closed duplicate-`volumeId` pre-check and the
+  unknown-id release pre-check are retained.
+- **Decomposition**: `adapter.ts` shrank 300 → 274 lines; the browser-only
+  cache binding moved to `volume-binding.ts` (not re-exported from
+  `renderer/index.ts`) and validation to `volume-validation.ts`.
+
+## 2. Files Changed / Created
+
+Modified:
+- `packages/medical-engine/src/renderer/adapter.ts` (274 lines)
+- `packages/medical-engine/src/renderer/volume.ts` (237)
+- `packages/medical-engine/src/renderer/volume-types.ts` (153)
+- `packages/medical-engine/src/renderer/volume-errors.ts` (47)
+- `tests/rendering/fixtures/volume-fixture.ts`, `volume-request.ts`,
+  `volume-entry.ts`
+- `docs/decisions/ADR-004-fixture-only-pixel-ingestion.md` (P3.2.1 addendum)
+
+Created:
+- `packages/medical-engine/src/renderer/volume-binding.ts` (95)
+- `packages/medical-engine/src/renderer/volume-validation.ts` (249)
+- `tests/rendering/volume-payload-validation.test.ts` (191)
+- `tests/rendering/volume-construction.test.ts` (103)
+
+Unchanged: `packages/medical-engine/src/index.ts`, `renderer/index.ts`, all
+`fixtures/volumes/**` declared data (no fixture geometry/semantics change), the
+worker, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- **Bit-layout interpretation:** `BitsAllocated`/`BitsStored`/`HighBit` describe
+  the *stored source encoding* while `dtype` describes the *scalar array*. For
+  `stored-values` they must agree; for `rescaled-hu`/`rescaled-bqml` a rescaled
+  `float32` may declare the narrower source layout (committed PT is 16-bit
+  source), still bounded to 8/16/32 with coherent stored/high bits. Recorded in
+  the ADR-004 addendum.
+- **Test seam:** esbuild compiles the `@cornerstonejs/core` namespace with
+  non-configurable getters, so the harness cannot reassign
+  `volumeLoader.createLocalVolume`. `volume-binding.ts` exposes a single
+  NuClear-owned mutable holder as the tested seam; it is internal (not in the
+  public barrel) and product code never mutates it.
+- No DICOM parsing, no `@cornerstonejs/dicom-image-loader`, no worker change,
+  no clinical conversion.
+
+## 4. Tests Added & Executed
+
+Added: `volume-payload-validation.test.ts` (9 tests, pure) and
+`volume-construction.test.ts` (2 tests, real harness injection).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean |
+| `npx tsc -b --force` | clean |
+| `npm run build` | clean |
+| `npm test` | **90 pass / 0 fail** (79 prior + 11 new) |
+| `npm run test:renderer` | **37 pass / 0 fail** (26 prior + 11 new) |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+
+Corrective evidence: an unsupported typed array reaching the planner via a cast,
+a dtype↔constructor mismatch, signedness mismatch, each bit-layout violation
+(including the rescaled-float32 source-width escape at 12 bits, added to close
+review NB-1), `samplesPerPixel !== 1`, invalid dimensions, non-finite `float32`
+(NaN/Infinity) and domain↔semantics incoherence are all refused typed; a
+throwing `createLocalVolume` yields `VOLUME_CONSTRUCTION_FAILED` with the cause
+preserved and no residual cache entry, including the register-then-throw case.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-004 gained a P3.2.1 addendum recording the five-type restriction, the
+  validation set and the bit-layout interpretation.
+- This report satisfies the AgentLog Gate for P3.2.1.
+- `CHANGELOG.md` untouched.
+- Reviewer verdict: **CONCERNS**, all non-blocking; the one recommended gap
+  (missing negative for the rescaled-float32 source-width guard, NB-1) was
+  closed in this slice before commit. QA verdict: **ACCEPTED** on all gates.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema, shared contract or fixture data changed. The scalar
+  contract narrowed within the renderer subsystem; `packages/medical-engine/src/index.ts`
+  and `renderer/index.ts` are unchanged.
+
+## 7. Known Limitations & Technical Debt
+
+- **Generic pixel ingestion debt remains** (ADR-004): real-source live
+  rendering still needs a separate, verifiable hydration boundary (pixel format
+  + voxel transport); it must not be hidden behind `SourceLocator`.
+- `declaredConstructor` returns `Function | undefined` (review NB-3, cosmetic);
+  no `any`, but a tighter constructor type would be tidier.
+- The rescaled-float32 bit-layout branch is deliberately conservative (a
+  representable narrower integer element is still refused for rescaled
+  domains); fail-closed by design.
+- Duplicate-`volumeId` load and unknown-id release still reuse
+  `VOLUME_PAYLOAD_INVALID` rather than a dedicated cache-state code; a naming
+  improvement belongs with P3.3 residency.
+- All renderer evidence remains the software backend (SwiftShader); hardware
+  GPU stays `NOT YET APPLICABLE`.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.3 — `ResourceManager` residency state machine, demand
+reconciliation, budget accounting, eviction and on-demand reload**, reusing the
+P3.2.1 `bindVolume`/`releaseBoundVolume` primitives and resolving the
+cache-state code naming debt above. Do not add state application (P3.4),
+`RenderTarget` (P3.5), UI or view-engine work.

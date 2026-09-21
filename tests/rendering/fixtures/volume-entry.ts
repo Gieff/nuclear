@@ -11,7 +11,7 @@
  * This file is NOT product UI and is never reachable from product code.
  */
 
-import { cache } from '@cornerstonejs/core';
+import { cache, volumeLoader } from '@cornerstonejs/core';
 
 import type { AssetAvailabilityStatus } from '../../../packages/shared-types/src/index.ts';
 import {
@@ -20,6 +20,7 @@ import {
   RendererError,
   VolumeIngestionError,
 } from '../../../packages/medical-engine/src/renderer/index.ts';
+import { localVolumeConstructor } from '../../../packages/medical-engine/src/renderer/volume-binding.ts';
 import {
   buildAsset,
   decodeBase64,
@@ -62,11 +63,19 @@ interface VolumeProbeAck {
   name?: string;
   code?: string;
   message?: string;
+  /** `VolumeIngestionError.cause.message`, preserved across the page boundary. */
+  causeMessage?: string;
+  /** Whether the cache still holds the volume after the reported operation. */
+  residualCached?: boolean;
+  /** Whether the injected constructor registered a volume before throwing. */
+  registeredDuringInjection?: boolean;
 }
 
 interface NuclearVolumeProbe {
   load(input: VolumeProbeInput): VolumeProbeSuccess | VolumeProbeAck;
   loadDuplicate(input: VolumeProbeInput): VolumeProbeAck;
+  loadWithThrowingConstruction(input: VolumeProbeInput): VolumeProbeAck;
+  loadWithResidualConstruction(input: VolumeProbeInput): VolumeProbeAck;
   release(volumeId: string): VolumeProbeAck;
   teardown(): VolumeProbeAck;
 }
@@ -90,20 +99,23 @@ function ensureAdapter(): CornerstoneRendererAdapter {
 }
 
 function describeError(error: unknown): VolumeProbeAck {
-  if (error instanceof VolumeIngestionError || error instanceof RendererError) {
-    return { ok: false, name: error.name, code: error.code, message: error.message };
+  const ack: VolumeProbeAck =
+    error instanceof VolumeIngestionError || error instanceof RendererError
+      ? { ok: false, name: error.name, code: error.code, message: error.message }
+      : error instanceof Error
+        ? { ok: false, name: error.name, code: 'UNKNOWN', message: error.message }
+        : { ok: false, name: 'Error', code: 'UNKNOWN', message: String(error) };
+  if (error instanceof Error && error.cause instanceof Error) {
+    ack.causeMessage = error.cause.message;
   }
-  if (error instanceof Error) {
-    return { ok: false, name: error.name, code: 'UNKNOWN', message: error.message };
-  }
-  return { ok: false, name: 'Error', code: 'UNKNOWN', message: String(error) };
+  return ack;
 }
 
-/** Builds the plan and loads it; returns the descriptor plus Cornerstone-observed evidence. */
-function install(input: VolumeProbeInput): VolumeProbeSuccess {
+/** Builds the plan through the same Node-safe planner the product uses. */
+function planFromInput(input: VolumeProbeInput) {
   const evidence = requireComputed(input.expectedGeometry);
   const pixel = input.pixels;
-  const plan = buildVolumeIngestionPlan({
+  return buildVolumeIngestionPlan({
     asset: buildAsset(input.fixture, evidence.assetGeometry, pixel, evidence.geometricDigest),
     availability: { state: input.fixture.availability as AssetAvailabilityStatus['state'] },
     classification: {
@@ -126,6 +138,11 @@ function install(input: VolumeProbeInput): VolumeProbeSuccess {
       scalarData: readTypedArray(decodeBase64(pixel.values), pixel.dtype),
     },
   });
+}
+
+/** Builds the plan and loads it; returns the descriptor plus Cornerstone-observed evidence. */
+function install(input: VolumeProbeInput): VolumeProbeSuccess {
+  const plan = planFromInput(input);
 
   ensureAdapter().loadVolume(plan);
 
@@ -181,6 +198,51 @@ function loadDuplicate(input: VolumeProbeInput): VolumeProbeAck {
   }
 }
 
+/** Injects a throwing local-volume constructor and reports the typed refusal. */
+function loadWithThrowingConstruction(input: VolumeProbeInput): VolumeProbeAck {
+  const plan = planFromInput(input);
+  const original = localVolumeConstructor.createLocalVolume;
+  localVolumeConstructor.createLocalVolume = () => {
+    throw new Error('injected failure: createLocalVolume refused the payload');
+  };
+  try {
+    ensureAdapter().loadVolume(plan);
+    return { ok: true, message: 'construction unexpectedly succeeded' };
+  } catch (error) {
+    const ack = describeError(error);
+    ack.residualCached = cache.getVolume(plan.volumeId) !== undefined;
+    return ack;
+  } finally {
+    localVolumeConstructor.createLocalVolume = original;
+  }
+}
+
+/**
+ * Injects a constructor that registers a real volume for the id and then
+ * throws, proving the binding's residual cleanup runs before the typed refusal.
+ */
+function loadWithResidualConstruction(input: VolumeProbeInput): VolumeProbeAck {
+  const plan = planFromInput(input);
+  const original = localVolumeConstructor.createLocalVolume;
+  let registered = false;
+  localVolumeConstructor.createLocalVolume = (volumeId, options) => {
+    original(volumeId, options);
+    registered = true;
+    throw new Error('injected failure: createLocalVolume registered the volume then failed');
+  };
+  try {
+    ensureAdapter().loadVolume(plan);
+    return { ok: true, message: 'construction unexpectedly succeeded' };
+  } catch (error) {
+    const ack = describeError(error);
+    ack.registeredDuringInjection = registered;
+    ack.residualCached = cache.getVolume(plan.volumeId) !== undefined;
+    return ack;
+  } finally {
+    localVolumeConstructor.createLocalVolume = original;
+  }
+}
+
 function release(volumeId: string): VolumeProbeAck {
   try {
     ensureAdapter().releaseVolume(volumeId);
@@ -201,5 +263,12 @@ function teardown(): VolumeProbeAck {
 }
 
 globalThis.__nuclearRendererProbe = { webgl2: probeWebGL2 };
-globalThis.__nuclearVolumeProbe = { load, loadDuplicate, release, teardown };
+globalThis.__nuclearVolumeProbe = {
+  load,
+  loadDuplicate,
+  loadWithThrowingConstruction,
+  loadWithResidualConstruction,
+  release,
+  teardown,
+};
 globalThis.__nuclearRendererProbeReady = true;

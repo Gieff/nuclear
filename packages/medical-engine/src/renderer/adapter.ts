@@ -8,14 +8,12 @@
  */
 
 import {
-  cache,
   detectRenderingCapabilities,
   Enums,
   getRenderingEngine,
   init,
   isCornerstoneInitialized,
   RenderingEngine,
-  volumeLoader,
 } from '@cornerstonejs/core';
 
 import {
@@ -29,11 +27,7 @@ import type {
   RendererCapabilities,
   RendererRuntimeHost,
 } from './host.js';
-import {
-  describeLoadedVolume,
-  VOLUME_INGESTION_ERROR_CODES,
-  VolumeIngestionError,
-} from './volume.js';
+import { bindVolume, releaseBoundVolume } from './volume-binding.js';
 import type { LoadedVolume, VolumeIngestionPlan } from './volume.js';
 
 /** Default engine id when the caller does not supply one. */
@@ -260,33 +254,13 @@ export class CornerstoneRendererAdapter {
    */
   loadVolume(plan: VolumeIngestionPlan): LoadedVolume {
     this.#assertStarted(`load volume '${plan.volumeId}'`);
-    if (cache.getVolume(plan.volumeId) !== undefined) {
-      throw new VolumeIngestionError(
-        VOLUME_INGESTION_ERROR_CODES.payloadInvalid,
-        `Volume '${plan.volumeId}' is already cached; release it before loading.`,
-      );
-    }
-    volumeLoader.createLocalVolume(plan.volumeId, {
-      metadata: plan.metadata,
-      dimensions: [plan.dimensions[0], plan.dimensions[1], plan.dimensions[2]],
-      spacing: [plan.spacing[0], plan.spacing[1], plan.spacing[2]],
-      origin: [plan.origin[0], plan.origin[1], plan.origin[2]],
-      direction: [...plan.direction],
-      scalarData: plan.scalarData,
-    });
-    return describeLoadedVolume(plan);
+    return bindVolume(plan);
   }
 
   /** Releases a cached volume; a non-started adapter or unknown id fails closed. */
   releaseVolume(volumeId: string): void {
     this.#assertStarted(`release volume '${volumeId}'`);
-    if (cache.getVolume(volumeId) === undefined) {
-      throw new VolumeIngestionError(
-        VOLUME_INGESTION_ERROR_CODES.payloadInvalid,
-        `Volume '${volumeId}' is not cached; nothing to release.`,
-      );
-    }
-    cache.removeVolumeLoadObject(volumeId);
+    releaseBoundVolume(volumeId);
   }
 
   #assertStarted(action: string): void {

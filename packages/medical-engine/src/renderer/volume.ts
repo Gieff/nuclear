@@ -15,6 +15,7 @@
 import type { AssetGeometry, DirectionCosines } from '@nuclear/shared-types';
 import type { WorkerGeometryComputed } from '../worker/types.js';
 import { VOLUME_INGESTION_ERROR_CODES, VolumeIngestionError } from './volume-errors.js';
+import { validatePixelPayload, validateScalarSemantics } from './volume-validation.js';
 import type {
   LoadedVolume,
   RendererVolumeMetadata,
@@ -211,17 +212,9 @@ export function buildVolumeIngestionPlan(request: VolumeIngestionRequest): Volum
     );
   }
 
-  const [columns, rows, slices] = evidence.assetGeometry.dimensions;
-  const expectedLength = columns * rows * slices;
-  if (
-    !elementsAgree(pixels.dimensions, evidence.assetGeometry.dimensions) ||
-    pixels.scalarData.length !== expectedLength
-  ) {
-    throw new VolumeIngestionError(
-      VOLUME_INGESTION_ERROR_CODES.payloadInvalid,
-      `Refusing volume '${asset.id}': pixel payload dims [${pixels.dimensions.join(', ')}] / length ${pixels.scalarData.length} do not match the verified grid [${columns}, ${rows}, ${slices}] (${expectedLength} voxels).`,
-    );
-  }
+  // Payload/grid agreement lives with the existing grid check, after geometry.
+  validatePixelPayload(pixels, evidence);
+  validateScalarSemantics(asset, pixels);
 
   const geometry = evidence.assetGeometry;
   return {
