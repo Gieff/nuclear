@@ -33,6 +33,7 @@ describe('NuClear Phase 1.3 — View contracts', () => {
     assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, presentation: { ...overlayLayer.presentation as object, colormapId: undefined } }])), false);
     assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, presentation: { ...overlayLayer.presentation as object, colormapId: '' } }])), false);
     assert.equal(isMedicalViewState(fusionView([baseLayer, baseLayer, overlayLayer])), false);
+    assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, binding: { ...overlayLayer.binding as object, role: 'base' } }])), false);
     assert.equal(isMedicalViewState(fusionView([{ ...baseLayer, presentation: { ...baseLayer.presentation as object, voi: undefined } }, overlayLayer])), false);
     assert.equal(isMedicalViewState(fusionView([{ ...baseLayer, presentation: { ...baseLayer.presentation as object, opacity: 2 } }, overlayLayer])), false);
     assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, fusion: { ...overlayLayer.fusion as object, transferMode: 'blend' } }])), false);
@@ -44,6 +45,13 @@ describe('NuClear Phase 1.3 — View contracts', () => {
     assert.equal(isMedicalViewState(fusionView([baseLayer, { ...baseLayer, binding: { ...baseLayer.binding as object, role: 'reference' } }])), false);
     assert.equal(isMedicalViewState({ ...mockFusionView, presentation: { ...baseLayer.presentation as object } }), false);
     assert.equal(isMedicalViewState({ ...mockMedicalView, presentation: undefined }), false);
+  });
+
+  it('single-sources PET overlay overall opacity from blendSlider, rejecting presentation.opacity', () => {
+    const fusion = mockFusionView.composition as { layers: Array<Record<string, unknown>> };
+    const baseLayer = fusion.layers[0]; const overlayLayer = fusion.layers[1];
+    const fusionView = (layers: unknown[]) => ({ ...mockFusionView, composition: { mode: 'fusion', blend: 'alpha', layers } });
+    assert.equal(isMedicalViewState(fusionView([baseLayer, { ...overlayLayer, presentation: { ...overlayLayer.presentation as object, opacity: 1 } }])), false);
   });
 
   it('rejects persisted screen-pixel substitutes and invalid camera state', () => {

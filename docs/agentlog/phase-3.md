@@ -4,8 +4,9 @@ Status: **IN PROGRESS** — P3.0–P3.2.1 accepted (P3.1 closed via corrective
 P3.1.1, P3.2 closed via corrective P3.2.1); P3.3 closed (P3.3-A `16c40b4`,
 P3.3-B `3fbc011`, P3.3.1 corrective `9ede6d7`, conclusive P3.3-C review/QA
 **PASS**); P3.4-A accepted, P3.4-A.1 accepted (corrective radiometry hardening
-under ADR-005) and P3.4-A.2 accepted (ADR-006 per-layer fusion
-`MedicalViewState` contract); P3.4-B–P3.6 not started.
+under ADR-005), P3.4-A.2 accepted (ADR-006 per-layer fusion `MedicalViewState`
+contract) and P3.4-A.3 accepted (corrective single-source PET overlay opacity);
+P3.4-B–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -1700,3 +1701,123 @@ Cornerstone viewport (CT underlay + PET overlay; `setProperties` per spec §7,
 opacity `(s/100)^0.42`, `highlighted`/`alpha` transfer), with CT/PT/fusion
 positives and the addendum's fail-closed negatives, plus real-harness evidence.
 Do not add `RenderTarget` (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.4-A.3: Single-Source PET Overlay Opacity (corrective)
+
+## 1. What Was Implemented
+
+A review found a real semantic contradiction in the P3.4-A.2 fusion contract:
+the PET overlay declared **both** `presentation.opacity` (`1`) and
+`fusion.blendSlider` (`50`), while spec §2/§7 define the PET overall opacity as
+`(blendSlider / 100)^0.42` (applied as the colormap `opacity`). Two fields
+claimed the same quantity, so the renderer had to choose one — exactly the
+implicit inference ADR-006 was meant to eliminate. Green gates did not catch it
+because the validator accepted any `presentation.opacity ∈ [0,1]` alongside a
+valid `fusion`.
+
+`cc126ac` remains the P3.4-A.2 baseline; this is the corrective.
+
+- **Single-sourced the PET overlay opacity.** New
+  `PetFusionOverlayPresentation` deliberately omits `opacity`; the PET overall
+  opacity comes solely from `PetFusionTransfer.blendSlider`.
+- **Structurally precise composition.**
+  `FusionCompositionState.layers` is now the tuple
+  `readonly [CompositionLayer, ...FusionOverlayLayer[]]`: exactly one CT
+  underlay (`presentation: PresentationState`, no `fusion`) followed by one or
+  more overlays (`presentation: PetFusionOverlayPresentation`, required
+  `fusion`). `CompositionLayer` no longer carries `fusion`.
+- **Fail-closed validator.** `petFusionOverlayPresentation` rejects any declared
+  `opacity`, requires a non-empty `colormapId`, exactly one of
+  `voi`/`suvRange`, valid `invert`/`interpolation`;
+  `baseCompositionLayer` requires role `base`, `presentation.voi` and no
+  `fusion`; `fusionOverlayLayer` requires role `overlay` and a valid `fusion`.
+- **Fixture corrected:** `fusionPetPresentation` no longer declares `opacity`;
+  the CT underlay keeps `PresentationState.opacity`.
+- **Review closers:** added the missing overlay-role negative test (N2);
+  qualified ADR-006 Decision 5 so a reader cannot reintroduce the dual opacity
+  (N3); fixed the ADR's stale `LayerState` reference (N4).
+
+## 2. Files Changed / Created
+
+Modified:
+- `packages/shared-types/src/view-state.ts` (152 lines)
+- `packages/shared-types/src/index.ts` (187 lines — `+PetFusionOverlayPresentation`, `+FusionOverlayLayer`)
+- `tests/contracts/view-validators.ts` (97 lines)
+- `tests/contracts/view-contracts.test.ts` (109 lines — +1 test, +2 negatives)
+- `tests/fixtures/view-contracts.fixture.ts` (158 lines)
+- `docs/decisions/ADR-006-per-layer-fusion-presentation.md` (amended)
+
+Unchanged: all other `packages/*`, the Python worker, renderer/presets,
+`CHANGELOG.md`, the version. `@nuclear/shared-types` remains a type-only leaf.
+
+## 3. Architectural Assumptions Made
+
+- The PET overlay's only overall-opacity source is `blendSlider`; the CT
+  underlay's overall opacity remains a single `PresentationState.opacity`. No
+  layer has two fields claiming the same quantity.
+- The fusion layer roles remain CT underlay = `base`, PET = `overlay`; the
+  contract still needs no modality inference.
+- `MultiLayerCompositionState` keeps `CompositionLayer[]` (presentation with
+  `opacity`), preserving per-layer opacity for non-fusion layers.
+
+## 4. Tests Added & Executed
+
+Added: a dedicated test proving an overlay that declares `opacity` is invalid,
+plus an overlay-role negative (index ≥1 must be `overlay`).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **155 pass / 0 fail** (31 suites; 154 prior + 1) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:renderer` | **43 pass / 0 fail** |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| `tests/contracts/view-contracts.test.ts` | **10 pass / 0 fail** (9 prior + 1) |
+| P2.5 source integrity | **2/2 pass** |
+
+One `npm test` run hit the known intermittent renderer-harness startup timeout;
+the immediate rerun was 155/155 with no contract failure, confirming an
+environment flake, not a regression.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-006 gained the P3.4-A.3 addendum; Decision 5 now points to it.
+- This report satisfies the AgentLog Gate for P3.4-A.3.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: **PASS** (the mandated mutation — removing the overlay
+  `opacity === undefined` guard — is killed by the new test); the three
+  non-blocking findings N2/N3/N4 were closed before commit.
+- QA verdict: **PASS** on all gates (typecheck, Node 155/155, build, renderer
+  43/43, Python 178, mypy 45, integrity 2/2, contract 10/10); the only pending
+  row was this report.
+
+## 6. Project Model Impact
+
+- **Persisted contract change (again).** `FusionCompositionState`,
+  `CompositionLayer` and the new overlay types changed shape. Ratified by
+  ADR-006 + addendum; no legacy import to migrate; no `.ncp` schema bump.
+
+## 7. Known Limitations & Technical Debt
+
+- `multi-layer` validation remains shallow (no base/overlay/fusion rules); a
+  stray `fusion` on a multi-layer layer would pass — known and documented.
+- `LocalViewOverride` presentation overrides remain view-level; a per-layer
+  override for composed views is a Phase 4 follow-up.
+- Test sources remain outside the `tsc` graph (inherited P3.0 debt).
+- Intermittent renderer-harness startup timeout under parallel `node --test`
+  (environment flake; rerun green). Fail-fast hardening remains recommended.
+- No Cornerstone application/capture, `RenderTarget` or hardware GPU evidence
+  yet — P3.4-B/P3.4-C/P3.5.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-B — `MedicalViewState` application**: map the
+`Single`/`Composed` union and the ADR-005 binding onto the Cornerstone viewport
+(CT underlay + PET overlay; `setProperties` per spec §7, overall PET opacity
+solely `(blendSlider/100)^0.42`, `highlighted`/`alpha` transfer), with CT/PT/
+fusion positives and the addendum's fail-closed negatives, plus real-harness
+evidence. The contract now has no dual PET-opacity source. Do not add
+`RenderTarget` (P3.5), UI or view-engine work.

@@ -59,9 +59,12 @@ no-implicit-fallback rules. The fusion contract must make an incomplete fusion
      `fusion` transfer;
    - `transferMode` is one of the two modes, `gamma > 0`, `blendSlider ∈ [0,100]`.
 
-5. **`layerOpacity` is removed.** Per-layer `presentation.opacity` is the single
-   authoritative per-layer opacity; keeping both would create a second source
-   of truth.
+5. **`layerOpacity` is removed.** For a `single` or `multi-layer` layer,
+   `presentation.opacity` is the single authoritative per-layer opacity;
+   keeping both would create a second source of truth. For a PET fusion overlay
+   there is **no** `presentation.opacity` at all — the overall opacity is
+   single-sourced from `PetFusionTransfer.blendSlider` (see the P3.4-A.3
+   addendum, which amends this decision).
 
 6. **The PET colormap and range stay caller-declared.** The contract requires
    them to be present for a fusion overlay but does not supply defaults, per
@@ -74,8 +77,9 @@ no-implicit-fallback rules. The fusion contract must make an incomplete fusion
 - Phase 1 view fixtures/validators are updated: `mockMedicalView` remains a
   valid single CT view; new CT/PET/fusion `MedicalViewState` fixtures bind the
   validated `mockCtAsset`/`mockPetAsset` ids with explicit provenance.
-- `LayerState`/`CompositionLayer`, `PetFusionTransfer`, the composition union
-  and `MedicalViewState`'s union are exported from `@nuclear/shared-types`.
+- `CompositionLayer`/`FusionOverlayLayer`, `PetFusionOverlayPresentation`,
+  `PetFusionTransfer`, the composition union and `MedicalViewState`'s union are
+  exported from `@nuclear/shared-types`.
 - `@nuclear/view-engine` and `@nuclear/figure-engine` consume the new union;
   `PreparedView.state` remains a `MedicalViewState`.
 - No Cornerstone, rendering, capture or UI change is introduced by this ADR.
@@ -86,3 +90,17 @@ no-implicit-fallback rules. The fusion contract must make an incomplete fusion
   it must be modelled explicitly rather than reusing `PetFusionTransfer`.
 - If projection/MPR state becomes per-layer, the same per-layer pattern must be
   applied and ratified here.
+
+## Addendum — P3.4-A.3: Single-Source PET Overlay Opacity
+
+A review found a real contradiction: the fusion overlay carried both
+`presentation.opacity` and `fusion.blendSlider`, while spec §2/§7 define the PET
+overall opacity as `(blendSlider / 100)^0.42`, applied as the colormap `opacity`.
+Two fields therefore claimed the same quantity and the renderer had to choose.
+
+Resolution: the PET overlay overall opacity is single-sourced from
+`PetFusionTransfer.blendSlider`. `PetFusionOverlayPresentation` deliberately
+omits `opacity`, `FusionCompositionState` is a tuple of one `CompositionLayer`
+underlay followed by `FusionOverlayLayer` overlays, and the validator rejects any
+overlay presentation that declares `opacity`. The CT underlay keeps
+`PresentationState`, whose opacity still has a single source.

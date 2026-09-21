@@ -71,25 +71,42 @@ export interface PetFusionTransfer {
   readonly blendSlider: number;
 }
 
-/** One composition layer with its own authoritative presentation. */
+export type FusionBlendMode = 'alpha';
+
+/** PET fusion overlay presentation. Overall opacity is NOT declared here: it is
+ *  single-sourced from `PetFusionTransfer.blendSlider` (spec §2/§7). */
+export interface PetFusionOverlayPresentation {
+  readonly voi?: readonly [number, number];
+  readonly suvRange?: readonly [number, number];
+  readonly colormapId: string;
+  readonly invert: boolean;
+  readonly interpolation: 'nearest' | 'linear';
+  readonly modalityPresentation?: 'ct' | 'pet' | 'mr' | 'generic';
+}
+
+/** A CT/multi-layer composition layer; its presentation has a single opacity source. */
 export interface CompositionLayer {
   readonly binding: DataBinding;
   readonly presentation: PresentationState;
-  /** Required on a fusion overlay; absent on the underlay. */
-  readonly fusion?: PetFusionTransfer;
 }
 
-export type FusionBlendMode = 'alpha';
-
-export interface SingleCompositionState {
-  readonly mode: 'single';
-  readonly layers: readonly [DataBinding];
+/** A PET fusion overlay: no `opacity` on the presentation, transfer owns it. */
+export interface FusionOverlayLayer {
+  readonly binding: DataBinding;
+  readonly presentation: PetFusionOverlayPresentation;
+  readonly fusion: PetFusionTransfer;
 }
 
 export interface FusionCompositionState {
   readonly mode: 'fusion';
   readonly blend: FusionBlendMode;
-  readonly layers: readonly CompositionLayer[];
+  /** Exactly one underlay (`CompositionLayer`) followed by one or more overlays. */
+  readonly layers: readonly [CompositionLayer, ...FusionOverlayLayer[]];
+}
+
+export interface SingleCompositionState {
+  readonly mode: 'single';
+  readonly layers: readonly [DataBinding];
 }
 
 export interface MultiLayerCompositionState {

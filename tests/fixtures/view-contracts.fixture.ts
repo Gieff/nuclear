@@ -8,6 +8,7 @@ import type {
   LocalViewOverride,
   MedicalViewState,
   PreparedView,
+  PetFusionOverlayPresentation,
   PresentationState,
   ProjectionState,
   SpatialState,
@@ -55,8 +56,8 @@ const petPresentation: PresentationState = {
 const fusionCtPresentation: PresentationState = {
   voi: [-160, 240], colormapId: 'gray', invert: false, opacity: 1, interpolation: 'linear', modalityPresentation: 'ct',
 };
-const fusionPetPresentation: PresentationState = {
-  suvRange: [0, 8], colormapId: 'PET', invert: false, opacity: 1, interpolation: 'linear', modalityPresentation: 'pet',
+const fusionPetPresentation: PetFusionOverlayPresentation = {
+  suvRange: [0, 8], colormapId: 'PET', invert: false, interpolation: 'linear', modalityPresentation: 'pet',
 };
 
 export const mockPetView: MedicalViewState = {

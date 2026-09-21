@@ -25,31 +25,28 @@ const cameraState = (value: unknown): boolean => record(value) && finite(value.z
 const presentationState = (value: unknown): boolean => record(value) && typeof value.invert === 'boolean' && finite(value.opacity) && value.opacity >= 0 && value.opacity <= 1 && (value.voi === undefined || (tuple(value.voi, 2) && value.voi[0] <= value.voi[1])) && (value.suvRange === undefined || (tuple(value.suvRange, 2) && value.suvRange[0] >= 0 && value.suvRange[0] <= value.suvRange[1]));
 const projectionState = (value: unknown): boolean => record(value) && ['slice', 'MIP', 'MinIP', 'Average'].includes(String(value.mode)) && (value.slabThicknessMm === undefined || (finite(value.slabThicknessMm) && value.slabThicknessMm > 0)) && (value.parameters === undefined || (record(value.parameters) && Object.values(value.parameters).every((item) => typeof item === 'string' || typeof item === 'boolean' || finite(item))));
 const petFusionTransfer = (value: unknown): boolean => record(value) && ['highlighted', 'alpha'].includes(String(value.transferMode)) && finite(value.gamma) && value.gamma > 0 && finite(value.blendSlider) && value.blendSlider >= 0 && value.blendSlider <= 100;
-const compositionLayer = (value: unknown): boolean => record(value) && binding(value.binding) && presentationState(value.presentation) && (value.fusion === undefined || petFusionTransfer(value.fusion));
-const fusionLayersValid = (layers: readonly unknown[]): boolean => {
-  let bases = 0; let overlays = 0;
-  for (const layer of layers) {
-    if (!compositionLayer(layer) || !record(layer) || !record(layer.binding)) return false;
-    const role = layer.binding.role;
-    if (role === 'base') {
-      bases += 1;
-      if (!record(layer.presentation) || layer.presentation.voi === undefined || layer.fusion !== undefined) return false;
-    } else if (role === 'overlay') {
-      overlays += 1;
-      if (!record(layer.presentation)) return false;
-      const presentation = layer.presentation;
-      const colormapOK = typeof presentation.colormapId === 'string' && presentation.colormapId.length > 0;
-      const exactlyOneRange = (presentation.voi !== undefined) !== (presentation.suvRange !== undefined);
-      if (!colormapOK || layer.fusion === undefined || !petFusionTransfer(layer.fusion) || !exactlyOneRange) return false;
-    }
-  }
-  return bases === 1 && overlays >= 1;
+const petFusionOverlayPresentation = (value: unknown): boolean => {
+  if (!record(value) || typeof value.colormapId !== 'string' || value.colormapId.length === 0 || typeof value.invert !== 'boolean' || !['nearest', 'linear'].includes(String(value.interpolation))) return false;
+  if (value.modalityPresentation !== undefined && !['ct', 'pet', 'mr', 'generic'].includes(String(value.modalityPresentation))) return false;
+  if (value.voi !== undefined && !(tuple(value.voi, 2) && value.voi[0] <= value.voi[1])) return false;
+  if (value.suvRange !== undefined && !(tuple(value.suvRange, 2) && value.suvRange[0] >= 0 && value.suvRange[0] <= value.suvRange[1])) return false;
+  return (value.voi !== undefined) !== (value.suvRange !== undefined) && value.opacity === undefined;
+};
+const compositionLayer = (value: unknown): boolean => record(value) && binding(value.binding) && presentationState(value.presentation);
+const fusionOverlayLayer = (value: unknown): boolean => {
+  if (!record(value) || !binding(value.binding) || !record(value.binding) || value.binding.role !== 'overlay') return false;
+  return petFusionOverlayPresentation(value.presentation) && petFusionTransfer(value.fusion);
+};
+const baseCompositionLayer = (value: unknown): boolean => {
+  if (!record(value) || !binding(value.binding) || !record(value.binding) || value.binding.role !== 'base') return false;
+  if (!presentationState(value.presentation) || !record(value.presentation) || !tuple(value.presentation.voi, 2)) return false;
+  return value.fusion === undefined;
 };
 const compositionState = (value: unknown): boolean => {
   if (!record(value) || !Array.isArray(value.layers) || value.layers.length === 0 || !['single', 'fusion', 'multi-layer'].includes(String(value.mode))) return false;
   const layers = value.layers as unknown[];
   if (value.mode === 'single') return value.blend === undefined && layers.length === 1 && binding(layers[0]);
-  if (value.mode === 'fusion') return value.blend === 'alpha' && layers.length >= 2 && fusionLayersValid(layers);
+  if (value.mode === 'fusion') return value.blend === 'alpha' && layers.length >= 2 && baseCompositionLayer(layers[0]) && layers.slice(1).every(fusionOverlayLayer);
   if (value.mode === 'multi-layer') return layers.every((layer) => compositionLayer(layer)) && (value.blend === undefined || ['alpha', 'additive', 'difference', 'checkerboard'].includes(String(value.blend)));
   return false;
 };
