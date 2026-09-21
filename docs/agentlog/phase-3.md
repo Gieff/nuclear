@@ -5,8 +5,9 @@ P3.1.1, P3.2 closed via corrective P3.2.1); P3.3 closed (P3.3-A `16c40b4`,
 P3.3-B `3fbc011`, P3.3.1 corrective `9ede6d7`, conclusive P3.3-C review/QA
 **PASS**); P3.4-A accepted, P3.4-A.1 accepted (corrective radiometry hardening
 under ADR-005), P3.4-A.2 accepted (ADR-006 per-layer fusion `MedicalViewState`
-contract) and P3.4-A.3 accepted (corrective single-source PET overlay opacity),
-plus P3.4-A.3bis (representability precision); P3.4-B–P3.6 not started.
+contract), P3.4-A.3 accepted (corrective single-source PET overlay opacity) and
+P3.4-A.3bis accepted (representability precision); P3.4-B in progress —
+P3.4-B.1 accepted (ADR-007 DICOM palette catalog); P3.4-B.2–P3.6 not started.
 Commit baseline: P3.0 `04bdbaa`, P3.1 `ab0f69b`, P3.1.1 `e9a9f26`,
 P3.2 `0cec49e`; P3.2.1, P3.3-A, P3.3-B and P3.3.1 commits recorded below.
 Baseline entry: Phase 2 closed at `e59e748`; Phase 3 plan/runbook added at
@@ -1919,3 +1920,121 @@ per spec §7, overall PET opacity solely `(blendSlider/100)^0.42`,
 `highlighted`/`alpha` transfer), with CT/PT/fusion positives and the addendum's
 fail-closed negatives, plus real-harness evidence. Do not add `RenderTarget`
 (P3.5), UI or view-engine work.
+
+---
+
+# Handover Report — P3.4-B.1: DICOM Palette Catalog & Typed Registration
+
+## 1. What Was Implemented
+
+P3.4-B is large, so it is executed in bounded sub-slices. **P3.4-B.1** delivers
+the palette prerequisite the user requested: a ratified DICOM palette catalog
+(ADR-007) and its typed Cornerstone registration. No `MedicalViewState`
+application or viewport work is included.
+
+- **ADR-007** ratifies the catalog: `@nuclear/rendering-presets` owns the
+  declarative data, `@nuclear/medical-engine` owns typed registration, the data
+  authority is DICOM PS3.6 Table B.1-1, and the MedCanvas mirror is only a
+  retrieval aid.
+- **Catalog** (`dicom-palettes.ts`): `DicomPaletteDefinition` plus the four
+  nuclear-medicine palettes — Hot Iron (`1.2.840.10008.1.5.1`), PET (`.5.2`),
+  Hot Metal Blue (`.5.3`), PET 20 Step (`.5.4`) — as a pure, import-free data
+  module with `DICOM_PALETTE_CATALOG` and lookups by content label / SOP UID.
+- **Typed registration** (`renderer/dicom-palette-registration.ts`,
+  browser-only): `registerDicomPalettes()` maps each entry explicitly to
+  Cornerstone's `ColormapRegistration` (no object spread), registers it under
+  both `name` and `contentLabel` via `utilities.colormap.registerColormap`,
+  returns the registered names, is idempotent, and rethrows any failure with the
+  palette identity — no silent catch. Exported only from `renderer/index.ts`.
+- **Independent data verification:** the reviewer checked all 4×256×4 values
+  against pydicom 3.0.2's bundled well-known palette SOP instances and found
+  **zero mismatches**; the provenance is now recorded in the module header.
+
+## 2. Files Changed / Created
+
+Created:
+- `docs/decisions/ADR-007-dicom-palette-catalog.md`
+- `packages/rendering-presets/src/dicom-palettes.ts` (614 lines — pure static
+  data table, Rule 03 exempt)
+- `packages/medical-engine/src/renderer/dicom-palette-registration.ts` (79)
+- `tests/presets/dicom-palettes.test.ts` (110)
+- `tests/rendering/dicom-palette-registration.test.ts` (113)
+- `tests/rendering/fixtures/palette-entry.ts` (97)
+
+Modified:
+- `packages/rendering-presets/src/index.ts` (4→5)
+- `packages/medical-engine/src/renderer/index.ts` (14→15)
+
+Unchanged: `@nuclear/shared-types`, the worker, the residency/radiometry code,
+`CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- `rendering-presets` stays a leaf: no Cornerstone import, no side effects; the
+  data module only declares.
+- DICOM PS3.6 is the data authority; structural tests (1024 points, monotonic
+  `x`, black→white endpoints, unique ids/labels, lookups) plus the reviewer's
+  pydicom cross-check are the available evidence — not a DICOM conformance
+  tool.
+- Cornerstone's `registerColormap` overwrites same-named entries, so the module
+  flag is only a cheapness guard; correctness does not depend on it.
+
+## 4. Tests Added & Executed
+
+Added: 6 pure structural tests and 2 real WebGL 2 harness tests.
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | clean (exit 0) |
+| `npm test` | **164 pass / 0 fail** (33 suites; 156 prior + 8) |
+| `npm run test:renderer` | **45 pass / 0 fail** (11 suites; rerun after the known harness flake) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:python` | **178 passed** |
+| `npm run typecheck:python` | clean over 45 source files |
+| P2.5 source integrity | **2/2** |
+
+Harness evidence: Cornerstone's registry lists all seven unique names
+(`Hot Iron`/`HOT_IRON`, `PET`, `Hot Metal Blue`/`HOT_METAL_BLUE`,
+`PET 20 Step`/`PET_20_STEP`) and `getColormap('PET').RGBPoints.length === 1024`;
+a second registration is idempotent and does not grow the set; page/console
+errors empty.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-007 records the decision; the palette data provenance (DICOM PS3.6 +
+  pydicom cross-check) is documented in the module header.
+- This report satisfies the AgentLog Gate for P3.4-B.1.
+- `CHANGELOG.md` untouched (compiled later via `/promote-changelog 3`).
+- Reviewer verdict: **PASS** (it independently mutation-tested the structural
+  suite and verified the data against pydicom); the two non-blocking items
+  (provenance note, all-seven-names registry assertion) were closed before
+  commit.
+- QA verdict: **PASS** on all gates (typecheck, Node 164/164, renderer 45/45,
+  build, Python 178, mypy 45, integrity 2/2); the only pending row was this
+  report.
+
+## 6. Project Model Impact
+
+- New declarative data surface (`DicomPaletteDefinition`/`DICOM_PALETTE_CATALOG`)
+  and a browser-only registration function. No shared-types/`.ncp` change.
+
+## 7. Known Limitations & Technical Debt
+
+- The catalog/data are structurally validated and pydicom-cross-checked, but no
+  DICOM conformance tool is run.
+- No `MedicalViewState.colormapId` validation against the catalog is wired yet;
+  that belongs to P3.4-B.2 application.
+- Palette data module is 614 lines (pure data, exempt); do not add logic to it.
+- Intermittent renderer-harness startup flake remains (rerun green).
+- No viewport application, capture, `RenderTarget` or hardware GPU evidence
+  yet.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P3.4-B.2 — `MedicalViewState` application to Cornerstone**: add a
+volume viewport capability to the adapter and apply the `Single`/`Composed`
+union with the ADR-005 binding and the ADR-007 palettes (register before
+`setProperties`; CT underlay + PET overlay; overall PET opacity solely
+`(blendSlider/100)^0.42`; `highlighted`/`alpha` transfer), with CT/PT/fusion
+positives and the addendum's fail-closed negatives, plus real-harness evidence.
+Do not add `RenderTarget` (P3.5), UI or view-engine work.

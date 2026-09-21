@@ -12,3 +12,4 @@ export * from './errors.js';
 export * from './volume.js';
 export * from './adapter.js';
 export * from './volume-residency-backend.js';
+export * from './dicom-palette-registration.js';
