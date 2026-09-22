@@ -4,7 +4,7 @@
   "protocolVersion": "1.0",
   "result": {
     "protocolVersions": ["1.0"],
-    "operations": ["nuclear.dicom.compatibility", "nuclear.dicom.geometry", "nuclear.dicom.inspect", "nuclear.protocol.handshake", "nuclear.quantitation.suvbw"],
+    "operations": ["nuclear.dicom.compatibility", "nuclear.dicom.geometry", "nuclear.dicom.inspect", "nuclear.protocol.handshake", "nuclear.quantitation.suvbw", "nuclear.registration"],
     "workerMetadata": {
       "workerVersion": "0.2.0",
       "operation": "nuclear.protocol.handshake",

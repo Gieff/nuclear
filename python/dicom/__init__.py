@@ -22,6 +22,8 @@ Modules:
     quantitation_validation: Per-instance PET validation helpers.
     quantitation: Fail-closed SUVbw validation and result assembly.
     quantitation_operations: ``nuclear.quantitation.suvbw`` handler.
+    registration_schema: ``nuclear.registration`` request schema (Phase 2B.1).
+    registration_operations: ``nuclear.registration`` handler (Phase 2B.1).
 """
 
 __version__ = "0.2.0"

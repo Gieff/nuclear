@@ -6,7 +6,7 @@
  * finiteness; no arithmetic is performed here.
  */
 
-import type { BoundingBox3D } from '@nuclear/shared-types';
+import type { BoundingBox3D, Matrix4x4 } from '@nuclear/shared-types';
 import { WorkerContractError } from './errors.js';
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -76,6 +76,29 @@ export function six(value: unknown, where: string): SixTuple {
     asNumber(items[3], `${where}[3]`),
     asNumber(items[4], `${where}[4]`),
     asNumber(items[5], `${where}[5]`),
+  ];
+}
+
+export function matrix4x4(value: unknown, where: string): Matrix4x4 {
+  const items = asArray(value, where);
+  if (items.length !== 16) throw new WorkerContractError(`${where} must have length 16.`);
+  return [
+    asNumber(items[0], `${where}[0]`),
+    asNumber(items[1], `${where}[1]`),
+    asNumber(items[2], `${where}[2]`),
+    asNumber(items[3], `${where}[3]`),
+    asNumber(items[4], `${where}[4]`),
+    asNumber(items[5], `${where}[5]`),
+    asNumber(items[6], `${where}[6]`),
+    asNumber(items[7], `${where}[7]`),
+    asNumber(items[8], `${where}[8]`),
+    asNumber(items[9], `${where}[9]`),
+    asNumber(items[10], `${where}[10]`),
+    asNumber(items[11], `${where}[11]`),
+    asNumber(items[12], `${where}[12]`),
+    asNumber(items[13], `${where}[13]`),
+    asNumber(items[14], `${where}[14]`),
+    asNumber(items[15], `${where}[15]`),
   ];
 }
 

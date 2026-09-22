@@ -135,7 +135,7 @@ def test_unknown_method_is_method_not_found_without_result(dispatcher: Dispatche
     assert response["id"] == "req-test"
     error = _assert_error(response, METHOD_NOT_FOUND)
     assert error["data"]["requestedMethod"] == "nuclear.unknown.operation"
-    assert error["data"]["supportedMethods"] == ["nuclear.dicom.compatibility", "nuclear.dicom.geometry", "nuclear.dicom.inspect", "nuclear.protocol.handshake", "nuclear.quantitation.suvbw"]
+    assert error["data"]["supportedMethods"] == ["nuclear.dicom.compatibility", "nuclear.dicom.geometry", "nuclear.dicom.inspect", "nuclear.protocol.handshake", "nuclear.quantitation.suvbw", "nuclear.registration"]
 
 
 def test_every_failure_has_diagnostic_and_no_result(dispatcher: Dispatcher) -> None:

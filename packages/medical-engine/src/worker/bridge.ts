@@ -12,13 +12,22 @@ import { mapGeometryResult, mapInspectionResult } from './mapping.js';
 import { mapCompatibilityResult } from './mapping-compatibility.js';
 import { mapQuantitationResult } from './mapping-quantitation.js';
 import {
+  mapRegistrationResult,
+  registrationRequestParams,
+} from './mapping-registration.js';
+import {
   DICOM_COMPATIBILITY_METHOD,
   DICOM_GEOMETRY_METHOD,
   DICOM_INSPECT_METHOD,
   DEFAULT_PROTOCOL_VERSION,
   QUANTITATION_SUVBW_METHOD,
+  REGISTRATION_METHOD,
   errorMessage,
 } from './protocol.js';
+import type {
+  WorkerRegistrationRequest,
+  WorkerRegistrationResult,
+} from './registration-types.js';
 import { WorkerSupervisor } from './supervisor.js';
 import type {
   ScientificWorkerBridgeOptions,
@@ -130,6 +139,14 @@ export class ScientificWorkerBridge extends WorkerSupervisor {
   ): Promise<WorkerPetQuantitationResult> {
     return mapQuantitationResult(
       await this.request<unknown>(QUANTITATION_SUVBW_METHOD, { locator, seriesInstanceUID }),
+    );
+  }
+
+  async registration(
+    request: WorkerRegistrationRequest,
+  ): Promise<WorkerRegistrationResult> {
+    return mapRegistrationResult(
+      await this.request<unknown>(REGISTRATION_METHOD, registrationRequestParams(request)),
     );
   }
 }

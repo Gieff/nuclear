@@ -23,6 +23,7 @@ const OPERATIONS = [
   'nuclear.dicom.inspect',
   'nuclear.protocol.handshake',
   'nuclear.quantitation.suvbw',
+  'nuclear.registration',
 ];
 
 const METADATA = {

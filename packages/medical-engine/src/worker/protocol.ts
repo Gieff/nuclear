@@ -23,6 +23,7 @@ export const DICOM_INSPECT_METHOD = 'nuclear.dicom.inspect';
 export const DICOM_GEOMETRY_METHOD = 'nuclear.dicom.geometry';
 export const DICOM_COMPATIBILITY_METHOD = 'nuclear.dicom.compatibility';
 export const QUANTITATION_SUVBW_METHOD = 'nuclear.quantitation.suvbw';
+export const REGISTRATION_METHOD = 'nuclear.registration';
 
 /** Operations a compatible worker must advertise during handshake. */
 export const REQUIRED_WORKER_OPERATIONS: readonly string[] = [
@@ -30,6 +31,7 @@ export const REQUIRED_WORKER_OPERATIONS: readonly string[] = [
   DICOM_GEOMETRY_METHOD,
   DICOM_COMPATIBILITY_METHOD,
   QUANTITATION_SUVBW_METHOD,
+  REGISTRATION_METHOD,
 ];
 
 export const JSON_RPC_PARSE_ERROR = -32700;
@@ -39,6 +41,7 @@ export const JSON_RPC_INVALID_PARAMS = -32602;
 export const JSON_RPC_INTERNAL_ERROR = -32603;
 export const NUCLEAR_PROTOCOL_VERSION_MISMATCH = -32001;
 export const NUCLEAR_SOURCE_UNAVAILABLE = -32010;
+export const NUCLEAR_OPERATION_NOT_IMPLEMENTED = -32011;
 
 export interface WorkerJsonRpcRequest {
   readonly jsonrpc: '2.0';

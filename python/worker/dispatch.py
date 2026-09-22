@@ -28,6 +28,7 @@ from .protocol import (
     METHOD_NOT_FOUND,
     PROTOCOL_VERSION,
     QUANTITATION_SUVBW_METHOD,
+    REGISTRATION_METHOD,
     ProtocolError,
     iso8601_utc,
 )
@@ -134,6 +135,7 @@ def build_dispatcher(now: Clock | None = None) -> Dispatcher:
     """
     from dicom.geometry_operations import compatibility_operation, geometry_operation
     from dicom.quantitation_operations import suvbw_operation
+    from dicom.registration_operations import registration_operation
     from dicom.scanner import inspect_source
 
     dispatcher = Dispatcher(now=now)
@@ -155,4 +157,5 @@ def build_dispatcher(now: Clock | None = None) -> Dispatcher:
     dispatcher.register(DICOM_GEOMETRY_METHOD, geometry)
     dispatcher.register(DICOM_COMPATIBILITY_METHOD, compatibility)
     dispatcher.register(QUANTITATION_SUVBW_METHOD, quantitation)
+    dispatcher.register(REGISTRATION_METHOD, registration_operation)
     return dispatcher
