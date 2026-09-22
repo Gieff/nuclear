@@ -1993,6 +1993,87 @@ Prepare (documentation only, no registration implementation):
 Then proceed to **P4.6**. Do not implement registration or inter-study
 propagation yet.
 
+---
+
+# Planning Note — Inter-Study Registration & Propagation (documents only)
+
+## 1. What Was Prepared
+
+No code changed. Three planning artifacts were produced to unblock future
+slices without implementing registration or propagation:
+
+- **`docs/plans/PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md`** (new): the worker /
+  `medical-engine` inputs, outputs and **evidence** for a verifiable
+  `SpatialTransform` (automatic SimpleITK Mutual Information + manual
+  Procrustes), with independent Python tests and candidate tolerances marked
+  **[TO RATIFY]**. SimpleITK is already a declared dependency
+  (`python/pyproject.toml`), so no new dependency is introduced.
+- **`docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md`** (modified): added slice
+  **P4.4b** (`applyInterStudyLink` + propagation) to the delivery table and a
+  detail section, explicitly marked **NOT YET IMPLEMENTED**, with acceptance
+  criteria (DAG, explicit/atomic propagation, no `SharedStateGroup`, locks,
+  tolerance, out-of-domain).
+- **`docs/decisions/ADR-012-inter-study-link-propagation.md`** (new, Status
+  **Proposed**): DAG topology, explicit (non-observer) propagation, a causality
+  token that guarantees termination, normative transform/differential mapping,
+  `toleranceMm`, `outOfDomainBehavior` (`clamp`/`hide`/`warn`, no default),
+  locks, and Open Decisions **OD-1..OD-5** (trigger API, math ownership,
+  out-of-domain bounds, relative semantics, error taxonomy).
+
+## 2. Files Changed / Created
+
+Created:
+- `docs/decisions/ADR-012-inter-study-link-propagation.md` (175 lines)
+- `docs/plans/PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md` (179 lines)
+
+Modified:
+- `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` (+P4.4b table row and detail section)
+
+Unchanged: `packages/**`, `python/**`, `tests/**`, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- Inter-study links are **directed edges** and propagation is a DAG walk; a link
+  that would close a cycle is refused.
+- Propagation is an explicit, atomically-replacing engine operation — never an
+  observer/notify chain (ADR-011 §3, architecture §2.5).
+- The matrix/offset application must be a **single owned pure function**
+  consumed by `view-engine` (OD-2); `view-engine` must not re-derive geometry
+  (invariant 7 / non-simplification law). `toleranceMm` stays caller-declared
+  and is never a silent fudge factor.
+
+## 4. Tests Added & Executed
+
+None — documentation-only slice. The code tree is unchanged, so the last green
+gates stand (`npm test` **404/404, 75 suites**, typecheck/build, pytest 189,
+mypy 47).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-012 recorded with Status **Proposed** (must be **Accepted** before P4.4b).
+- Phase 2B plan recorded; P4.4b recorded as planned in the Phase 4 plan.
+- `CHANGELOG.md` untouched.
+
+## 6. Project Model Impact
+
+- None. The accepted `SpatialTransform` contract is reused; any genuine gap
+  would require a `shared-types` extension with a validator and fixture.
+
+## 7. Known Limitations & Technical Debt
+
+- ADR-012 Open Decisions OD-1..OD-5 are unresolved; no registration or
+  propagation code exists.
+- Phase 2B tolerances are candidate values pending ratification; operation names
+  are TBD.
+- No automated parity test between the C5a `validate.ts` mirror and the
+  contract validator (carried from C5a).
+
+## 8. Exact Next Recommended Task
+
+Ratify ADR-012 and the Phase 2B tolerances/operation names, then proceed to
+**P4.6** (surfaces and layout) as the next Phase 4 slice; **P4.4b** follows once
+ADR-012 is Accepted and Phase 2B can produce a `SpatialTransform`.
+
 
 
 

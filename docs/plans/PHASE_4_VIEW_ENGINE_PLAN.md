@@ -132,6 +132,7 @@ context.
 | P4.2 | engine engineer | `PreparedView` assembly + `ViewProvenance` (a prepared view may exist without a slot); published DTOs immutable per ADR-011 | Assembly produces a valid **frozen** `PreparedView`; assembly alone issues no residency retain; missing/empty provenance or provenance↔asset↔series↔fingerprint mismatch fails closed; slot binding is a separate explicit, fail-closed operation (not an assembly prerequisite) |
 | P4.3 | engine engineer | Shared-state groups (`SharedStateGroup`) via a private holder with **atomic replacement → new projection → frozen published DTO** (ADR-011 §3 + addendum) | Multiple views reference one shared `SpatialState`/`CameraState`; identity is observable; no notify chains; the test specifies which identity stays stable (holder / `PreparedViewId` / `ViewSlot`) and which value is regenerated after an update; every replacement payload passes assert→freeze |
 | P4.4 | engine engineer | Link semantics (intra-study + inter-study) | Co-referenced link requires matching verified FoR/geometry; inter-study requires transform or differential + tolerance + out-of-domain; mismatches fail closed |
+| P4.4b | engine engineer | Inter-study link application & propagation (`applyInterStudyLink`), per ADR-012 | Link registered over an accepted `SpatialTransform`/differential; propagation is an explicit, atomic, DAG-directed replacement; cycles, locked targets, tolerance overflow and `outOfDomainBehavior` fail closed; 3–4 chained views terminate; inter-study never joins a `SharedStateGroup` |
 | P4.5 | engine engineer | `LOCK` + `LocalViewOverride` | Lock blocks mutation of named state; override diverges, round-trips and leaves the source view unchanged |
 | P4.6 | engine engineer | `ViewportSurfaceRegistry` + `SurfaceLayoutManager` | Stable identity across bind/rebind/re-layout; `disposed` carries no binding; capacity 16 logical ≠ WebGL contexts; placement geometry is pure |
 | P4.7 | engine engineer | `ResourceDemand` projection into `ResourceManager` | Demand→lease reconciliation; shared asset retained once; eviction preserves semantic view identity and reload restores residency |
@@ -140,6 +141,38 @@ context.
 P4.4 depends on P4.1 and P4.3; P4.7 depends on the accepted P4.1 slot model.
 Do not begin a later slice before the predecessor’s review and QA evidence
 is recorded.
+
+### P4.4b — Inter-Study Link Application & Propagation (planned, NOT YET IMPLEMENTED)
+
+P4.4 validates an inter-study link but deliberately refuses to apply it, because
+the two views live in different `FrameOfReferenceUID`s and must not share
+`SpatialState`. P4.4b adds the relative application:
+
+- `applyInterStudyLink` registers a `kind: 'inter-study'` link (relative or
+  transformed) after P4.4 eligibility, and refuses a link that would close a
+  directed cycle (DAG topology, ADR-012 §1).
+- Propagation is an **explicit** engine operation (no observer/notify chain):
+  given an origin view’s new `SpatialState`, it walks the DAG forward and
+  regenerates each target’s frozen projection through the ADR-011 §3 atomic
+  replacement path. Inter-study targets are never attached to a
+  `SharedStateGroup`.
+- Causality: each propagation carries an origin token and visits each view at
+  most once, so chains of 3–4 views terminate (ADR-012 §3).
+- Locks: a `StateLock` on a target’s `spatial` refuses propagation (P4.5).
+- `toleranceMm` and `outOfDomainBehavior` (`clamp`/`hide`/`warn`) are honoured
+  with no invented default; the matrix/offset application is a single owned pure
+  function consumed (not re-implemented) by `view-engine` (ADR-012 §4/§5/§6,
+  Open Decisions OD-2/OD-4).
+
+Acceptance evidence: positive transformed and relative propagation over curated
+fixtures; cycle/self-loop refusal; locked-target refusal; out-of-domain
+`clamp`/`hide`/`warn`; 3–4 view chains terminate and are deterministic and
+idempotent; every refusal leaves all views and groups unchanged; no
+`SharedStateGroup` for an inter-study link.
+
+P4.4b depends on P4.4, an **Accepted** ADR-012 and the Phase 2B `SpatialTransform`
+evidence (`docs/plans/PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md`). It is planned
+only; no P4.4b code exists as of the P4.5/C5a close.
 
 ## Fixture and Test Policy
 
