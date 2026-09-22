@@ -1,13 +1,15 @@
 # Phase 4 — View Engine: Workspace, Link/Lock/Override & Persistent Surfaces
 
-Status: **P4.0–P4.2 CLOSED** (2026-09-22), after the independent review
-reopened them and the ratified corrective chain landed. Final corrective HEAD
-`a46099d`; `npm test` **348/348 (68 suites)**, typecheck/build clean, pytest
-189, mypy 47. Reopened slices closed: P4.0 (co-reference contract honesty),
+Status: **P4.0–P4.3 CLOSED** (2026-09-22). P4.0–P4.2 were closed after the
+independent review reopened them and the ratified corrective chain landed
+(final corrective HEAD `a46099d`; `npm test` 348/348, 68 suites, typecheck/build
+clean, pytest 189, mypy 47). **P4.3 (shared-state groups) is closed** under the
+binding ADR-011 addendum contract (`private holder → atomic replacement → new
+projection → frozen published DTO`); `npm test` **361/361 (69 suites)**,
+typecheck/build clean. **P4.4–P4.8 pending**; the next slice is P4.4 (link
+semantics). Reopened slices closed: P4.0 (co-reference contract honesty),
 P4.1 (workspace input integrity, slot rule), P4.2 (`PreparedView` assembly,
-provenance correlation, published-DTO immutability). **P4.3–P4.8 pending**;
-P4.3 is ready to start under the binding ADR-011 addendum contract
-(`private holder → atomic replacement → new projection → frozen published DTO`).
+provenance correlation, published-DTO immutability).
 Corrective commits: `db4ba42` + `f71d609` (C8), `7680acc` (C1), `0c8921e`
 (C2+C5+C6), `95a04fb` (C3+C7), `f8a5571` (C4), `a46099d` (C1b+C4b). See
 `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` §“Reopened — Ratified Correction
@@ -1349,6 +1351,170 @@ private holder → atomic replacement → new projection → frozen published DT
 
 `AGENTS.md` intentionally still reads “Phase 3 Complete”: it advances only when
 Phase 4 as a whole closes (P4.8). Nothing has been pushed.
+
+---
+
+# Handover Report — P4.3: Shared-State Groups
+
+## 1. What Was Implemented
+
+P4.3 added a private shared-state holder and its atomically-replacing update
+API to `@nuclear/view-engine`, implementing ADR-011 §2/§3 and the binding
+addendum contract exactly:
+
+```text
+private holder → atomic replacement → new projection → frozen published DTO
+```
+
+- **`SharedStateGroup` (holder)**: owns one `SpatialState`/`CameraState` pair
+  (architecture §16) in a module-private `WeakMap`; exposes only `id`,
+  `spatial`, `camera` read getters, and is `Object.freeze`d in its constructor.
+  No public mutator, no notify chain.
+- **`SharedStateGroupRegistry`**: creates/reads groups, tracks membership (one
+  group per view) and exposes the controlled APIs `attach`, `detach`, `replace`;
+  `snapshot()`/`listMembers()` are deep-frozen plain data.
+- **`projectPreparedView`**: regenerates a frozen `PreparedView` from the view’s
+  own metadata plus the holder’s pair; only `spatial`/`camera` are overridden,
+  referenced by identity (never cloned).
+- **`replace` is atomic**: it validates + freezes the replacement wrapper,
+  stages every member’s projection, then commits the holder pair and swaps each
+  registered entry. A refusal leaves the holder and every bound view
+  object-identical.
+- **The projection swap is internal-only (F1 fix)**: `#replaceProjection` + a
+  module-private `WeakMap` friend closure + `@internal
+  replaceRegisteredPreparedView`; `prepared-view/index.ts` uses a named
+  `PreparedViewRegistry` re-export so the friend cannot leak, and the public
+  `replace` is gone.
+- **`ImagingWorkspace`** gains `sharedStateGroups` and a `sharedStateGroups`
+  snapshot field.
+
+Ratified identity contract (the slice’s core definition):
+
+- **Stable** across a replacement: the `SharedStateGroup` holder object (and
+  its id), every `PreparedViewId` (and its list position), and every `ViewSlot`
+  (its binding is untouched).
+- **Regenerated**: the published `PreparedView` object and its `state`
+  container; `state.spatial`/`state.camera` reference the holder’s new frozen
+  pair. A consumer re-reads by the stable `PreparedViewId`; there is no
+  push/notify.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/view-engine/src/shared-state/types.ts` (34 lines)
+- `packages/view-engine/src/shared-state/errors.ts` (40 lines)
+- `packages/view-engine/src/shared-state/group.ts` (75 lines)
+- `packages/view-engine/src/shared-state/project.ts` (37 lines)
+- `packages/view-engine/src/shared-state/registry.ts` (176 lines)
+- `packages/view-engine/src/shared-state/index.ts` (14 lines)
+- `tests/view-engine/shared-state.test.ts` (672 lines; tests a–m)
+
+Modified:
+- `packages/view-engine/src/index.ts` (+ shared-state barrel)
+- `packages/view-engine/src/prepared-view/index.ts` (`export *` → named
+  `PreparedViewRegistry` re-export)
+- `packages/view-engine/src/prepared-view/registry.ts` (public `replace`
+  removed; internal friend swap; 139 lines)
+- `packages/view-engine/src/workspace/imaging-workspace.ts`
+  (`sharedStateGroups` field + snapshot; 220 lines)
+
+Unchanged: `packages/shared-types/**`, every other package, root/package
+config, plans/ADRs, `CHANGELOG.md`, the version. No new cross-package contract
+was needed (consistent with the P4.3 owner-scoping: view-engine only).
+
+## 3. Architectural Assumptions Made
+
+- A shared-state group shares the **pair** spatial+camera, matching
+  architecture §16; per-view presentation/composition/binding stay local.
+  Partial (spatial-only) sharing is deliberately out of scope for P4.3.
+- Identity observability is group↔views: the holder’s current
+  `spatial`/`camera` are the exact objects placed in every attached view’s
+  projection; cloning is forbidden because it would break observability
+  (ADR-011 addendum).
+- Freezing is in-place at ingestion (`assertSerializableValue` → `deepFreeze`),
+  so the group shares the caller’s frozen objects; a refused payload is never
+  frozen and never enters the holder. The holder is `Object.freeze`d and the
+  `WeakMap` accepts the frozen key.
+- `SharedStateGroup` holders are opaque identity tokens intentionally **not**
+  deep-frozen (`deepFreeze` fail-closes on class instances); the ADR-011 §1
+  exemption applies because the holder exposes no mutable state. `listGroups`
+  returns a shallow-frozen array; only plain-data outputs are deep-frozen.
+- The projection swap must not be a public capability: a public
+  `PreparedViewRegistry.replace` would let a hand-built view bypass the C5 /
+  ADR-010 §7.3 provenance correlation on an already-registered id. Hence the
+  internal friend pattern. (`register` remains a low-level structural
+  primitive; workspace-level correlation is enforced by
+  `ImagingWorkspace.registerPreparedView`.)
+
+## 4. Tests Added & Executed
+
+Added `tests/view-engine/shared-state.test.ts` (13 tests, 1 suite, a–m).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `node --test tests/view-engine/shared-state.test.ts` | **13 pass / 0 fail** (1 suite, 0 skipped/todo) |
+| `node --test tests/view-engine/prepared-view.test.ts` | 14 pass / 0 fail |
+| focused (shared-state + prepared-view + immutability) | 38 pass / 0 fail |
+| `npm test` | **361 pass / 0 fail / 69 suites** (0 skipped/todo) = P4.2 baseline 348/68 + 13 tests / +1 suite |
+| `npm run build` | clean (exit 0, `tsc -b`) |
+
+Coverage: frozen pair at creation; exact identity shared across two attached
+views; holder/id/slot stability vs regenerated projections; old projections
+remain frozen; per-view metadata preserved by identity; refusal classes
+(`NaN`, explicit `undefined`, `Date`/`Map`, `bigint`/`symbol`/`function`)
+leaving holder and views object-identical; duplicate/unknown group; unknown
+view; double-attach and cross-group attach; detach/not-attached/re-attach;
+zero-member replace; frozen snapshot; `listGroups` frozen + holder-id
+corruption refused; internal surfaces absent from all barrels and the public
+`replace` gone. No `skip`/`todo`/`|| true`; no vacuous assertions.
+
+Independent verdicts: `nuclear-reviewer` **PASS** (one BLOCKING finding F1
+raised, accepted and closed; 3 non-blocking residuals recorded) and
+`nuclear-qa` **PASS** for all executable gates (13/13 · 361/361 · typecheck and
+build clean), with the P4.3 numeric/visual tolerance declared **NOT YET
+APPLICABLE** (the slice compares no geometry).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-011 remains **Accepted**; P4.3 implements §2/§3 and its P4.3 binding
+  addendum. ADR-010 §1/§6 are unaffected. No ADR change was required.
+- This report satisfies the AgentLog Gate for P4.3.
+- `CHANGELOG.md` untouched; release notes are compiled via
+  `/promote-changelog 4` only on explicit request.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema change. `SharedStateGroupId` is a view-engine-local
+  branded id (derived from `Brand`), not a `shared-types` contract, because no
+  cross-package consumer exists yet; promoting it remains a future,
+  explicitly-scoped decision.
+
+## 7. Known Limitations & Technical Debt
+
+- `tests/view-engine/shared-state.test.ts` is 672 lines (tests are outside the
+  Rule 02 source-length gate; carried test-file debt).
+- Residual (accepted, non-blocking): `replaceRegisteredPreparedView` remains
+  reachable by deep-importing the internal module, the same trust tier as
+  `commitSharedStatePair`/`pairByGroup`; nothing in the toolchain forbids deep
+  imports (a package `exports` map or lint rule would be needed).
+- The forged-registry guard reuses `PREPARED_VIEW_UNKNOWN_ID` for the
+  “no replacer” condition (minor diagnostic nit).
+- Partial (spatial-only) sharing is not modelled; a group shares the pair.
+- Carried Phase 3 debt unchanged (renderer size headroom; hardware-GPU and a
+  true production bundle remain `NOT YET APPLICABLE`).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P4.4 — link semantics**: compose `isIntraStudyLink` with the
+existing `assertCoReferenceEligibility` (same worker-verified
+`FrameOfReferenceUID` + one-to-one snapshot ↔ asset ↔ series ↔ fingerprint
+correlation; **never** require an equal `geometricDigest`), and enforce
+inter-study relative (`navigationDifferentialMm`) and transformed
+(`SpatialTransform`, matching source/target FoRs and `outOfDomainBehavior`)
+links with an explicit `toleranceMm`; mismatches fail closed. Use only the
+curated `ct-axial` / `pt-axial-coreg` (same FoR `…5001.4`) and `pt-axial`
+(frame `…5002.4`) fixtures. Do not add P4.5–P4.7.
 
 
 

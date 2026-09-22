@@ -32,6 +32,8 @@ import { PreparedViewError } from '../prepared-view/errors.js';
 import { assertProvenanceCorrelation } from '../prepared-view/provenance-correlation.js';
 import { cloneSerializableValue } from './value-integrity.js';
 import { deepFreeze } from '../internal/deep-freeze.js';
+import { SharedStateGroupRegistry } from '../shared-state/registry.js';
+import type { SharedStateGroupSnapshot } from '../shared-state/types.js';
 
 export interface ImagingWorkspaceSnapshot {
   readonly studies: readonly StudyReference[];
@@ -39,11 +41,13 @@ export interface ImagingWorkspaceSnapshot {
   readonly groups: readonly ViewGroup[];
   readonly slots: readonly ViewSlot[];
   readonly preparedViews: readonly PreparedView[];
+  readonly sharedStateGroups: readonly SharedStateGroupSnapshot[];
 }
 
 export class ImagingWorkspace {
   readonly slots: ViewSlotRegistry;
   readonly preparedViews: PreparedViewRegistry;
+  readonly sharedStateGroups: SharedStateGroupRegistry;
 
   private readonly studyById = new Map<StudyId, StudyReference>();
   private readonly studyOrder: StudyId[] = [];
@@ -54,6 +58,7 @@ export class ImagingWorkspace {
   constructor(options: { slotRegistry?: ViewSlotRegistry } = {}) {
     this.slots = options.slotRegistry ?? ViewSlotRegistry.createDefault();
     this.preparedViews = new PreparedViewRegistry();
+    this.sharedStateGroups = new SharedStateGroupRegistry(this.preparedViews);
   }
 
   registerStudy(study: StudyReference): void {
@@ -187,6 +192,7 @@ export class ImagingWorkspace {
       // stays observable (ADR-010 §1 / ADR-011 §1). Freezing, not cloning,
       // provides the immutability guarantee. Do not "fix" this by cloning.
       preparedViews: this.listPreparedViews(),
+      sharedStateGroups: this.sharedStateGroups.snapshot(),
     });
   }
 
