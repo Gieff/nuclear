@@ -1,12 +1,15 @@
 # Phase 2B — Scientific Registration: `SpatialTransform` Generation & Verification
 
-Status: **In progress.** Slice **2B.1 (worker operation registration + evidence
-schema + TypeScript bridge types)** is **complete** — commit `1dbe540`; the
-worker raises `-32011 OPERATION_NOT_IMPLEMENTED` for a schema-valid request and
-fabricates no transform. Slice **2B.2 (manual-landmark Procrustes)** is also
-**complete** — commit `335926e`. **2B.0 is partially ratified** (R1, R2, R3, R4, R5,
-R7, R8, R9, R10); the numeric degeneracy bound (R6) remains `[TO RATIFY]`.
-Addendum to
+Status: **Slices 2B.1–2B.4 + 2B.3a complete (2B.5 closure).** `nuclear.registration`
+is registered with a fail-closed schema; the **landmarks** path performs
+deterministic Procrustes and returns evidence with a measured RMS `errorMarginMm`;
+the **MI** path has a verified deterministic core (2B.3a) that is **not**
+IPC-wired; evidence validity is enforced fail-closed in Python and TypeScript
+(2B.4). **2B.3b (real IPC volume transport) is BLOCKED** pending a Pixel/Volume
+Transport ADR. **2B.0 ratification:** R1–R5 and R7–R11 ratified; the **R6 numeric
+degeneracy bound is deferred** (not referenced by any decision path). Commits
+`1dbe540` (2B.1), `335926e` (2B.2), `6872ab1` (2B.3a), `9c75386` (2B.4),
+`c2c2556` (fixture corrective). Addendum to
 `docs/plans/PHASE_2_SCIENTIFIC_INGESTION_PLAN.md` (ADR-002 worker bridge) and a
 prerequisite for view-engine slice **P4.4b** (`docs/decisions/ADR-012-inter-study-link-propagation.md`).
 
@@ -163,7 +166,7 @@ protocol and the numeric degeneracy bound remain open.
 - The convention is strictly **`P_target = M · P_source`**; the last row is
   `[0, 0, 0, 1]` for a rigid transform.
 
-**Still `[TO RATIFY]` (R6 + R11).**
+**Still `[TO RATIFY]` (R6 only; R11 is ratified).**
 
 - **2B-T4 / R6 — degeneracy classification (amended 2026-09-22).** Structural
   degeneracy is **ratified**: fewer than 3 points, coincident points, and **every
@@ -183,22 +186,17 @@ protocol and the numeric degeneracy bound remain open.
     asserting the stable `degenerate-landmarks` classification.
   - The algorithm must **not** be silently changed to force the reason before
     this is ratified.
-- **R11 — absent `errorMarginMm` admission (OPEN; requested by 2B.4).** The
-  admission policy for a `transformed` inter-study link whose `SpatialTransform`
-  carries **no** `errorMarginMm` (ADR-012 OD-6 / R-1). The 2B.4 code is
-  deliberately **policy-neutral**: it validates `errorMarginMm` only **when
-  present** and encodes no admission rule. Two options for the owner:
-  - **(A) permissive** — a residual-less transform is admissible under a
-    caller-declared, recorded policy;
-  - **(B) fail-closed (recommended)** — a residual-less transform is **not
-    admissible** to a `transformed` link; the link-admission gate refuses it,
-    because there is no residual to compare against `toleranceMm`.
-
-  Consequence of (B): the **MI** path cannot produce an admissible `transformed`
-  link until a **mm-denominated MI residual** is defined (a separate future
-  decision); the **landmarks** path is unaffected because it carries the measured
-  RMS. This decision is required before **P4.4b** can be accepted, and it is the
-  local half of ADR-012's R-1.
+- **R11 — absent `errorMarginMm` admission (RATIFIED 2026-09-22: option B,
+  fail-closed).** A `SpatialTransform` with **no** `errorMarginMm` may be retained
+  as structurally valid evidence but is **not admissible** to a `transformed`
+  `InterStudyLink`, is **not** comparable to `toleranceMm`, must **not** receive a
+  default, and must **not** be promoted to a link with an implicit warning. In
+  short: **valid evidence ≠ automatically admissible inter-study evidence.**
+  Consequence: the **MI** path produces validated transform evidence that stays
+  **non-admissible to P4.4b `transformed`** until a mm-denominated MI residual
+  with ratified semantics exists; the **landmarks** path **is** admissible because
+  it carries a measured geometric RMS. This is the local half of ADR-012
+  **R-1 / OD-6**, to be carried into ADR-012's final ratification.
 - **2B-T2 / R4 — deterministic MI protocol (RATIFIED 2026-09-22; scope = same
   locked environment).** The environment and every parameter are now fixed
   concretely against the installed SimpleITK **2.5.6** API (verified by
@@ -314,6 +312,14 @@ validator and fixture.
 | 2B.3 | scientific engineer | Automatic rigid MI registration | Synthetic-phantom recovery within the ratified tolerance; deterministic |
 | 2B.4 | scientific engineer | Evidence validity / `errorMarginMm` / fail-closed | Failed optimisation and FoR mismatch refused; no fabricated transform |
 | 2B.5 | reviewer + QA | Independent verification + handover | Reviewer/QA verdicts, pytest/mypy, fixture regression, eight-point report |
+
+**Slice status (2026-09-22).** 2B.0 partial; **2B.1 ✅** `1dbe540`;
+**2B.2 ✅** `335926e`; **2B.3 ✅ split** — **2B.3a ✅** `6872ab1` (deterministic
+MI core, no IPC) and **2B.3b BLOCKED** (requires a Pixel/Volume Transport ADR);
+**2B.4 ✅** `9c75386`; **2B.5 = this closure**. Fixture corrective `c2c2556`.
+Still open: **R6** (numeric degeneracy bound, deferred — no decision path
+references it) and **2B.3b** (blocked). **P4.4b** remains blocked until ADR-012
+is **Accepted**.
 
 Do not begin a later slice before its predecessor’s review/QA evidence is
 recorded.

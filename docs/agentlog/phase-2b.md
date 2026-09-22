@@ -807,3 +807,104 @@ residual is defined; the **landmarks** path (measured RMS) is unaffected.
 The 2B.4 code is **policy-neutral** and encodes neither option (it validates the
 residual only when present). **Awaiting phase-owner ratification** — this is the
 local half of ADR-012 **R-1 / OD-6**; ADR-012 stays **Proposed**.
+
+## Addendum — R11-B Ratified (phase owner, 2026-09-22)
+
+The phase owner ratified **R11-B (fail-closed)**. The rule:
+
+> A `SpatialTransform` with **no** `errorMarginMm` may be retained as
+> structurally valid evidence but is **not admissible** to a `transformed`
+> `InterStudyLink`, is **not** comparable to `toleranceMm`, must **not** receive
+> a default, and must **not** be promoted to a link with an implicit warning.
+> **Valid evidence ≠ automatically admissible inter-study evidence.**
+
+Consequence: the **MI** path produces validated transform evidence that stays
+**non-admissible to P4.4b `transformed`** until a mm-denominated MI residual with
+ratified semantics exists. The **landmarks** path stays admissible (measured
+geometric RMS). This is recorded in plan §2B.0 **R11** and must be carried into
+ADR-012's final R-1/OD-6 ratification. The 2B.4 code already encodes neither
+option (policy-neutral).
+
+# Handover Report — Phase 2B.5: Phase 2B Closure (Independent Verification & Handover)
+
+## 1. What Was Delivered
+
+Phase 2B is closed to the extent the ratified decisions allow:
+
+- **2B.1** — `nuclear.registration` registered with a fail-closed request/evidence
+  schema and typed TS bridge; schema-valid requests raised `-32011`.
+- **2B.2** — deterministic **Procrustes** landmarks path returning a rigid
+  `SpatialTransform` (`P_target = M · P_source`, LPS mm, row-major) with a
+  **measured RMS** `errorMarginMm`; typed `-32012` refusals.
+- **2B.3a** — deterministic **MI rigid core** (R4-exact) on `sitk.Image`, **not**
+  IPC-wired; bitwise-reproducible, R3-verified.
+- **2B.4** — fail-closed **evidence validity** in Python and TS, including the
+  ratified **R8 `transformType`↔matrix coherence** and TS provenance completeness;
+  **MI zero-iteration** formalised; `errorMarginMm` policy-neutral.
+- The **release-bump fixture regression** was fixed in a separate corrective.
+
+## 2. Commits (selective, explicit paths; no push)
+
+`1dbe540` (2B.1) · `335926e` (2B.2) · `6872ab1` (2B.3a) · `9c75386` (2B.4) ·
+`c2c2556` (release fixture corrective). Per-slice file lists are in the handovers
+above.
+
+## 3. Architectural Assumptions
+
+- ADR-002 is the transport authority; the worker owns every scientific formula and
+  TypeScript only validates/maps (verified by the engine no-`Math` scan).
+- The accepted `SpatialTransform`/`TransformValidity` contract was reused with **no
+  `shared-types` extension**; `errorMarginMm` stays advisory worker evidence.
+- Determinism is scoped to the **same locked environment** (`SimpleITK==2.5.6`,
+  `numpy==2.5.3`, threads=1); cross-platform determinism is explicitly excluded.
+- The classic **valid ≠ admissible** distinction (R11-B) is now explicit.
+
+## 4. Tests & Gates (final closure run, 2026-09-22)
+
+| Gate | Result |
+| --- | --- |
+| `npm run test:python` | **260 passed / 0 failed** |
+| `npm run typecheck:python` | **Success, 60 source files** |
+| `npm run typecheck` | **0 errors** |
+| `npm run build` | **clean** |
+| `node --test tests/medical/worker-registration*.test.ts` | **4/4 + 21/21** |
+| `npm test` | **463 / 0** (shared with the committed P4.7 view-engine slice) |
+
+Reviewer/QA verdicts: PASS at each slice (2B.1–2B.4); the 2B.4 reviewer CONCERNS
+(C-1 TS provenance asymmetry, C-2 R8 coherence omission) were **resolved** before
+its commit.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- This report plus the per-slice handovers satisfy the AgentLog Gate.
+- `CHANGELOG.md` untouched (ADR-001).
+- **No ADR was created or modified.** ADR-012 stays **Proposed**; R11-B must be
+  folded into its final R-1/OD-6 ratification.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema, shared contract, manifest or serialized state changed.
+
+## 7. Known Limitations & Technical Debt (required distinctions)
+
+- **Procrustes (landmarks):** evidence with a **usable geometric residual**
+  (measured RMS) — **admissible** to inter-study linking under the declared
+  policy.
+- **MI (automatic):** **validated transformative evidence without an admissible
+  residual** — valid but **non-admissible** to P4.4b `transformed` (R11-B) until a
+  mm-denominated MI residual is defined with ratified semantics.
+- **IPC `rigid`:** still **BLOCKED** by the missing **Pixel/Volume Transport
+  contract**; `mode:"rigid"` continues to return `-32011`.
+- **R6:** the numeric near-degeneracy bound is **deferred**; the candidate
+  `κ = 1e6` is **not** referenced by any decision path, and no arbitrary threshold
+  was introduced.
+- **2B.3b** (real IPC volume transport) requires its own ADR. **ADR-012 remains
+  Proposed**, so **P4.4b stays blocked**.
+
+## 8. Exact Next Recommended Task
+
+Open a **Pixel/Volume Transport ADR** (format, geometry, memory ownership, size
+limits, hydration/serialization, asset/FoR/series correlation, lifecycle, failure
+modes, independent worker→bridge evidence) to unblock **2B.3b**; in parallel
+ratify **R6** only if a scale-aware rule can be justified, and carry **R11-B**
+into ADR-012's **R-1/OD-6** ratification before **P4.4b**.
