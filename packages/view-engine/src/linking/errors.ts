@@ -38,3 +38,49 @@ export class CoReferenceError extends Error {
     }
   }
 }
+
+/**
+ * Fail-closed `ViewLink` eligibility and application discriminators (P4.4,
+ * ADR-010 §3/§7.2). `CO_REFERENCE_*` refusals keep their own code and class
+ * (`CoReferenceError`) and are intentionally propagated, not re-wrapped.
+ */
+export type LinkErrorCode =
+  | 'LINK_MALFORMED'
+  | 'LINK_INTRA_STUDY_EVIDENCE_FRAME_MISMATCH'
+  | 'LINK_INTRA_STUDY_EVIDENCE_MISMATCH'
+  | 'LINK_INTER_STUDY_SAME_FRAME'
+  | 'LINK_INTER_STUDY_TOLERANCE_INVALID'
+  | 'LINK_INTER_STUDY_MISSING_DIFFERENTIAL'
+  | 'LINK_INTER_STUDY_DIFFERENTIAL_INVALID'
+  | 'LINK_INTER_STUDY_MISSING_TRANSFORM'
+  | 'LINK_INTER_STUDY_TRANSFORM_INVALID'
+  | 'LINK_INTER_STUDY_TRANSFORM_FRAME_MISMATCH'
+  | 'LINK_INTER_STUDY_OUT_OF_DOMAIN_MISMATCH'
+  | 'LINK_INTER_STUDY_MODE_INCONSISTENT'
+  | 'LINK_APPLICATION_REQUIRES_CO_REFERENCE'
+  | 'LINK_VIEW_MISMATCH'
+  | 'LINK_SELF_REFERENCE'
+  | 'LINK_SHARED_STATE_CONFLICT';
+
+/** Optional underlying failure preserved for diagnostics. */
+export interface LinkErrorOptions {
+  readonly cause?: unknown;
+}
+
+/**
+ * Typed, serializable refusal raised while validating or applying a
+ * `ViewLink`. Every message names the offending view/asset/frame ids and
+ * carries a `Remediation:` clause.
+ */
+export class LinkError extends Error {
+  readonly code: LinkErrorCode;
+
+  constructor(code: LinkErrorCode, message: string, options: LinkErrorOptions = {}) {
+    super(message);
+    this.name = 'LinkError';
+    this.code = code;
+    if (options.cause !== undefined) {
+      this.cause = options.cause;
+    }
+  }
+}

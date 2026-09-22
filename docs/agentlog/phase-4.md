@@ -1,13 +1,15 @@
 # Phase 4 — View Engine: Workspace, Link/Lock/Override & Persistent Surfaces
 
-Status: **P4.0–P4.3 CLOSED** (2026-09-22). P4.0–P4.2 were closed after the
+Status: **P4.0–P4.4 CLOSED** (2026-09-22). P4.0–P4.2 were closed after the
 independent review reopened them and the ratified corrective chain landed
 (final corrective HEAD `a46099d`; `npm test` 348/348, 68 suites, typecheck/build
-clean, pytest 189, mypy 47). **P4.3 (shared-state groups) is closed** under the
+clean, pytest 189, mypy 47). **P4.3 (shared-state groups)** closed under the
 binding ADR-011 addendum contract (`private holder → atomic replacement → new
-projection → frozen published DTO`); `npm test` **361/361 (69 suites)**,
-typecheck/build clean. **P4.4–P4.8 pending**; the next slice is P4.4 (link
-semantics). Reopened slices closed: P4.0 (co-reference contract honesty),
+projection → frozen published DTO`); its test file was split by `8ab08f5`
+(361/361, 70 suites). **P4.4 (link semantics) is closed** under ADR-010 §3/§7.2:
+`npm test` **383/383 (72 suites)**, typecheck/build clean. **P4.5–P4.8 pending**;
+the next slice is P4.5 (lock and override). Reopened slices closed: P4.0
+(co-reference contract honesty),
 P4.1 (workspace input integrity, slot rule), P4.2 (`PreparedView` assembly,
 provenance correlation, published-DTO immutability).
 Corrective commits: `db4ba42` + `f71d609` (C8), `7680acc` (C1), `0c8921e`
@@ -1515,6 +1517,166 @@ inter-study relative (`navigationDifferentialMm`) and transformed
 links with an explicit `toleranceMm`; mismatches fail closed. Use only the
 curated `ct-axial` / `pt-axial-coreg` (same FoR `…5001.4`) and `pt-axial`
 (frame `…5002.4`) fixtures. Do not add P4.5–P4.7.
+
+---
+
+# Handover Report — P4.4: Link Semantics
+
+## 1. What Was Implemented
+
+P4.4 added `ViewLink` validation and co-referenced link application to
+`@nuclear/view-engine`. It composes the reused C3 co-reference gate and routes
+application through the P4.3 atomic shared-state projection path; it never
+mutates published/frozen state.
+
+- **Product `ViewLink` guards** (`linking/guards.ts`):
+  `isIntraStudyLink` / `isInterStudyLink` / `isViewLink` (and
+  `isSpatialTransformShape`) are deliberately **shape-level** so the semantic
+  rules stay reportable as specific codes instead of collapsing into
+  `LINK_MALFORMED`. JSDoc notes they mirror the runtime-relevant structure of
+  `tests/contracts/view-validators.ts` (still the test-side authority).
+- **Eligibility** (`linking/eligibility.ts`): `assertViewLinkEligible` fails
+  closed. Co-referenced links compose `assertCoReferenceEligibility` after the
+  structural correlation check: same worker-verified `FrameOfReferenceUID`,
+  one-to-one snapshot ↔ asset ↔ series ↔ fingerprint; **an equal
+  `geometricDigest` across snapshots is never required** (native CT/PET in one
+  FoR legitimately differ). `CoReferenceError` codes propagate unchanged.
+  Inter-study links require distinct frames, a finite non-negative
+  `toleranceMm`, and mode-exclusive `navigationDifferentialMm` (relative) or a
+  valid `SpatialTransform` with matching source/target FoRs and matching
+  `outOfDomainBehavior` (transformed); an invalid transform is never treated as
+  co-referenced.
+- **Application** (`linking/apply.ts`): `applyCoReferencedLink` validates
+  (including co-reference) **before any registry access**, resolves/reuses/
+  creates a `SharedStateGroup`, attaches both views through the P4.3 atomic
+  path, and records the link on each view by regenerating a frozen projection
+  via the internal `replaceRegisteredPreparedView` (documented as intra-package
+  composition, not a validation bypass). It is idempotent and returns a
+  deep-frozen `AppliedCoReferencedLink` whose `link` is the canonical stored
+  instance.
+- **Workspace delegate**: `ImagingWorkspace.applyCoReferencedLink` wires the
+  workspace's prepared-view/shared-state registries and asset lookup.
+- **Registry read**: `SharedStateGroupRegistry.groupOf` exposes the attached
+  group (or `undefined`) without mutating membership.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/view-engine/src/linking/guards.ts` (177 lines)
+- `packages/view-engine/src/linking/eligibility.ts` (214 lines)
+- `packages/view-engine/src/linking/apply.ts` (196 lines)
+- `tests/view-engine/link-eligibility.test.ts` (263 lines; 13 tests)
+- `tests/view-engine/link-application.test.ts` (273 lines; 9 tests)
+
+Modified:
+- `packages/view-engine/src/linking/errors.ts` (86 lines; +`LinkError` /
+  `LinkErrorCode`; `CoReferenceError` unchanged)
+- `packages/view-engine/src/linking/index.ts` (14 lines; barrel)
+- `packages/view-engine/src/shared-state/registry.ts` (188 lines; +`groupOf`)
+- `packages/view-engine/src/workspace/imaging-workspace.ts` (241 lines;
+  +`applyCoReferencedLink`)
+
+Unchanged: `packages/shared-types/**`, every other package, plans/ADRs,
+`CHANGELOG.md`, the version. No new cross-package contract was required.
+
+Preparatory commit (same phase): `8ab08f5` split the 672-line P4.3 test file
+into `shared-state-fixtures.ts` + `shared-state-identity.test.ts` /
+`shared-state-invariants.test.ts` with zero behaviour change (same 13 tests,
+suites 69→70), as the phase owner requested before P4.4–P4.5 add cases.
+
+## 3. Architectural Assumptions Made
+
+- Co-reference compatibility is the worker's verified assertion, never an
+  invented numeric tolerance; `toleranceMm` is a caller-declared inter-study
+  field validated only as finite ≥ 0.
+- A co-referenced link is applied by making the two views share one frozen
+  `spatial`/`camera` pair; the group is seeded from the **source view's current
+  frozen pair** (existing data, not new geometry). Existing groups win over the
+  caller's proposed id; a view already in a different group is a conflict, not
+  a silent move.
+- Link recording reuses `assemblePreparedView` (re-validate + freeze) and the
+  internal P4.3 projection swap. The guards are shape-only by design so every
+  semantic refusal keeps its own typed code.
+- Inter-study application is intentionally **not** implemented: an inter-study
+  relative/transformed link is validated but never shares absolute state;
+  `applyCoReferencedLink` refuses any non-co-referenced kind.
+
+## 4. Tests Added & Executed
+
+Added `tests/view-engine/link-eligibility.test.ts` (13 tests) and
+`tests/view-engine/link-application.test.ts` (9 tests).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `node --test tests/view-engine/link-eligibility.test.ts` | **13 pass / 0 fail** |
+| `node --test tests/view-engine/link-application.test.ts` | **9 pass / 0 fail** |
+| `npm test` | **383 pass / 0 fail / 72 suites** (0 skipped/todo) = P4.3 361/70 + 22 tests / +2 suites |
+| `npm run build` | clean (exit 0, `tsc -b`) |
+
+Coverage: two distinct digests in one verified FoR accepted; transformed and
+relative inter-study accepted; malformed values → `LINK_MALFORMED`; intra
+evidence frame / one-to-one / single-study refusals; composition proof that an
+unverified link surfaces `CoReferenceError CO_REFERENCE_NOT_VERIFIED`; every
+`LINK_INTER_STUDY_*` code (same frame, tolerance, differential, transform
+shape/validity/frames/out-of-domain, mode inconsistency); **fail-closed
+robustness** that malformed runtime payloads (non-record transform, missing
+`validity`, non-array/wrong-length differential, null/primitive link) raise
+typed `LinkError`, never `TypeError`. Application: shared frozen pair identity,
+link recorded once, wrapper frozen, registry matches returned views,
+pre-application frozen views unchanged, idempotency incl. a structurally equal
+clone, and negatives (`LINK_APPLICATION_REQUIRES_CO_REFERENCE`,
+`LINK_VIEW_MISMATCH`, `LINK_SELF_REFERENCE`, `LINK_SHARED_STATE_CONFLICT`,
+`CoReferenceError`) all asserting no group/view mutation. No `skip`/`todo`/
+`|| true`; no vacuous assertions.
+
+Independent verdicts: `nuclear-reviewer` **PASS** (two `TypeError`-leak defects
+found pre-review and fixed; N1–N3 closed; one cosmetic ordering nit fixed) and
+`nuclear-qa` **PASS** for all executable gates (13/13 · 9/9 · 383/383 ·
+typecheck/build clean), with image tolerance declared **NOT YET APPLICABLE**
+(no image comparison). One full `npm test` run hit the known renderer-harness
+flake (`adapter-teardown.test.ts` timeout); the file passed 3/3 alone and the
+re-run was green — reported truthfully, not as a P4.4 failure.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-010 remains **Accepted**; P4.4 implements §3 and §7.2. ADR-011 §3 governs
+  the atomic path. No ADR change was required.
+- This report satisfies the AgentLog Gate for P4.4.
+- `CHANGELOG.md` untouched; release notes are compiled via
+  `/promote-changelog 4` only on explicit request.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema change. Links are validated and applied in memory;
+  persisting a link collection/workspace snapshot remains a future,
+  explicitly-scoped decision.
+
+## 7. Known Limitations & Technical Debt
+
+- The three new source files are 177/214/196 lines; the test files 263/273
+  (tests are outside the Rule 02 source-length gate).
+- `replaceRegisteredPreparedView` remains reachable by deep-importing the
+  internal module (same accepted trust tier as P4.3); a package `exports` map or
+  lint rule would make the boundary runtime-verifiable.
+- Application atomicity is reasoned-infallibility after validation, not a
+  transaction: group resolution/attach/record are individually atomic and every
+  post-validation failure mode is pre-excluded.
+- Inter-study application (navigation/transform consumption) is not implemented;
+  only validation is. `SharedStateGroup` still models only the spatial+camera
+  pair.
+- Carried Phase 3 debt unchanged (renderer size headroom; hardware-GPU and a
+  true production bundle remain `NOT YET APPLICABLE`).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P4.5 — Lock and Override**: a `StateLock` protects a named state
+(`spatial`, `camera`, `presentation`, `projection`, `composition`, `binding`)
+and a mutation attempt on locked state is refused with a typed error naming the
+state; a `LocalViewOverride` is local to a `ComposerViewInstanceId`, serializable,
+and applying it must not mutate the source `PreparedView` (assert deep equality
+before and after). It may rely on the P4.4 finding that state changes only via
+engine APIs (ADR-011 §4). Do not add P4.6 surfaces or P4.7 demand.
 
 
 

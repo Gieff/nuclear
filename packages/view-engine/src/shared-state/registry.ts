@@ -61,6 +61,18 @@ export class SharedStateGroupRegistry {
     return this.groupById.has(groupId);
   }
 
+  /**
+   * Returns the shared-state group a prepared view is attached to, or
+   * `undefined` when it is unattached. Read-only: it never mutates membership
+   * and is the lookup P4.4 link application uses to reuse an existing group or
+   * to detect a cross-group conflict. A view that was never registered simply
+   * reports `undefined` (unlike `attach`, it does not require the view to exist).
+   */
+  groupOf(preparedViewId: PreparedViewId): SharedStateGroup | undefined {
+    const groupId = this.groupByMember.get(preparedViewId);
+    return groupId === undefined ? undefined : this.groupById.get(groupId);
+  }
+
   getGroup(groupId: SharedStateGroupId): SharedStateGroup {
     return this.requireGroup(groupId);
   }

@@ -34,6 +34,8 @@ import { cloneSerializableValue } from './value-integrity.js';
 import { deepFreeze } from '../internal/deep-freeze.js';
 import { SharedStateGroupRegistry } from '../shared-state/registry.js';
 import type { SharedStateGroupSnapshot } from '../shared-state/types.js';
+import { applyCoReferencedLink } from '../linking/apply.js';
+import type { AppliedCoReferencedLink, ApplyCoReferencedLinkInput } from '../linking/apply.js';
 
 export interface ImagingWorkspaceSnapshot {
   readonly studies: readonly StudyReference[];
@@ -150,6 +152,25 @@ export class ImagingWorkspace {
       );
     }
     return this.slots.bind(slotId, preparedViewId);
+  }
+
+  /**
+   * Applies a co-referenced link between two registered prepared views through
+   * the P4.3 atomic projection path (P4.4): it validates eligibility, resolves
+   * or creates the shared-state group, attaches both views and regenerates each
+   * frozen projection with the recorded link. It never mutates a published or
+   * frozen view in place. Delegates to `applyCoReferencedLink` with this
+   * workspace's prepared-view/shared-state registries and asset lookup.
+   */
+  applyCoReferencedLink(
+    request: Omit<ApplyCoReferencedLinkInput, 'preparedViews' | 'sharedStateGroups' | 'lookupAsset'>,
+  ): AppliedCoReferencedLink {
+    return applyCoReferencedLink({
+      ...request,
+      preparedViews: this.preparedViews,
+      sharedStateGroups: this.sharedStateGroups,
+      lookupAsset: (assetId) => this.assetById.get(assetId),
+    });
   }
 
   getPreparedView(preparedViewId: PreparedViewId): PreparedView {
