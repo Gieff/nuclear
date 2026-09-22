@@ -1,15 +1,15 @@
 {
   "name": "@nuclear/figure-engine",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Figure layout, paper composition and publication export for NuClear",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "dependencies": {
-    "@nuclear/shared-types": "0.2.0",
-    "@nuclear/rendering-presets": "0.2.0",
-    "@nuclear/project-model": "0.2.0",
-    "@nuclear/view-engine": "0.2.0"
+    "@nuclear/shared-types": "0.3.0",
+    "@nuclear/rendering-presets": "0.3.0",
+    "@nuclear/project-model": "0.3.0",
+    "@nuclear/view-engine": "0.3.0"
   },
   "files": ["dist", "src"]
 }

@@ -1,6 +1,6 @@
 {
   "name": "@nuclear/shared-types",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Pure TypeScript contracts, interfaces, enums, and opaque IDs for NuClear",
   "main": "./dist/index.js",
