@@ -206,4 +206,75 @@ describe('NuClear P4.6 — surface layout (ADR-010 §5)', () => {
       'host',
     );
   });
+
+  it('i. refuses non-finite geometry produced by finite extreme inputs', () => {
+    const manager = new SurfaceLayoutManager();
+    // External-review repro: individually finite host values whose combined
+    // arithmetic overflows to Infinity (x + column*(cell+gap)).
+    expectLayoutInvalid(
+      () =>
+        manager.layout({
+          kind: 'viewer-grid',
+          host: { x: Number.MAX_VALUE, y: 0, width: Number.MAX_VALUE, height: 1 },
+          columns: 2,
+          rows: 1,
+          surfaceIds: makeSurfaceIds(2),
+        }),
+      'rect.x',
+    );
+    expectLayoutInvalid(
+      () =>
+        manager.layout({
+          kind: 'viewer-grid',
+          host: { x: 0, y: Number.MAX_VALUE, width: 1, height: Number.MAX_VALUE },
+          columns: 1,
+          rows: 2,
+          surfaceIds: makeSurfaceIds(2),
+        }),
+      'rect.y',
+    );
+    // A gap that keeps the cell finite but overflows the composed coordinate.
+    expectLayoutInvalid(
+      () =>
+        manager.layout({
+          kind: 'viewer-grid',
+          host: { x: Number.MAX_VALUE, y: 0, width: Number.MAX_VALUE, height: 1 },
+          columns: 2,
+          rows: 1,
+          surfaceIds: makeSurfaceIds(2),
+          gap: Number.MAX_VALUE / 4,
+        }),
+      'rect.x',
+    );
+  });
+
+  it('j. accepts a large-but-representable host and leaves the request unchanged after a refusal', () => {
+    const manager = new SurfaceLayoutManager();
+    const safe = manager.layout({
+      kind: 'viewer-grid',
+      host: { x: 0, y: 0, width: Number.MAX_VALUE, height: 1 },
+      columns: 2,
+      rows: 1,
+      surfaceIds: makeSurfaceIds(2),
+    });
+    assert.deepEqual(safe.placements[1].rect, {
+      x: Number.MAX_VALUE / 2,
+      y: 0,
+      width: Number.MAX_VALUE / 2,
+      height: 1,
+    });
+    assert.equal(Object.isFrozen(safe), true);
+
+    const request: SurfaceLayoutRequest = {
+      kind: 'viewer-grid',
+      host: { x: Number.MAX_VALUE, y: 0, width: Number.MAX_VALUE, height: 1 },
+      columns: 2,
+      rows: 1,
+      surfaceIds: makeSurfaceIds(2),
+    };
+    const snapshot = structuredClone(request);
+    expectLayoutInvalid(() => manager.layout(request), 'rect.x');
+    assert.deepEqual(request, snapshot, 'a refused layout leaves the caller request unchanged');
+    assert.equal(Object.isFrozen(request.host), false, 'a refusal must not freeze the caller input');
+  });
 });

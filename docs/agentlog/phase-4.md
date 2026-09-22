@@ -2287,8 +2287,123 @@ application/propagation) remains blocked until ADR-012 is **Accepted**
 (R-1..R-4) and Phase 2B can produce a verifiable `SpatialTransform`; **P4.8**
 is the final independent phase review/QA and closure.
 
-Next: ratify R-1..R-4 (or revise R-2/R-3 into a superseding decision), then
-proceed to **P4.6**.
+---
+
+# P4.6 Corrective — N3: Non-Finite Geometry from Finite Inputs (external review)
+
+## 1. What Was Implemented
+
+An external independent review reopened P4.6 with verdict **CONCERNS**: a real
+defect (**N3**) allowed `SurfaceLayoutManager` to publish non-finite geometry
+from individually finite inputs, because the composed coordinate
+`host.x + column·(cell + gap)` (resp. the `y` axis) can overflow to `Infinity`
+even though `host.x`, `host.width`, `gap` and the cell are each finite
+(repro: `host {x: Number.MAX_VALUE, y:0, width: Number.MAX_VALUE, height:1}`,
+`columns: 2`, `rows: 1` → second placement `x: Infinity`). This contradicted the
+fail-closed/deterministic-output requirement.
+
+- **Finiteness publication invariant.** `layout.ts` gained
+  `assertFiniteGeometry(value, field)` and `assertFiniteRect(rect)` (checks
+  `rect.x`/`rect.y`/`rect.width`/`rect.height` with `Number.isFinite`). The
+  viewer-grid path builds each rect and gates it **before** `placements.push`;
+  the composer path gates its fresh rect **before** `deepFreeze`. A refusal is a
+  typed `SurfaceError('SURFACE_LAYOUT_INVALID')` naming the exact field
+  (`rect.x`/`rect.y`/`rect.width`/`rect.height`); **no partial result is
+  published** and the caller's request is never mutated or frozen.
+- **Extreme-value tests.** `surface-layout.test.ts` test `i` refuses the
+  MAX_VALUE `x` and `y` overflow repros plus a finite-cell/large-gap coordinate
+  overflow; test `j` proves a large-but-representable host (`width:
+  Number.MAX_VALUE`) is still accepted with exact `Number.MAX_VALUE/2` geometry,
+  and that a refused layout leaves the caller request deep-equal and unfrozen.
+
+## 2. Files Changed / Created
+
+Modified:
+- `packages/view-engine/src/surfaces/layout.ts` (174 lines; +`assertFiniteGeometry`
+  /`assertFiniteRect`, gated per placement and per composer rect)
+- `tests/view-engine/surface-layout.test.ts` (280 lines; +tests `i`, `j`)
+
+Documentation:
+- this addendum (supersedes the stale pre-P4.6 "Next: ratify R-1..R-4 … proceed
+  to P4.6" tail note).
+
+Unchanged: every other package, `shared-types`, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- **Finiteness is a publication invariant, not only an input invariant.** Every
+  coordinate/dimension that the engine emits must be finite; individually finite
+  inputs may still overflow when combined, so the post-condition covers the
+  composed values, not just the raw host.
+- The composer-path re-validation is defense-in-depth (its rect is a verbatim
+  copy of an already finite-gated host) and is kept deliberately for a uniform
+  "every published rect is finite" guarantee.
+- No ADR change is required: ADR-010 §5/§8 already require a pure, valid
+  placement output; N3 was an implementation defect, not a contract gap.
+
+## 4. Tests Added & Executed
+
+| Command | Observed result |
+| --- | --- |
+| `node --test tests/view-engine/surface-registry.test.ts` | **13 pass / 0 fail** |
+| `node --test tests/view-engine/surface-layout.test.ts` | **10 pass / 0 fail** (a–j) |
+| `npm run typecheck` | exit 0 |
+| `npm test` | **431 pass / 0 fail / 79 suites** (delta **+2** = tests i+j over the committed `909ce9c` 429/79) |
+| `npm run build` | clean (exit 0; forced `tsc -b --force` clean) |
+| `npm run test:python` | 207 passed |
+| `npm run typecheck:python` | clean (52 files; includes the concurrent Phase-2B writer's files) |
+
+Independent verdicts: `nuclear-reviewer` **PASS** — external repro refused with
+typed `SURFACE_LAYOUT_INVALID` field `rect.x`; 3497 extreme-but-finite accepted
+results all-finite and 1687 typed refusals (0 non-finite published); a
+2025-layout minimality probe found 0 false accept/refuse; the subnormal-host and
+gap guards are not over-tightened; earlier P4.6 guarantees intact (`23/23`).
+`nuclear-qa` **PASS** — all executable gates green on the frozen tree
+(registry 13/13, layout 10/10, typecheck/build, pytest 207, mypy 52), image
+tolerance **NOT YET APPLICABLE**, delta arithmetic exact. No renderer-sandbox
+`listen EPERM` failure occurred in the QA environment.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- This addendum reopens and corrects the P4.6 record; P4.6 is **conditionally
+  closed** pending the N3-corrective commit, and the external review's
+  instruction not to promote P4.6 to final closure until the corrective is
+  reviewed/QA'd is satisfied (both controls PASS above).
+- ADR-010 §8 accepted limits remain in force (lifetime-total 16-identity budget;
+  no `boundSlotId`/`boundViewId` existence or uniqueness checks; no
+  `ComposerViewInstance` binding; view-engine-local layout DTOs). The external
+  operational note stands: the registry is **workspace/session-scoped** and a UI
+  must not allocate throwaway registries that consume the lifetime budget.
+- `CHANGELOG.md` untouched; release notes are compiled via `/promote-changelog 4`.
+
+## 6. Project Model Impact
+
+- None.
+
+## 7. Known Limitations & Technical Debt
+
+- The composer-path `assertFiniteRect` is currently unreachable as a refusal
+  (its values are already finite-gated) — kept as defense-in-depth.
+- Pre-existing residuals unchanged: ≤1-ulp last-edge accumulation in the
+  documented grid formula (not simplified); generic `assertIdentifier`
+  remediation wording (registry side).
+- A concurrent Phase-2B writer moved HEAD (`e603f19`, docs-only) and held other
+  files dirty throughout this corrective; only the two P4.6 files (and this
+  agentlog) were staged. The writer's transient `worker-registration` JSON-RPC
+  code mismatch observed once by review did not reproduce and is unrelated to
+  this pure-Node geometry corrective.
+
+## 8. Exact Next Recommended Task
+
+Commit this N3 corrective, then proceed to **P4.7 — `ResourceDemand` projection
+into `ResourceManager`** (stable caller-owned lease ids; shared asset retained
+once per lease and released exactly once; eviction preserves semantic view
+identity, reload restores residency; do not reimplement residency policy). Do
+**not** start P4.7 before the N3 commit lands. **P4.4b** remains blocked until
+ADR-012 is **Accepted** (R-1..R-4) and Phase 2B can produce a verifiable
+`SpatialTransform`; **P4.8** is the final independent phase review/QA and
+closure.
+
 
 
 

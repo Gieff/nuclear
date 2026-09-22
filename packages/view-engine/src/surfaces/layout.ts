@@ -30,6 +30,20 @@ function fail(field: string, detail: string): never {
   );
 }
 
+function assertFiniteGeometry(value: number, field: string): void {
+  if (!Number.isFinite(value)) {
+    fail(field, `must be finite after layout arithmetic, computed ${String(value)}; the host magnitude or grid geometry is too large for a representable rectangle`);
+  }
+}
+
+/** Every published rectangle member must be finite (fail-closed). */
+function assertFiniteRect(rect: SurfaceHostRect): void {
+  assertFiniteGeometry(rect.x, 'rect.x');
+  assertFiniteGeometry(rect.y, 'rect.y');
+  assertFiniteGeometry(rect.width, 'rect.width');
+  assertFiniteGeometry(rect.height, 'rect.height');
+}
+
 function assertHost(host: SurfaceHostRect): void {
   // Untyped runtime callers must fail closed with a typed refusal rather than
   // leaking a bare TypeError from a property access on a missing host.
@@ -124,15 +138,17 @@ export class SurfaceLayoutManager {
     const placements: SurfacePlacement[] = [];
     for (let row = 0; row < rows; row += 1) {
       for (let column = 0; column < columns; column += 1) {
-        placements.push({
-          surfaceId: surfaceIds[row * columns + column],
-          rect: {
-            x: host.x + column * (cellWidth + gap),
-            y: host.y + row * (cellHeight + gap),
-            width: cellWidth,
-            height: cellHeight,
-          },
-        });
+        const rect: SurfaceHostRect = {
+          x: host.x + column * (cellWidth + gap),
+          y: host.y + row * (cellHeight + gap),
+          width: cellWidth,
+          height: cellHeight,
+        };
+        // Finiteness post-condition: individually finite host values can still
+        // overflow when combined (e.g. x + column*(cell+gap)), so every computed
+        // coordinate/dimension is validated before it is published.
+        assertFiniteRect(rect);
+        placements.push({ surfaceId: surfaceIds[row * columns + column], rect });
       }
     }
     const result: SurfaceLayoutResult = { kind: 'viewer-grid', placements };
@@ -147,9 +163,11 @@ export class SurfaceLayoutManager {
     }
     // A fresh rect (never the caller's host object): the result is frozen, so
     // reusing `host` would freeze the caller's input as a side effect.
+    const rect: SurfaceHostRect = { x: host.x, y: host.y, width: host.width, height: host.height };
+    assertFiniteRect(rect);
     const result: SurfaceLayoutResult = {
       kind: 'composer-panel',
-      placements: [{ surfaceId, rect: { x: host.x, y: host.y, width: host.width, height: host.height } }],
+      placements: [{ surfaceId, rect }],
     };
     return deepFreeze(result);
   }
