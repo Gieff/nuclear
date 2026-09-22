@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { CachedPreviewReference, PreviewId, SingleMedicalViewState } from '../../packages/shared-types/src/index.js';
-import { mockIntraStudyLink, mockPetView, mockPetViewProvenance, mockViewLock } from '../fixtures/view-contracts.fixture.ts';
+import { mockIntraStudyLink, mockPetView, mockPetViewProvenance } from '../fixtures/view-contracts.fixture.ts';
 import { mockPetAsset } from './fixtures/workspace-fixtures.ts';
 import { FUSION_PREPARED, GROUP_A, PET_PREPARED, PreparedViewRegistry, SharedStateGroupRegistry, assemblePreparedView, freshPair, registerFusionView, registerPetView, workspaceWithBothAssets } from './fixtures/shared-state-fixtures.ts';
 
@@ -175,7 +175,10 @@ describe('NuClear P4.3 — shared-state identity (ADR-011 §3 + addendum)', () =
       state: structuredClone(mockPetView),
       provenance: structuredClone(mockPetViewProvenance),
       links: [mockIntraStudyLink],
-      locks: [mockViewLock],
+      // P4.5: a view locking the shared pair (spatial/camera) is refused by
+      // `attach`. This case isolates metadata preservation, so it uses a lock on
+      // a non-shared state; the shared-pair refusal is covered by locks.test.ts.
+      locks: [{ state: 'presentation', owner: 'user', locked: true }],
       cachedPreviewReference,
     });
     workspace.registerPreparedView(view);
@@ -208,7 +211,7 @@ describe('NuClear P4.3 — shared-state identity (ADR-011 §3 + addendum)', () =
     assert.deepEqual([...after.links], [...before.links]);
     assert.equal(after.links[0].kind, 'co-referenced');
     assert.equal(after.locks.length, 1);
-    assert.equal(after.locks[0].state, 'camera');
+    assert.equal(after.locks[0].state, 'presentation');
     assert.equal(after.locks[0].locked, true);
     assert.equal(after.cachedPreviewReference, before.cachedPreviewReference);
     assert.equal(after.cachedPreviewReference?.previewId, 'preview-shared');

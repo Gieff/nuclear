@@ -16,6 +16,7 @@
 import type {
   AssetId,
   ImagingAsset,
+  LocalViewOverride,
   PreparedView,
   PreparedViewId,
   StudyId,
@@ -36,6 +37,8 @@ import { SharedStateGroupRegistry } from '../shared-state/registry.js';
 import type { SharedStateGroupSnapshot } from '../shared-state/types.js';
 import { applyCoReferencedLink } from '../linking/apply.js';
 import type { AppliedCoReferencedLink, ApplyCoReferencedLinkInput } from '../linking/apply.js';
+import { resolveLocalViewOverride as resolveOverrideForSource } from '../overrides/apply.js';
+import type { ResolvedLocalView } from '../overrides/apply.js';
 
 export interface ImagingWorkspaceSnapshot {
   readonly studies: readonly StudyReference[];
@@ -171,6 +174,20 @@ export class ImagingWorkspace {
       sharedStateGroups: this.sharedStateGroups,
       lookupAsset: (assetId) => this.assetById.get(assetId),
     });
+  }
+
+  /**
+   * Resolves a `LocalViewOverride` against a registered prepared view (P4.5,
+   * ADR-010 §4). The registered view is looked up first, so an unknown
+   * `PreparedViewId` propagates `PREPARED_VIEW_UNKNOWN_ID`; the pure
+   * `resolveLocalViewOverride` value operation then validates and freezes the
+   * local divergence. The registered view is never mutated or re-registered.
+   */
+  resolveLocalViewOverride(
+    preparedViewId: PreparedViewId,
+    override: LocalViewOverride,
+  ): ResolvedLocalView {
+    return resolveOverrideForSource(this.preparedViews.get(preparedViewId), override);
   }
 
   getPreparedView(preparedViewId: PreparedViewId): PreparedView {

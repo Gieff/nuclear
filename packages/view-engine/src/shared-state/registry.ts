@@ -15,7 +15,7 @@
  *
  * Node-safe: no DOM, no WebGL, no Cornerstone.
  */
-import type { PreparedView, PreparedViewId } from '@nuclear/shared-types';
+import type { LockableState, PreparedView, PreparedViewId } from '@nuclear/shared-types';
 import type {
   CreateSharedStateGroupInput,
   SharedStateGroupId,
@@ -23,12 +23,20 @@ import type {
   SharedStatePair,
 } from './types.js';
 import { SharedStateError } from './errors.js';
+import { assertStatesUnlocked, assertViewsUnlocked } from '../locks/guard.js';
 import { commitSharedStatePair, currentSharedStatePair, SharedStateGroup } from './group.js';
 import { projectPreparedView } from './project.js';
 import { assertSerializableValue } from '../workspace/value-integrity.js';
 import { deepFreeze } from '../internal/deep-freeze.js';
 import type { PreparedViewRegistry } from '../prepared-view/registry.js';
 import { replaceRegisteredPreparedView } from '../prepared-view/registry.js';
+
+/**
+ * The shared-state pair (`spatial` + `camera`) is the only state a group
+ * mutates, so only a lock on one of these states can block an atomic
+ * replacement or an attach projection (ADR-010 §4 / architecture §16).
+ */
+const SHARED_STATE_MUTATED_STATES: readonly LockableState[] = ['spatial', 'camera'];
 
 export class SharedStateGroupRegistry {
   private readonly preparedViews: PreparedViewRegistry;
@@ -124,7 +132,14 @@ export class SharedStateGroupRegistry {
     }
     // Build the projection and swap the registered entry before mutating
     // membership, so a projection/validation failure leaves the registry,
-    // membership and holder exactly as they were.
+    // membership and holder exactly as they were. A view that locks the shared
+    // pair is refused BEFORE projecting (P4.5, ADR-010 §4), so attach never
+    // overrides a protected spatial/camera state.
+    assertStatesUnlocked(
+      current,
+      SHARED_STATE_MUTATED_STATES,
+      `attach prepared view '${preparedViewId}' to shared-state group '${groupId}'`,
+    );
     const projected = projectPreparedView(current, currentSharedStatePair(group));
     const replaced = replaceRegisteredPreparedView(this.preparedViews, projected);
     this.groupByMember.set(preparedViewId, groupId);
@@ -152,12 +167,22 @@ export class SharedStateGroupRegistry {
 
   replace(groupId: SharedStateGroupId, replacement: SharedStatePair): readonly PreparedView[] {
     const group = this.requireGroup(groupId);
+    // Enforce locks on the CURRENT members BEFORE validating/freezing the
+    // replacement payload or staging any projection (P4.5, ADR-010 §4). Reading
+    // the live registered views (not a cached snapshot) means a lock acquired
+    // after attach is honoured, and a refusal leaves the holder pair, every
+    // projection and the caller's payload untouched.
+    const members = this.membersByGroup.get(groupId) ?? [];
+    assertViewsUnlocked(
+      members.map((preparedViewId) => this.preparedViews.get(preparedViewId)),
+      SHARED_STATE_MUTATED_STATES,
+      `replace shared-state group '${groupId}'`,
+    );
     // Validate then freeze the fresh replacement wrapper; a refusal propagates
     // the typed `WorkspaceError` and freezes nothing.
     const pair: SharedStatePair = { spatial: replacement.spatial, camera: replacement.camera };
     assertSerializableValue(pair, `shared-state group '${groupId}' replacement`);
     const nextPair = deepFreeze(pair);
-    const members = this.membersByGroup.get(groupId) ?? [];
     // Stage ALL new projections before committing ANY of them.
     const staged = members.map((preparedViewId) =>
       projectPreparedView(this.preparedViews.get(preparedViewId), nextPair),

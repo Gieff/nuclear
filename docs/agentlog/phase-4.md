@@ -1,15 +1,18 @@
 # Phase 4 — View Engine: Workspace, Link/Lock/Override & Persistent Surfaces
 
-Status: **P4.0–P4.4 CLOSED** (2026-09-22). P4.0–P4.2 were closed after the
+Status: **P4.0–P4.5 CLOSED** (2026-09-22). P4.0–P4.2 were closed after the
 independent review reopened them and the ratified corrective chain landed
 (final corrective HEAD `a46099d`; `npm test` 348/348, 68 suites, typecheck/build
 clean, pytest 189, mypy 47). **P4.3 (shared-state groups)** closed under the
 binding ADR-011 addendum contract (`private holder → atomic replacement → new
 projection → frozen published DTO`); its test file was split by `8ab08f5`
-(361/361, 70 suites). **P4.4 (link semantics) is closed** under ADR-010 §3/§7.2 (co-referenced
-application restricted to the exact `{spatial, camera}` synchronized set):
-`npm test` **384/384 (72 suites)**, typecheck/build clean. **P4.5–P4.8 pending**;
-the next slice is P4.5 (lock and override). Reopened slices closed: P4.0
+(361/361, 70 suites). **P4.4 (link semantics)** closed under ADR-010 §3/§7.2
+(co-referenced application restricted to the exact `{spatial, camera}`
+synchronized set; 384/384, 72 suites). **P4.5 (lock + LocalViewOverride) is
+closed**: `StateLock` enforcement on the shared-state `attach`/`replace`
+mutations plus a frozen local override resolver; `npm test` **402/402 (75
+suites)**, typecheck/build clean. **P4.6–P4.8 pending**; the next slice is P4.6
+(surfaces and layout). Reopened slices closed: P4.0
 (co-reference contract honesty),
 P4.1 (workspace input integrity, slot rule), P4.2 (`PreparedView` assembly,
 provenance correlation, published-DTO immutability).
@@ -1696,6 +1699,168 @@ state; a `LocalViewOverride` is local to a `ComposerViewInstanceId`, serializabl
 and applying it must not mutate the source `PreparedView` (assert deep equality
 before and after). It may rely on the P4.4 finding that state changes only via
 engine APIs (ADR-011 §4). Do not add P4.6 surfaces or P4.7 demand.
+
+---
+
+# Handover Report — P4.5: Lock and LocalViewOverride
+
+## 1. What Was Implemented
+
+P4.5 added `StateLock` enforcement on the view-engine's canonical mutation
+points and a local, frozen `LocalViewOverride` resolver. Locks are enforceable
+because state changes only through engine APIs (ADR-011 §5); a local override
+never changes canonical state.
+
+- **Lock guard** (`locks/guard.ts`): `LOCKABLE_STATES` (all six), `lockedStates`,
+  `isStateLocked`, `assertStatesUnlocked`, `assertViewsUnlocked`; only
+  `locked === true` enforces; deterministic first offender (views then states);
+  reads the live registered views; never mutates a view. Typed `LockError`
+  (`LOCK_STATE_PROTECTED`) names the state, owner, view, operation and a
+  remediation clause.
+- **Enforcement** (`SharedStateGroupRegistry`): `replace` refuses when ANY
+  current member locks `spatial` or `camera`, **before** validating/freezing the
+  replacement payload or staging any projection; `attach` refuses a view locking
+  `spatial`/`camera` before projecting. Only the shared `{spatial, camera}` pair
+  is guarded (`SHARED_STATE_MUTATED_STATES`), so a lock on a non-shared state
+  does not block a shared-pair replacement.
+- **Override** (`overrides/apply.ts`): `resolveLocalViewOverride(source,
+  override): ResolvedLocalView` validates fail-closed in the order
+  `OVERRIDE_MALFORMED` → `OVERRIDE_SOURCE_MISMATCH` → `OVERRIDE_DUPLICATE_STATE`
+  → `OVERRIDE_STATE_NOT_APPLICABLE`, then builds a fresh merged `MedicalViewState`
+  (`assertSerializableValue` → `deepFreeze`). It never mutates or re-registers
+  the source `PreparedView` and never writes to a registry. `presentation` is
+  single-source only; a `composition` override must keep the source variant class
+  and stay coherent with `dataBinding`.
+- **Workspace**: `ImagingWorkspace.resolveLocalViewOverride` resolves a
+  registered view then delegates (unknown ids propagate
+  `PREPARED_VIEW_UNKNOWN_ID`). `locks`/`overrides` barrels exported.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/view-engine/src/locks/errors.ts` (33 lines)
+- `packages/view-engine/src/locks/guard.ts` (93 lines)
+- `packages/view-engine/src/locks/index.ts` (9 lines)
+- `packages/view-engine/src/overrides/errors.ts` (38 lines)
+- `packages/view-engine/src/overrides/apply.ts` (275 lines)
+- `packages/view-engine/src/overrides/index.ts` (10 lines)
+- `tests/view-engine/locks.test.ts` (292 lines; 9 tests)
+- `tests/view-engine/overrides.test.ts` (330 lines; 9 tests)
+
+Modified:
+- `packages/view-engine/src/shared-state/registry.ts` (213 lines; lock guards in
+  `attach`/`replace`)
+- `packages/view-engine/src/workspace/imaging-workspace.ts` (258 lines;
+  `resolveLocalViewOverride`)
+- `packages/view-engine/src/index.ts` (7 lines; barrels)
+- `tests/view-engine/shared-state-identity.test.ts` (219 lines; P4.3 test `e`
+  reconciled: the `camera` `mockViewLock` became a `presentation` lock, because
+  `attach` now refuses a view locking the shared pair — metadata preservation
+  remains the test's concern; the refusal is covered by `locks.test.ts`)
+
+Unchanged: `packages/shared-types/**`, every other package, plans/ADRs,
+`CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- A `StateLock` protects canonical state only; a `LocalViewOverride` is a local
+  divergence and is deliberately **not** blocked by a lock (ADR-010 §4). UI-level
+  "disable the locked control" belongs to Fase 6–7.
+- Locks are declared on the `PreparedView` (via `assemblePreparedView`); P4.5
+  enforces them, it does not add a lock/unlock registry (none is specified).
+  `binding` is lockable but no view-engine API currently mutates a binding.
+- The lock guard is applied at the real canonical mutation points that exist
+  today (`attach`/`replace`, both changing the `{spatial, camera}` pair);
+  `applyCoReferencedLink` is value-preserving for the source and guards the
+  target through `attach`.
+- Override substitution does not deep-validate a value's clinical shape; the
+  typed `ViewStateOverride` union is the caller's contract. The resolver
+  enforces envelope shape, JSON safety, composition applicability/coherence and
+  all fail-closed robustness; a per-state deep validation is a P4.6 concern.
+
+## 4. Tests Added & Executed
+
+Added `tests/view-engine/locks.test.ts` (9 tests) and
+`tests/view-engine/overrides.test.ts` (9 tests).
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `node --test tests/view-engine/locks.test.ts` | **9 pass / 0 fail** |
+| `node --test tests/view-engine/overrides.test.ts` | **9 pass / 0 fail** |
+| `npm test` | **402 pass / 0 fail / 75 suites** (0 skipped/todo) = P4.4 384/72 + 18 tests / +3 suites |
+| `npm run build` | clean (exit 0, `tsc -b`) |
+
+Coverage: all six lockable states; `locked:false` ignored; first-offender order;
+`replace` refusal for a locked `spatial` and a locked `camera` leaving the holder
+pair, every member projection and the caller payload untouched; the two-member
+case with only the second locked (no partial update); `attach` refusal; a
+non-shared `presentation` lock does not block `replace`. Override resolution for
+every state; source identity/deep-equality/frozen preserved; frozen JSON-lossless
+result; idempotent re-resolution; refusals for malformed, source mismatch, empty,
+duplicate, presentation-on-composed, composition variant change, incoherent
+`dataBinding`, and malformed composition values (typed `OverrideError`, never
+`TypeError`); workspace convenience + unknown view. No `skip`/`todo`/`|| true`;
+no vacuous assertions.
+
+Independent verdicts: `nuclear-reviewer` **PASS** (one BLOCKING `TypeError`-leak
+finding F1 in the composition applicability check raised and closed with
+regression test `i`; the "override not blocked by lock" decision verified
+defensible against ADR-010 §4/§7; F2/F3 accepted by documentation) and
+`nuclear-qa` **PASS** for all executable gates (9/9 · 9/9 · 402/402 ·
+typecheck/build clean), with image tolerance declared **NOT YET APPLICABLE**.
+No renderer-harness flake occurred on the final runs.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-010 §4 is implemented; ADR-011 §5 (locks enforceable because state changes
+  only via engine APIs) is the basis for guarding the shared-state mutations.
+  No ADR change was required.
+- This report satisfies the AgentLog Gate for P4.5.
+- `CHANGELOG.md` untouched; release notes are compiled via
+  `/promote-changelog 4` only on explicit request.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema change. `ResolvedLocalView` is a view-engine-local DTO
+  (like `SharedStateGroupSnapshot`), not a persisted contract.
+
+## 6b. Deliberate Decision (ratified)
+
+- A `LocalViewOverride` is **not** blocked by a `StateLock`: a lock protects
+  canonical state, an override diverges locally without changing it. The
+  asymmetry is intentional — joining a shared-state group would rewrite
+  canonical `spatial`/`camera`, so `attach` refuses a locked view, while a local
+  override does not.
+
+## 7. Known Limitations & Technical Debt
+
+- `overrides/apply.ts` is 275/300; `overrides.test.ts` (330) and
+  `link-application.test.ts` (316) are outside the Rule 02 source gate but are
+  the largest view-engine test files — split candidates.
+- Lock enforcement covers only the canonical mutations that exist today
+  (`attach`/`replace`); if a future engine API changes another lockable state it
+  must call the guard. `applyCoReferencedLink` is value-preserving for its source
+  and must be re-audited if it ever regenerates a projection with different
+  spatial/camera values.
+- Override values are not deep-validated against their clinical contract shape
+  (envelope shape, JSON safety and composition applicability only). **P4.6 must
+  either validate before consuming `ResolvedLocalView` or ratify the boundary.**
+- Folder-level `workspace ↔ overrides` import (file-level acyclic, leaf
+  precedent as in `shared-state`/`prepared-view`).
+- Carried Phase 3 debt unchanged (renderer size headroom; hardware-GPU and a
+  true production bundle remain `NOT YET APPLICABLE`).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P4.6 — `ViewportSurfaceRegistry` + `SurfaceLayoutManager`**: stable
+`surfaceId`/`viewportId` identity across bind/rebind/re-layout, lifecycle
+(`available`/`mounted`/`hidden`/`disposed`, with `disposed` carrying no binding),
+a logical 16-surface cap that is never a WebGL-context count, and pure
+viewer-slot/composer-panel placement geometry. Before consuming a
+`ResolvedLocalView`, decide whether to deep-validate substituted values or
+ratify the P4.5 boundary documented in `overrides/apply.ts`. Do not add P4.7
+demand.
 
 
 
