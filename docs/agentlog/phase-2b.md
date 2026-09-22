@@ -469,3 +469,59 @@ staging is by explicit path.
 - **R4: finalized, awaiting final phase-owner ratification.** 2B.3 must not start
   until it is ratified. P4.4b remains blocked until 2B.4 + ADR-012 Accepted.
 - No push.
+
+## Addendum — R4 Ratified; P2B.3 Volume-Transport Blocker (2026-09-22)
+
+### R4 ratified
+
+The phase owner **ratified R4** on 2026-09-22, with scope = **same locked
+environment** (same OS/arch, Python, SimpleITK, NumPy and thread count); it is
+**not** a cross-platform bitwise guarantee. The `pydicom >= 2.4.0` floor is
+sufficient for this slice (the MI path uses SimpleITK and prepared volumes, not
+DICOM parsing). The plan §2B.0 status now lists R4 as ratified; only **R6**
+remains `[TO RATIFY]`.
+
+### P2B.3 is BLOCKED on a missing volume-transport contract
+
+Before implementing 2B.3, the worker's ability to obtain the fixed/moving
+volumes was verified. Result: **it cannot.**
+
+- The Python worker has **no voxel ingestion**: no `sitk.ReadImage`,
+  `ImageSeriesReader`, `GetArrayFromImage` or `pixel_array` anywhere in
+  `python/dicom` / `python/worker` — it reads metadata/geometry only.
+- `ADR-004` (Accepted) states explicitly that **"no worker operation transports
+  voxel arrays"**; pixel ingestion is **fixture-only and TypeScript-side**
+  (`packages/medical-engine/src/renderer/volume-types.ts` `VolumePixelPayload`),
+  and the ADR declares that real-source pixel transport requires **its own,
+  separate hydration contract + ADR**.
+- The 2B.1 `rigid` request carries only `{ locator, seriesInstanceUID }` asset
+  references; the worker has no way to turn those into volumes.
+- The 2B plan **explicitly excludes** "any DICOM parsing/geometry
+  reinterpretation" from this phase, so the worker reading DICOM pixels itself
+  (which would also create a second geometry authority) is not permitted.
+
+Consequently the **end-to-end `rigid` IPC path cannot be implemented without
+inventing a contract**, which Rule 04 forbids. The **algorithmic part** of 2B.3
+(SimpleITK MI core + curated synthetic phantom + bitwise determinism + R3) is
+*not* blocked and needs no transport.
+
+**Options put to the phase owner (no code written):**
+
+- **(a)** Define a **Pixel/Volume Transport contract** (`shared-types` + worker)
+  via a new ADR, then implement 2B.3 end-to-end.
+- **(b)** Deliver **2B.3a** (MI core + synthetic phantom determinism, no IPC
+  transport) now, keep the `rigid` IPC path fail-closed, and do **2B.3b** (IPC)
+  after the transport ADR.
+- **(c)** Introduce a **fixture-only** worker volume ingestion (committed
+  synthetic volume files + an explicit request field) under its own ADR — the
+  worker-side analogue of ADR-004.
+
+**Recommendation: (b) now, then (a)** for the real path. This preserves the
+"no invented behaviour" rule while advancing the ratified scientific core.
+
+### Worktree
+
+A parallel **P4.7** change set (`packages/view-engine/src/residency/**`,
+`tests/view-engine/residency-projection.test.ts` + fixtures,
+`packages/view-engine/src/index.ts`) is present **uncommitted**. Not touched;
+all staging is by explicit path, and global `npm test` counts remain shared.

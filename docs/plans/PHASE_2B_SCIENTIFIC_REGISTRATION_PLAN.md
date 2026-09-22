@@ -4,10 +4,9 @@ Status: **In progress.** Slice **2B.1 (worker operation registration + evidence
 schema + TypeScript bridge types)** is **complete** — commit `1dbe540`; the
 worker raises `-32011 OPERATION_NOT_IMPLEMENTED` for a schema-valid request and
 fabricates no transform. Slice **2B.2 (manual-landmark Procrustes)** is also
-**complete** — commit `335926e`. **2B.0 is partially ratified** (R1, R2, R3, R5,
-R7, R8, R9, R10); the numeric degeneracy bound (R6) remains `[TO RATIFY]`, and
-the MI determinism protocol (R4) is **finalized but awaits final ratification**
-before 2B.3. Addendum to
+**complete** — commit `335926e`. **2B.0 is partially ratified** (R1, R2, R3, R4, R5,
+R7, R8, R9, R10); the numeric degeneracy bound (R6) remains `[TO RATIFY]`.
+Addendum to
 `docs/plans/PHASE_2_SCIENTIFIC_INGESTION_PLAN.md` (ADR-002 worker bridge) and a
 prerequisite for view-engine slice **P4.4b** (`docs/decisions/ADR-012-inter-study-link-propagation.md`).
 
@@ -164,7 +163,7 @@ protocol and the numeric degeneracy bound remain open.
 - The convention is strictly **`P_target = M · P_source`**; the last row is
   `[0, 0, 0, 1]` for a rigid transform.
 
-**Still `[TO RATIFY]`.**
+**Still `[TO RATIFY]` (R6 only).**
 
 - **2B-T4 / R6 — degeneracy classification (amended 2026-09-22).** Structural
   degeneracy is **ratified**: fewer than 3 points, coincident points, and **every
@@ -184,8 +183,8 @@ protocol and the numeric degeneracy bound remain open.
     asserting the stable `degenerate-landmarks` classification.
   - The algorithm must **not** be silently changed to force the reason before
     this is ratified.
-- **2B-T2 / R4 — deterministic MI protocol (R4-finalization 2026-09-22; FINAL
-  ratification pending).** The environment and every parameter are now fixed
+- **2B-T2 / R4 — deterministic MI protocol (RATIFIED 2026-09-22; scope = same
+  locked environment).** The environment and every parameter are now fixed
   concretely against the installed SimpleITK **2.5.6** API (verified by
   introspection in that environment); nothing below is left as an undefined
   placeholder.
