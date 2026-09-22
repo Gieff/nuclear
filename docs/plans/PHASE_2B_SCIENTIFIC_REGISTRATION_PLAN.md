@@ -1,12 +1,13 @@
 # Phase 2B — Scientific Registration: `SpatialTransform` Generation & Verification
 
-Status: **Slices 2B.1–2B.4 + 2B.3a complete (2B.5 closure).** `nuclear.registration`
+Status: **Phase 2B scientific core closed; real-volume IPC extension blocked.**
+Slices 2B.1–2B.4 + 2B.3a are complete (2B.5 closure). `nuclear.registration`
 is registered with a fail-closed schema; the **landmarks** path performs
 deterministic Procrustes and returns evidence with a measured RMS `errorMarginMm`;
 the **MI** path has a verified deterministic core (2B.3a) that is **not**
 IPC-wired; evidence validity is enforced fail-closed in Python and TypeScript
-(2B.4). **2B.3b (real IPC volume transport) is BLOCKED** pending a Pixel/Volume
-Transport ADR. **2B.0 ratification:** R1–R5 and R7–R11 ratified; the **R6 numeric
+(2B.4). **2B.3b (real IPC volume transport) is BLOCKED** pending the **Proposed**
+`docs/decisions/ADR-013-pixel-volume-transport.md` (Pixel/Volume Transport). **2B.0 ratification:** R1–R5 and R7–R11 ratified; the **R6 numeric
 degeneracy bound is deferred** (not referenced by any decision path). Commits
 `1dbe540` (2B.1), `335926e` (2B.2), `6872ab1` (2B.3a), `9c75386` (2B.4),
 `c2c2556` (fixture corrective). Addendum to

@@ -908,3 +908,31 @@ limits, hydration/serialization, asset/FoR/series correlation, lifecycle, failur
 modes, independent worker→bridge evidence) to unblock **2B.3b**; in parallel
 ratify **R6** only if a scale-aware rule can be justified, and carry **R11-B**
 into ADR-012's **R-1/OD-6** ratification before **P4.4b**.
+
+## Addendum — Official phrasing & ADR-013 Pixel/Volume Transport (2026-09-22)
+
+The phase owner accepted the closure with the official wording:
+
+> **Phase 2B scientific core closed; real-volume IPC extension blocked.**
+
+This is deliberately **not** "Phase 2B fully closed" in the functional sense:
+slice **2B.3b** is still required for automatic registration on real volumes.
+
+Per the owner's instruction to draft the transport ADR **before any code**,
+`docs/decisions/ADR-013-pixel-volume-transport.md` is now **Proposed**. It fixes:
+worker-owned pixel decoding (TypeScript never parses DICOM); a JSON descriptor on
+stdio plus a **binary temp-file** payload (base64 and shared memory rejected for
+v1); declared dtype/byteOrder/signedness/bit-layout/scalar-domain/rescale/
+dimensions/hash; geometry and orientation **reused** from the accepted worker
+evidence via `geometricDigest` (no second geometry authority); asset/series/FoR/
+`SourceFingerprint` correlation with fail-closed mismatch; size/memory limits,
+lifecycle/cleanup/TTL/timeout/cancellation, a reserved-code failure taxonomy, and
+integration **before** `buildVolumeIngestionPlan` so the plan and
+`VolumeResidencyBackend` stay unchanged; a committed synthetic fixture and a
+headless **worker → bridge → engine** evidence chain. **`view-engine` is not
+involved** — it keeps declaring only `ResourceDemand`.
+
+**No code was written.** ADR-013 awaits ratification (open decisions **OD-A
+…OD-F**). ADR-012 stays **Proposed** and **P4.4b remains blocked**. After
+ratification the order is: implement **2B.3b** → integrate in `medical-engine` →
+complete the ADR-012 **R-1/OD-6** admission policy → only then reassess P4.4b.
