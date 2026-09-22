@@ -644,3 +644,166 @@ completing R6 (scale-aware collinear classification) as an independent decision.
 Do **not** start 2B.3b until the Pixel/Volume Transport ADR is ratified, and do
 not consume any registration evidence in P4.4b before 2B.4 and ADR-012
 **Accepted**.
+
+## Addendum — Phase 2B.4 implementer handover (2026-09-22)
+
+Authority: `docs/plans/PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md` (2B.0 R8,
+slice 2B.4). Owner-set boundaries respected: no voxel transport / DICOM pixels;
+`mode:"rigid"` still returns `-32011 OPERATION_NOT_IMPLEMENTED`; no
+`shared-types`/ADR-004/`view-engine` change; `errorMarginMm` is never fabricated
+and the absent-residual admission policy is **not** encoded (policy-neutral).
+
+### 1. What Was Implemented
+
+- **`python/dicom/registration_validation.py` (new).** Pure fail-closed
+  validator raising typed `EvidenceRefusal(reason, diagnostic)`. Checks, in
+  order: `validity.isValid is True` (`not-valid`); `units == 'mm'`
+  (`invalid-units`); exactly 16 finite numbers and homogeneous last row
+  `[0,0,0,1]` (`malformed-matrix`); 3x3 rotation orthonormal with `det ~= +1`
+  (`non-rigid-transform`); non-empty (`empty-frame-of-reference`) and distinct
+  (`same-frame-of-reference`) FoRs; provenance `method` in the shared-types
+  vocabulary, non-empty `workerVersion`, ISO-8601 `timestamp`
+  (`incomplete-provenance`); `errorMarginMm` **when present** finite `>= 0`
+  (`invalid-error-margin`). `NUMERICAL_GUARD = 1e-9` is a single named
+  **numerical guard, not a clinical tolerance**.
+- **Self-check.** `registration_operations._landmark_evidence` validates the
+  built `transform` with the validator before returning. Valid input is
+  byte-identical; same-FoR is still refused earlier with `-32012`.
+- **MI zero-iteration formalisation.** `registration_mi.outcome_violation` now
+  takes `iterations` and refuses a negative count or an empty/failing stop
+  condition. Zero iterations is **not** a failure (the `GEOMETRY` initialiser
+  may already be converged); the matrix check delegates to the shared validator.
+  **No numeric quality/iteration threshold** is introduced — any such threshold
+  is documented as **unratified**. All R4 parameters are unchanged.
+- **TS mapper hardening (R8).** New `registration-evidence.ts` (extracted to
+  respect the 250-line Rule-02 threshold) holds the pure semantic guard;
+  `mapping-registration.mapRegistrationResult` composes it and fails closed with
+  `WorkerContractError` for `isValid !== true`, non-`mm` units, non-finite /
+  non-homogeneous / non-orthonormal / `det != +1` matrix, empty or equal FoRs,
+  and a present negative `errorMarginMm`. No `Math.`/`enum`/`namespace`
+  (source-integrity green); no scientific formula duplicated.
+- **R8 `transformType` ↔ matrix coherence (ratified, corrective).** Both
+  validators now enforce the coherence named by plan §2B.0 R8, fail-closed:
+  `identity` → the whole 4x4 is the identity within the single numerical guard
+  (rotation ≈ I **and** translation ≈ 0); `rigid` → the proper-orthonormal
+  `det = +1` matrix (as before); `affine` → only a finite 16-number matrix with
+  a homogeneous last row `[0,0,0,1]` — a legitimate affine scale/shear carries
+  **no** orthonormality/determinant requirement and must be accepted. An unknown
+  `transformType` is refused with the new Python reason
+  `incoherent-transform-type` (TS: `WorkerContractError`); a rigid-typed
+  non-orthonormal block keeps the existing `non-rigid-transform` reason, and an
+  identity-typed non-identity matrix is `incoherent-transform-type`.
+- **TS provenance completeness (corrective).** `mapProvenance` now mirrors the
+  Python `_validate_provenance`: an empty `workerVersion` and a `timestamp` that
+  is not an ISO-8601 instant are refused `WorkerContractError`, closing the
+  earlier Python/TS hardening asymmetry (the method vocabulary was already
+  checked there).
+
+### 2. Files Changed / Created
+
+Created: `python/dicom/registration_validation.py`,
+`python/dicom/registration_contract.py` (corrective split: shared refusal type,
+numerical guard and pure 4x4 coherence primitives),
+`python/tests/test_registration_validation.py`,
+`packages/medical-engine/src/worker/registration-evidence.ts`,
+`tests/medical/worker-registration-validity.test.ts`.
+Modified: `python/dicom/registration_mi.py`,
+`python/dicom/registration_operations.py`, `python/dicom/__init__.py`,
+`packages/medical-engine/src/worker/mapping-registration.ts`,
+`python/tests/test_registration_mi.py`, this agentlog.
+`registration_validation.py` was split (330 → 206 lines + 171-line
+`registration_contract.py`) to stay under the Rule-02/03 file-length gate; the
+public `EvidenceRefusal` / `require_valid_matrix4x4` / `rotation_violation` names
+remain importable from `dicom.registration_validation`.
+Not modified: `@nuclear/shared-types`, `@nuclear/view-engine`, ADR-004,
+`CHANGELOG.md`, any ADR.
+
+### 3. Tests Added & Executed
+
+- 30 new pytest cases in `test_registration_validation.py` (positive + one
+  defect per negative reason; absent margin accepted / present
+  negative-or-non-finite refused; MI zero-iteration; real landmark evidence
+  passes the validator; plus 6 coherence cases — identity-typed identity
+  accepted, identity-typed translation / unknown `transformType` /
+  rigid-typed non-orthonormal refused, affine-typed scale accepted, affine-typed
+  non-homogeneous last row refused) + 2 assertions added to
+  `test_registration_mi.py`.
+- 21 new mapper cases in `worker-registration-validity.test.ts` (inline
+  wire-shape only), including a translation-in-last-column acceptance guard and
+  8 coherence/provenance cases (identity identity accepted, identity translation
+  refused, unknown `transformType` refused, rigid non-orthonormal refused,
+  affine scale accepted, affine non-homogeneous refused, empty `workerVersion`
+  refused, malformed `timestamp` refused).
+
+### 4. Gates (raw tails, this uncommitted tree)
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Python | `npm run test:python` | **260 passed** (254 → +6 coherence) |
+| Python types | `npm run typecheck:python` | **Success: no issues found in 60 source files** (59 → +1 `registration_contract`) |
+| TS types | `npm run typecheck` | clean (0 errors) |
+| Build | `npm run build` | clean |
+| Registration | `node --test tests/medical/worker-registration.test.ts` | **4/4** (real worker) |
+| Mapper | `node --test tests/medical/worker-registration-validity.test.ts` | **21/21** (13 → +8) |
+| Suite | `npm test` | **463 pass / 0 fail / 81 suites** (455 → +8, shared with the committed P4.7 slice) |
+
+Raw worker stdio (rigid): `{"code":-32011,"message":"Operation not implemented",
+"data":{"diagnostic":"...","mode":"rigid","phaseSlice":"2B.1"}}` — no transform.
+File length: `registration_validation.py` 206, `registration_contract.py` 171,
+`registration_mi.py` 249, `registration-evidence.ts` 162,
+`mapping-registration.ts` 213 (all ≤ 250/300).
+
+### 5. Documentation, Agentlog & ADR Status
+
+- This addendum satisfies the AgentLog Gate for 2B.4. No ADR created/modified;
+  ADR-012 stays **Proposed** (read-only OD-6/R-1 reference). `CHANGELOG.md`
+  untouched (ADR-001).
+
+### 6. Project Model Impact
+
+- None. No `.ncp` schema, `SpatialTransform` contract, manifest or serialized
+  state changed.
+
+### 7. Known Limitations & Technical Debt
+
+- The **absent `errorMarginMm` admission policy** remains an open architect
+  decision (ADR-012 OD-6); the code validates only when present.
+- **R6** (scale-aware collinear classification) remains pending ratification.
+- **2B.3b (real IPC) remains BLOCKED** pending the Pixel/Volume Transport ADR.
+- **R8 coherence and TS provenance completeness are now implemented
+  (corrective).** The earlier note that a transform-type-specific coherence rule
+  "was not added because it is not part of the R8 list" was **wrong**: plan
+  §2B.0 R8 explicitly names `transformType` ↔ matrix coherence. Both validators
+  now enforce it fail-closed (`identity` / `rigid` / `affine`; new
+  `incoherent-transform-type` refusal reason) and the TS gate now mirrors the
+  Python provenance completeness (`workerVersion` non-empty, ISO-8601
+  `timestamp`). No voxel transport, `shared-types`, ADR-004, locator-contract or
+  `view-engine` change; all R4 parameters unchanged.
+
+### 8. Exact Next Recommended Task
+
+Independent verification/QA of 2B.4 (2B.5), together with ratifying R6 and the
+ADR-012 R-1..R-4 checklist. Do not wire `mode:"rigid"` to success and do not
+consume the evidence in P4.4b until ADR-012 is **Accepted**.
+
+## Addendum — 2B.4 R11 decision request: absent `errorMarginMm`
+
+Per the phase owner's instruction that 2B.4 must produce the explicit decision on
+a missing `errorMarginMm` (required before P4.4b can be accepted), the architect
+records the proposal in plan §2B.0 **R11**:
+
+- **(A) permissive** — a residual-less `SpatialTransform` is admissible under a
+  caller-declared, recorded policy;
+- **(B) fail-closed (recommended)** — a residual-less transform is **not
+  admissible** to a `transformed` inter-study link; the link-admission gate
+  refuses it.
+
+Rationale for **(B)**: without a residual there is nothing to compare against
+the caller's `toleranceMm`, and the clinical-correctness principle favours
+refusing unquantified evidence over a silent default. Consequence: the **MI**
+path cannot produce an admissible `transformed` link until a mm-denominated MI
+residual is defined; the **landmarks** path (measured RMS) is unaffected.
+
+The 2B.4 code is **policy-neutral** and encodes neither option (it validates the
+residual only when present). **Awaiting phase-owner ratification** — this is the
+local half of ADR-012 **R-1 / OD-6**; ADR-012 stays **Proposed**.

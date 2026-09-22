@@ -28,6 +28,9 @@ import SimpleITK as _sitk
 from numpy.typing import NDArray
 
 from .registration_math import homogenise
+from .registration_validation import (
+    NUMERICAL_GUARD, EvidenceRefusal, require_valid_matrix4x4, rotation_violation,
+)
 
 sitk: Any = _sitk
 """SimpleITK's SWIG bindings ship no annotations, so the module is aliased to
@@ -38,9 +41,7 @@ RefusalReason = Literal[
     "invalid-evidence", "optimisation-failed", "non-rigid-transform", "invalid-residual"
 ]
 
-#: Machine-epsilon-scale guard around an exact proper rotation, **not** a
-#: clinical tolerance and **not** a registration-accuracy threshold.
-RIGIDITY_NUMERICAL_GUARD = 1e-9
+RIGIDITY_NUMERICAL_GUARD = NUMERICAL_GUARD  # single shared numerical guard
 
 NUMBER_OF_HISTOGRAM_BINS = 50
 SHRINK_FACTORS_PER_LEVEL = (4, 2, 1)
@@ -79,39 +80,37 @@ def rigidity_violation(
 ) -> RefusalReason | None:
     """Return ``"non-rigid-transform"`` unless ``rotation`` is proper orthonormal.
 
-    Pure: a deliberately singular/scaled matrix (e.g. ``diag(1, 1, 0)``) returns
-    the refusal reason without touching SimpleITK.
+    Pure; delegates to the shared evidence validator's single numerical guard.
     """
-    array = np.asarray(rotation, dtype=np.float64)
-    if array.shape != (3, 3) or not bool(np.all(np.isfinite(array))):
-        return "non-rigid-transform"
-    if abs(float(np.linalg.det(array)) - 1.0) > guard:
-        return "non-rigid-transform"
-    if float(np.max(np.abs(array.T @ array - np.eye(3)))) > guard:
-        return "non-rigid-transform"
-    return None
+    return rotation_violation(rotation, guard=guard)
 
 def require_rigid_transform(
     matrix: FloatArray, *, guard: float = RIGIDITY_NUMERICAL_GUARD
 ) -> None:
     """Raise :class:`MiRefusal` unless ``matrix`` is a finite proper rigid 4x4.
 
-    Pure and directly unit-testable; the last row is checked within the guard.
+    Delegates to the shared evidence validator; no second guard is introduced.
     """
-    array = np.asarray(matrix, dtype=np.float64)
-    if array.shape != (4, 4) or not bool(np.all(np.isfinite(array))):
-        raise MiRefusal("non-rigid-transform", "matrix is not a finite 4x4.")
-    if not bool(np.allclose(array[3], [0.0, 0.0, 0.0, 1.0], rtol=0.0, atol=guard)):
-        raise MiRefusal("non-rigid-transform", "homogeneous last row is not [0,0,0,1].")
-    reason = rigidity_violation(array[:3, :3], guard=guard)
-    if reason is not None:
-        raise MiRefusal(reason, "rotation block is not proper orthonormal.")
+    flat = np.asarray(matrix, dtype=np.float64).reshape(-1).tolist()
+    try:
+        require_valid_matrix4x4(flat, guard=guard)
+    except EvidenceRefusal as refusal:
+        raise MiRefusal("non-rigid-transform", refusal.diagnostic) from refusal
 
-def outcome_violation(metric_value: float, stop_condition: str) -> RefusalReason | None:
-    """Return a refusal reason for a non-finite metric or a failed stop state."""
+def outcome_violation(
+    metric_value: float, stop_condition: str, *, iterations: int = 0
+) -> RefusalReason | None:
+    """Return a refusal reason for a non-finite metric or a failed stop state.
+    Zero iterations is **not** a failure (the geometry-based initialiser may
+    already be converged); the caller additionally requires a valid rigid
+    transform. No numeric quality/iteration threshold is applied: any such
+    threshold is **unratified** and deliberately absent.
+    """
     if not math.isfinite(metric_value):
         return "invalid-residual"
-    if any(marker in stop_condition.lower() for marker in _OPTIMIZER_FAILURE_MARKERS):
+    if iterations < 0 or not stop_condition.strip() or any(
+        marker in stop_condition.lower() for marker in _OPTIMIZER_FAILURE_MARKERS
+    ):
         return "optimisation-failed"
     return None
 
@@ -228,7 +227,7 @@ def register_rigid(fixed: Any, moving: Any) -> MiEstimate:
         iterations = int(method.GetOptimizerIteration())
         stop_condition = str(method.GetOptimizerStopConditionDescription())
 
-    reason = outcome_violation(metric_value, stop_condition)
+    reason = outcome_violation(metric_value, stop_condition, iterations=iterations)
     if reason is not None:
         raise MiRefusal(
             reason,

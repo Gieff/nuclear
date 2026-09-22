@@ -26,6 +26,8 @@ Modules:
     registration_math: Deterministic Procrustes landmark mathematics (Phase 2B.2).
     registration_operations: ``nuclear.registration`` handler (Phase 2B.1/2B.2).
     registration_mi: Deterministic Mutual-Information rigid core (Phase 2B.3a).
+    registration_contract: Shared refusal type, numerical guard and 4x4 coherence (2B.4).
+    registration_validation: Fail-closed SpatialTransform evidence validator (2B.4).
 """
 
 __version__ = "0.3.0"

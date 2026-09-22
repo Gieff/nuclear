@@ -163,7 +163,7 @@ protocol and the numeric degeneracy bound remain open.
 - The convention is strictly **`P_target = M · P_source`**; the last row is
   `[0, 0, 0, 1]` for a rigid transform.
 
-**Still `[TO RATIFY]` (R6 only).**
+**Still `[TO RATIFY]` (R6 + R11).**
 
 - **2B-T4 / R6 — degeneracy classification (amended 2026-09-22).** Structural
   degeneracy is **ratified**: fewer than 3 points, coincident points, and **every
@@ -183,6 +183,22 @@ protocol and the numeric degeneracy bound remain open.
     asserting the stable `degenerate-landmarks` classification.
   - The algorithm must **not** be silently changed to force the reason before
     this is ratified.
+- **R11 — absent `errorMarginMm` admission (OPEN; requested by 2B.4).** The
+  admission policy for a `transformed` inter-study link whose `SpatialTransform`
+  carries **no** `errorMarginMm` (ADR-012 OD-6 / R-1). The 2B.4 code is
+  deliberately **policy-neutral**: it validates `errorMarginMm` only **when
+  present** and encodes no admission rule. Two options for the owner:
+  - **(A) permissive** — a residual-less transform is admissible under a
+    caller-declared, recorded policy;
+  - **(B) fail-closed (recommended)** — a residual-less transform is **not
+    admissible** to a `transformed` link; the link-admission gate refuses it,
+    because there is no residual to compare against `toleranceMm`.
+
+  Consequence of (B): the **MI** path cannot produce an admissible `transformed`
+  link until a **mm-denominated MI residual** is defined (a separate future
+  decision); the **landmarks** path is unaffected because it carries the measured
+  RMS. This decision is required before **P4.4b** can be accepted, and it is the
+  local half of ADR-012's R-1.
 - **2B-T2 / R4 — deterministic MI protocol (RATIFIED 2026-09-22; scope = same
   locked environment).** The environment and every parameter are now fixed
   concretely against the installed SimpleITK **2.5.6** API (verified by

@@ -232,6 +232,10 @@ def test_outcome_guard_flags_failure_and_non_finite_metric() -> None:
         outcome_violation(1.0, "Exception thrown during optimisation")
         == "optimisation-failed"
     )
+    # 2B.4: zero iterations is benign (the geometry initialiser may already be
+    # converged), but only with an explicit non-failure stop condition.
+    assert outcome_violation(1.0, "Step too small after 0 iterations.", iterations=0) is None
+    assert outcome_violation(1.0, "", iterations=0) == "optimisation-failed"
 
 
 def test_single_threaded_forces_one_and_restores_even_on_failure() -> None:

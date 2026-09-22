@@ -11,6 +11,7 @@
 import type {
   FrameOfReferenceUID,
   OutOfDomainBehavior,
+  SpatialTransform,
   TransformId,
   TransformMethod,
   TransformProvenance,
@@ -20,6 +21,7 @@ import type {
 import { WorkerContractError } from './errors.js';
 import { asBoolean, asNumber, asRecord, asString, matrix4x4 } from './narrowing.js';
 import { mapWorkerMetadata } from './protocol.js';
+import { requireSemanticEvidence } from './registration-evidence.js';
 import type {
   WorkerRegistrationRequest,
   WorkerRegistrationResult,
@@ -48,6 +50,22 @@ const OUT_OF_DOMAIN_SET: Readonly<Record<OutOfDomainBehavior, true>> = {
   hide: true,
   warn: true,
 };
+
+/**
+ * ISO-8601 instant, mirroring the Python validator
+ * (`dicom.registration_validation`): `YYYY-MM-DDTHH:MM:SS`, optional fraction,
+ * then `Z` or `±HH:MM`. Provenance completeness is required fail-closed even
+ * though `shared-types` marks the fields optional.
+ */
+const ISO8601_INSTANT =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+function requireNonEmptyString(value: string, where: string): string {
+  if (value === '') {
+    throw new WorkerContractError(`${where} must be a non-empty string.`);
+  }
+  return value;
+}
 
 function requireTransformType(value: string, where: string): TransformType {
   if (!Object.prototype.hasOwnProperty.call(TRANSFORM_TYPE_SET, value)) {
@@ -93,9 +111,17 @@ function mapProvenance(value: unknown): TransformProvenance {
     description?: string;
   } = {
     method,
-    workerVersion: asString(record.workerVersion, 'registration.provenance.workerVersion'),
+    workerVersion: requireNonEmptyString(
+      asString(record.workerVersion, 'registration.provenance.workerVersion'),
+      'registration.provenance.workerVersion',
+    ),
     timestamp: asString(record.timestamp, 'registration.provenance.timestamp'),
   };
+  if (!ISO8601_INSTANT.test(provenance.timestamp)) {
+    throw new WorkerContractError(
+      'registration.provenance.timestamp must be an ISO-8601 instant.',
+    );
+  }
   if (record.description !== undefined) {
     provenance.description = asString(
       record.description,
@@ -162,27 +188,26 @@ export function registrationRequestParams(
 /** Map `nuclear.registration` success evidence, failing closed on any gap. */
 export function mapRegistrationResult(value: unknown): WorkerRegistrationResult {
   const record = asRecord(value, 'registration result');
-  const transform = asRecord(record.transform, 'registration.transform');
-  return {
-    transform: {
-      id: asString(transform.id, 'registration.transform.id') as TransformId,
-      sourceFrameOfReferenceUID: asString(
-        transform.sourceFrameOfReferenceUID,
-        'registration.transform.sourceFrameOfReferenceUID',
-      ) as FrameOfReferenceUID,
-      targetFrameOfReferenceUID: asString(
-        transform.targetFrameOfReferenceUID,
-        'registration.transform.targetFrameOfReferenceUID',
-      ) as FrameOfReferenceUID,
-      transformType: requireTransformType(
-        asString(transform.transformType, 'registration.transform.transformType'),
-        'registration.transform.transformType',
-      ),
-      matrix4x4: matrix4x4(transform.matrix4x4, 'registration.transform.matrix4x4'),
-      units: requireMillimetres(transform.units),
-      provenance: mapProvenance(transform.provenance),
-      validity: mapValidity(transform.validity),
-    },
-    workerMetadata: mapWorkerMetadata(record.workerMetadata),
+  const raw = asRecord(record.transform, 'registration.transform');
+  const transform: SpatialTransform = {
+    id: asString(raw.id, 'registration.transform.id') as TransformId,
+    sourceFrameOfReferenceUID: asString(
+      raw.sourceFrameOfReferenceUID,
+      'registration.transform.sourceFrameOfReferenceUID',
+    ) as FrameOfReferenceUID,
+    targetFrameOfReferenceUID: asString(
+      raw.targetFrameOfReferenceUID,
+      'registration.transform.targetFrameOfReferenceUID',
+    ) as FrameOfReferenceUID,
+    transformType: requireTransformType(
+      asString(raw.transformType, 'registration.transform.transformType'),
+      'registration.transform.transformType',
+    ),
+    matrix4x4: matrix4x4(raw.matrix4x4, 'registration.transform.matrix4x4'),
+    units: requireMillimetres(raw.units),
+    provenance: mapProvenance(raw.provenance),
+    validity: mapValidity(raw.validity),
   };
+  requireSemanticEvidence(transform);
+  return { transform, workerMetadata: mapWorkerMetadata(record.workerMetadata) };
 }

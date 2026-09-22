@@ -6,7 +6,8 @@ validation (R7 same-Frame-of-Reference refusal, structural degeneracy and
 reflection fail-closed) and returns a complete, versioned ``SpatialTransform``
 with advisory residual evidence. ``mode: 'rigid'`` remains a reserved stub that
 raises ``OPERATION_NOT_IMPLEMENTED`` (-32011): automatic Mutual-Information
-registration is slice 2B.3 and is not implemented here (no SimpleITK).
+registration is slice 2B.3 and is not implemented here (no SimpleITK). Slice
+2B.4 self-checks the returned evidence through :mod:`dicom.registration_validation`.
 
 The request schema itself lives in :mod:`dicom.registration_schema`; the pure
 Procrustes mathematics lives in :mod:`dicom.registration_math`. No scientific
@@ -35,6 +36,7 @@ from worker.protocol import (
 
 from .registration_math import ProcrustesRefusal, estimate_rigid_transform, homogenise
 from .registration_schema import RegistrationRequest, parse_registration_request
+from .registration_validation import validate_spatial_transform_evidence
 
 Clock = Callable[[], datetime]
 RefusalReason = Literal[
@@ -98,7 +100,7 @@ def _landmark_evidence(
 
     timestamp = iso8601_utc(clock())
     matrix = homogenise(estimate.rotation, estimate.translation)
-    return {
+    evidence: dict[str, Any] = {
         "transform": {
             "id": request.transform_id,
             "sourceFrameOfReferenceUID": source_for,
@@ -129,6 +131,12 @@ def _landmark_evidence(
             },
         },
     }
+    # 2B.4 self-check: the evidence about to be returned must satisfy the
+    # accepted SpatialTransform contract. Valid input is byte-identical; a
+    # failure is an internal invariant violation (an EvidenceRefusal, never a
+    # fabricated transform).
+    validate_spatial_transform_evidence(evidence["transform"])
+    return evidence
 
 
 def registration_operation(
