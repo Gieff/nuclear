@@ -175,3 +175,67 @@ registration**: replace the `-32011` stub on the `landmarks` path with the
 optimal rigid transform plus its exact-correspondence tolerance and
 degenerate-input refusal, reusing this slice's schema and the
 `SpatialTransform` evidence contract. Do not start 2B.3 before 2B.2 review/QA.
+
+## Addendum — Phase Owner Review (2026-09-22)
+
+The phase owner independently re-verified slice 2B.1 and approved commit
+`1dbe540` as **PASS — IPC contract and schema registered**. The owner
+explicitly does **not** treat it as scientific validation of registration, as
+sufficient evidence for P4.4b, or as closure of the Phase 2B addendum.
+
+Owner-reported independent evidence: focused Python **38/38**; TS real-worker
+**4/4**; mypy **50 files clean**; `1dbe540` isolated to **19 files** with no
+`shared-types` or `view-engine` change.
+
+### Binding pre-2B.2 acceptance conditions (recorded verbatim from the owner)
+
+Before slice 2B.2 is implemented, the following must hold:
+- Procrustes must **refuse degenerate inputs**.
+- The result must be a **rigid** transform `P_target = M · P_source`.
+- The residual must have **ratified semantics and tolerance**.
+- The **success path must be verified through the real worker** (not only a
+  wire-shape object).
+- Evidence **without clinical validity must not reach `view-engine`**.
+
+These become gate criteria for 2B.2/2B.3/2B.4 and are **not yet satisfied**.
+
+### Partial ratification (phase owner, 2026-09-22)
+
+**Ratified now.** R1 (one op `nuclear.registration` + `mode`); R2 (output
+`SpatialTransform`, `errorMarginMm` advisory, `transformId`/`outOfDomainBehavior`
+caller-declared); R3 (2B-T1: RMS ≤ 0.5 mm / rotation ≤ 0.5°) and R5 (2B-T3:
+≤ 1e-6 mm / ≤ 1e-6°) **as fixture criteria only**, with ratified measurement
+conventions (RMS **and** maximum point error; geodesic rotation error of
+`R_recovered · R_groundtruthᵀ`; LPS mm **row-major** 4×4; strict
+`P_target = M · P_source`); R7 (same FoR refused in scientific validation, not
+the IPC schema); R8 (mapper semantic checks are a blocking 2B.4 gate); R9
+(lockstep `protocolVersion "1.0"`; release-changelog compatibility decision).
+Recorded in `docs/plans/PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md` §2B.0
+Ratification Record.
+
+**Still `[TO RATIFY]`.** R4 / 2B-T2 — MI determinism protocol (SimpleITK
+version, initialisation, seed, metric sampling, max iterations, stopping
+criterion, multi-thread behaviour); does **not** block 2B.2. R6 numeric bound —
+`κ = 1e6` is only a **candidate**; the structural refusals (`<3`/coincident/
+collinear) are ratified, the numeric threshold is ratified only after a
+degeneracy sensitivity test, post-2B.2 review/QA.
+
+### Additional owner conditions carried forward
+
+- `mapRegistrationResult` semantic checks (`isValid === true`,
+  `errorMarginMm >= 0`, distinct source/target FoR, `transformType`↔matrix
+  coherence, homogeneous last matrix row) are an explicit **2B.4 blocking
+  criterion** before any consumer (P4.4b) may use the evidence.
+- Adding `nuclear.registration` to `REQUIRED_WORKER_OPERATIONS` under an
+  unchanged `protocolVersion "1.0"` makes pre-2B.1 workers incompatible; this is
+  a recorded **compatibility decision** to be surfaced in the release changelog,
+  and a blocker for any mixed worker/bridge distribution.
+- Repo-wide `npm test` / `build` figures are shared with the uncommitted P4.6
+  worktree and must be **re-run after P4.6 is committed or separated** before
+  they are attributed to 2B.1 alone.
+- ADR-012 may stay **Proposed** during 2B.2 but must be **Accepted** before
+  P4.4b is implemented.
+
+_Status: architectural decisions R1/R2/R7/R8/R9 and the fixture criteria R3/R5
+are ratified; R4 (MI determinism) and the R6 numeric degeneracy bound remain
+`[TO RATIFY]`._

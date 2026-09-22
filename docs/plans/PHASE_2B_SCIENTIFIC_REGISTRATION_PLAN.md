@@ -1,6 +1,11 @@
 # Phase 2B — Scientific Registration: `SpatialTransform` Generation & Verification
 
-Status: **Plan only — NOT YET IMPLEMENTED.** Addendum to
+Status: **In progress.** Slice **2B.1 (worker operation registration + evidence
+schema + TypeScript bridge types)** is **complete** — commit `1dbe540`; the
+worker raises `-32011 OPERATION_NOT_IMPLEMENTED` for a schema-valid request and
+fabricates no transform. **2B.0 is partially ratified** (R1, R2, R3, R5, R7, R8,
+R9); the MI determinism protocol (R4) and the numeric degeneracy bound (R6)
+remain `[TO RATIFY]`. Addendum to
 `docs/plans/PHASE_2_SCIENTIFIC_INGESTION_PLAN.md` (ADR-002 worker bridge) and a
 prerequisite for view-engine slice **P4.4b** (`docs/decisions/ADR-012-inter-study-link-propagation.md`).
 
@@ -107,17 +112,78 @@ appears it is added to `shared-types` with a validator and a fixture (ADR-010 §
 
 ## Tolerances — candidates **[TO RATIFY]**
 
-No tolerance is accepted until the phase owner ratifies it. Candidate values to
-start the discussion (declared, versioned, tested) — not final:
+### 2B.0 Ratification Record (phase owner, 2026-09-22 — partial)
+
+Slice 2B.1 is complete (commit `1dbe540`). The phase owner ratified the
+architectural decisions and the fixture criteria below; the MI determinism
+protocol and the numeric degeneracy bound remain open.
+
+**Ratified architectural decisions.**
+
+- **R1** — one operation `nuclear.registration` with `mode: 'rigid' | 'landmarks'`
+  (`affine` remains TBD).
+- **R2** — output is the accepted `SpatialTransform`; `validity.errorMarginMm` is
+  advisory worker evidence; `transformId` and `outOfDomainBehavior` are
+  caller-declared and echoed; no `shared-types` extension.
+- **R7** — a landmark request whose source and target `FrameOfReferenceUID` are
+  equal is refused in **scientific validation** (2B.2/2B.4) with a typed error,
+  not necessarily at the IPC schema level.
+- **R8** — the `mapRegistrationResult` semantic checks (`validity.isValid === true`,
+  `errorMarginMm >= 0` when present, distinct source/target FoR,
+  `transformType`↔matrix coherence, homogeneous last matrix row) are a
+  **blocking 2B.4 gate** before any consumer (P4.4b) may use the evidence.
+- **R9** — lockstep `protocolVersion "1.0"`; `nuclear.registration` is a required
+  handshake operation; pre-2B.1 workers are incompatible. This is a recorded
+  **compatibility decision** to surface in the release changelog.
+
+**Ratified fixture criteria — NOT universal clinical tolerances.**
+
+- **2B-T1 [RATIFIED — fixture criterion]** — rigid recovery on the curated
+  phantom: RMS point error ≤ 0.5 mm and rotation error ≤ 0.5°.
+- **2B-T3 [RATIFIED — fixture criterion]** — Procrustes on exact
+  correspondences: point error ≤ 1e-6 mm and rotation error ≤ 1e-6°.
+
+**Ratified measurement conventions (bind 2B-T1 and 2B-T3).**
+
+- Both the **RMS** and the **maximum** point error across the fixture
+  correspondences are computed and asserted. The tabulated bound applies to
+  both. `validity.errorMarginMm` carries the **RMS** point error.
+- The **rotation error** is the geodesic angle of `R_recovered · R_groundtruthᵀ`,
+  expressed in degrees, where `R` is the orthonormal 3×3 rotation block.
+- Coordinates are patient **LPS millimetres**; the homogeneous 4×4 is stored
+  **row-major** (matching the `shared-types` `Matrix4x4`); points are column
+  vectors.
+- The convention is strictly **`P_target = M · P_source`**; the last row is
+  `[0, 0, 0, 1]` for a rigid transform.
+
+**Still `[TO RATIFY]`.**
+
+- **2B-T2 / R4 — MI determinism (P2B.3).** Not ratifiable until the
+  deterministic MI protocol is fixed: SimpleITK version, initialisation, seed,
+  metric sampling, maximum iterations, stopping criterion and multi-thread
+  behaviour. Does **not** block 2B.2.
+- **2B-T4 / R6 — numeric degeneracy bound.** Structural refusals (`< 3` points,
+  coincident points, collinear points) are **ratified**. The condition-number
+  bound (`κ = 1e6` is only a **candidate**) stays `[TO RATIFY]` until its matrix,
+  centring/normalisation, singular-value ratio, near-zero handling and scale
+  dependence are defined and justified by a degeneracy sensitivity test — to be
+  ratified after 2B.2 review/QA.
+
+### Tolerance candidates (historical — superseded by the record above)
+
+No tolerance is accepted until the phase owner ratifies it. Original candidate
+values, retained for traceability:
 
 - **[TO RATIFY] 2B-T1** — rigid recovery on the curated phantom: RMS point error
-  ≤ candidate 0.5 mm and rotation error ≤ candidate 0.5°.
+  ≤ candidate 0.5 mm and rotation error ≤ 0.5°. *(now ratified as a fixture
+  criterion.)*
 - **[TO RATIFY] 2B-T2** — MI convergence: fixed iteration budget + tolerance,
-  deterministic across repeated runs on the same fixture.
+  deterministic across repeated runs on the same fixture. *(still open.)*
 - **[TO RATIFY] 2B-T3** — Procrustes on exact correspondences: ≤ candidate
-  1e-6 mm.
+  1e-6 mm. *(now ratified as a fixture criterion.)*
 - **[TO RATIFY] 2B-T4** — degenerate-input refusal: a typed error for <3 points,
-  collinear points, or a condition number above a declared bound.
+  collinear points, or a condition number above a declared bound. *(structural
+  refusals ratified; numeric bound still open.)*
 
 `toleranceMm` on a link stays **caller-declared** (P4.4 already enforces finite
 `≥ 0`). The worker **never** applies `toleranceMm` and never accepts or rejects a
