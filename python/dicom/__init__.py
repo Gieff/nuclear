@@ -23,7 +23,9 @@ Modules:
     quantitation: Fail-closed SUVbw validation and result assembly.
     quantitation_operations: ``nuclear.quantitation.suvbw`` handler.
     registration_schema: ``nuclear.registration`` request schema (Phase 2B.1).
-    registration_operations: ``nuclear.registration`` handler (Phase 2B.1).
+    registration_math: Deterministic Procrustes landmark mathematics (Phase 2B.2).
+    registration_operations: ``nuclear.registration`` handler (Phase 2B.1/2B.2).
+    registration_mi: Deterministic Mutual-Information rigid core (Phase 2B.3a).
 """
 
 __version__ = "0.3.0"

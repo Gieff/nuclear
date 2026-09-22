@@ -525,3 +525,122 @@ A parallel **P4.7** change set (`packages/view-engine/src/residency/**`,
 `tests/view-engine/residency-projection.test.ts` + fixtures,
 `packages/view-engine/src/index.ts`) is present **uncommitted**. Not touched;
 all staging is by explicit path, and global `npm test` counts remain shared.
+
+# Handover Report — Phase 2B.3a: Deterministic MI Rigid Registration Core (no IPC)
+
+## 1. What Was Implemented
+
+The scientific core of automatic rigid registration, implementing the **ratified
+R4 protocol exactly** and operating only on `sitk.Image` objects. The IPC path is
+deliberately **not** wired.
+
+- `python/dicom/registration_mi.py`: `register_rigid(fixed, moving) -> MiEstimate`
+  configured exactly as R4 (Mattes MI bins 50, sampling `NONE`, linear
+  interpolator, `Euler3DTransform` + `CenteredTransformInitializerFilter.GEOMETRY`,
+  shrink `[4,2,1]`, sigmas `[2.0,1.0,0.0]` in physical units,
+  `RegularStepGradientDescent(2.0, 1e-4, 500, 0.5, 1e-8)`,
+  `OptimizerScalesFromPhysicalShift(5, 0.01)`, `Float32`, no explicit
+  `sitk.Resample`). SimpleITK's global thread count is forced to 1 inside a
+  save/restore context manager.
+- Convention: `P_target = M · P_source`, LPS mm, row-major 4×4, last row
+  `[0,0,0,1]`; **source = fixed / target = moving**, using SimpleITK's native
+  fixed→moving transform with **no inversion**; the effective offset is
+  `TransformPoint(0) = c + t − R·c` (centre-aware).
+- Typed fail-closed `MiRefusal(reason, diagnostic)` for invalid evidence,
+  failed/non-finite optimisation, non-rigid transform and invalid residual; the
+  rigidity guard is a **pure** helper directly unit-testable with a singular
+  matrix. `RIGIDITY_NUMERICAL_GUARD = 1e-9` is documented as a numerical guard,
+  **not** a clinical tolerance. No fallback; no transform is fabricated.
+- **`errorMarginMm` is not invented**: the MI metric is dimensionless, so no
+  millimetre residual is produced; its semantics for this path is **2B.4** scope
+  (now stated in the module docstring).
+
+## 2. Files Changed / Created
+
+Created: `python/dicom/registration_mi.py` (250), `python/tests/synthetic_mi_phantom.py` (134),
+`python/tests/test_registration_mi.py` (256).
+Modified: `python/dicom/__init__.py` (module-list docstring only).
+Separate corrective (owner-authorized, **not** part of this slice):
+`c2c2556 fix(rendering): align committed volume fixtures with worker 0.3.0`
+(5 `expected-*.json`, one `workerVersion` line each).
+
+Not modified: `registration_operations.py`, `registration_schema.py`,
+`dispatch.py`, `protocol.py`, `shared-types`, ADR-004, the
+`locator + seriesInstanceUID` contract, all TypeScript, `view-engine`.
+
+## 3. Architectural Assumptions Made
+
+- R4 is the authority; every parameter is a ratified value read from named
+  constants, so any change is a visible re-ratification.
+- Determinism scope = **same locked environment** (OS/arch, Python, SimpleITK
+  2.5.6, numpy 2.5.3, threads); not a cross-platform guarantee.
+- The fixture makes the ground truth self-consistent:
+  `moving = Resample(fixed, truth⁻¹)`, so the truth **is** the fixed→moving map.
+- SimpleITK's SWIG bindings are untyped; a single documented `sitk: Any = _sitk`
+  alias keeps strict mypy meaningful without scattering `type: ignore`.
+
+## 4. Tests Added & Executed
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Python suite | `npm run test:python` | **230 passed / 0 failed** (219 + 11 MI; the 8 release-bump failures fixed by `c2c2556`) |
+| Python typecheck | `npm run typecheck:python` | **Success, 57 files** |
+| TS typecheck | `npm run typecheck` | **0 errors** |
+| Build | `npm run build` | **clean** |
+| MI suite | `pytest python/tests/test_registration_mi.py -q` | **11/11** |
+| TS suite | `npm test` | **442 / 0** (shared with the parallel P4.7 slice, not attributed here) |
+
+Measured evidence (fixture criterion 2B-T1, **not** a clinical threshold):
+**RMS 0.096844 mm**, **max 0.127407 mm**, rotation **0.064102°** (bounds ≤0.5 mm /
+≤0.5 mm / ≤0.5°). Two runs are **bitwise identical** (also reproduced across
+separate processes: identical `matrix.tobytes()` hash, metric `-1.5008647385741813`,
+30 iterations). `det(R)=+1` (|det−1| = 1.1e-16), orthonormality 2.2e-16, last row
+exact; the inverse convention hypothesis is worse for every probe (0.106 mm vs
+8.55 mm), so the direction is empirically pinned. Effective parameters equal the
+ratified R4 values (bins 50, NONE, linear, `[4,2,1]`/`[2.0,1.0,0.0]` physical,
+optimizer params, `Float32`, `GEOMETRY`, threads 1, SimpleITK 2.5.6 / numpy 2.5.3).
+
+- **Independent review (`nuclear-reviewer`): PASS**, with C1–C3 resolved here
+  (the docstring note was added; the agentlog entry is this report; the module is
+  at the 250-line boundary).
+- **Independent QA (`nuclear-qa`): PASS**, all 7 gates green, with raw worker
+  stdio proving `mode:"rigid"` still returns `-32011` and no transform.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- This eight-point report satisfies the AgentLog Gate for 2B.3a. `CHANGELOG.md`
+  untouched (ADR-001).
+- No ADR created/modified. ADR-004 is respected (no voxel transport invented);
+  the transport contract for the real IPC path requires its **own** ADR (2B.3b).
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema, `SpatialTransform` contract, manifest or serialized
+  state changed; the core is not reachable from the dispatcher.
+
+## 7. Known Limitations & Technical Debt
+
+- **2B.3b (real IPC) remains BLOCKED** pending a Pixel/Volume Transport ADR
+  (format, geometry, memory ownership, size limits, hydration/serialization,
+  asset/FoR/series correlation, lifecycle, failure modes, independent
+  worker→bridge evidence).
+- **`errorMarginMm` for MI** is undefined and deferred to **2B.4**.
+- A benign zero-iteration / no-movement result is accepted by the core; R4
+  ratifies no gate for it — keep it on the **2B.4** validity checklist.
+- The stop-condition failure detection is a substring heuristic (fail-closed
+  direction only).
+- `_require_valid_image` copies the volume to float64 for the finiteness check
+  (fine at 48³; revisit memory at clinical scale in 2B.3b).
+- `registration_mi.py` is at the **250-line** Rule-02 boundary → the next edit
+  should decompose (e.g. extract the pure validation guards).
+- Environment-locked determinism: any SimpleITK/numpy bump re-runs the
+  determinism fixture and needs re-ratification.
+
+## 8. Exact Next Recommended Task
+
+Implement **slice 2B.4 — evidence validity / `errorMarginMm` / fail-closed**,
+defining the MI-path residual semantics (including the zero-iteration case) and
+completing R6 (scale-aware collinear classification) as an independent decision.
+Do **not** start 2B.3b until the Pixel/Volume Transport ADR is ratified, and do
+not consume any registration evidence in P4.4b before 2B.4 and ADR-012
+**Accepted**.
