@@ -223,3 +223,44 @@ contract).
   be promoted to `shared-types` (with a validator and fixture) at their first
   cross-package consumption (e.g. Fase 6 UI or `figure-engine`), not before.
 
+## 9. Addendum — P4.7 Demand Projection & Residency Authority (2026-09-22)
+
+**Status:** Accepted (details §6; no contract change).
+
+- **Lease id scheme.** A projected lease is identified by
+  `` `${slotId}::${assetId}` `` — derived only from the logical `ViewSlotId`
+  and the `AssetId`, never from a DOM node or the numeric slot index, and
+  stable across re-layout (§6). Two slots demanding the same asset therefore
+  produce two distinct leases on one physical volume.
+- **Projection mapping (visibility → lease).** A slot projects a retention
+  request **iff** its `status` is `bound` or `prepared`, it declares a
+  `resourceDemand`, and its entry in the caller-supplied visibility map is
+  `'visible'` (a missing entry is treated as `hidden`). Hidden / `empty` /
+  `unavailable` / demand-less slots project nothing, so their lease is
+  released on the next reconcile. Visibility is an explicit engine input
+  because the workspace has no visibility field and hiding a bound slot must
+  not require unbinding it.
+- **The physical plan stays behind the boundary.** `VolumeIngestionPlan` is
+  type-only and deliberately not part of the `@nuclear/medical-engine` public
+  surface; `view-engine` therefore projects `ResourceRetentionRequest`s and a
+  caller-supplied `ResourceRetentionBuilder` attaches the physical
+  `plan`/`availability`. `view-engine` never names the plan type and never
+  reads it back. The returned retention is validated (`leaseId`, demand, and
+  opaque non-null `plan`/`availability`) for **all** requests before the
+  single `ResourceManager.reconcile` call, so a dishonest builder cannot
+  partially mutate residency.
+- **One demand authority per `ResourceManager`.** `reconcile` is a full
+  replacement: the next retention set is authoritative and any lease absent
+  from it is released. A `ResourceManager` must therefore be owned by exactly
+  one demand authority (workspace/session). Two independent slot-sets sharing
+  one manager would silently evict each other's demanded resources; each
+  authority keeps its own manager (or coordinates through one).
+- **`view-engine` declares demand only.** Acquisition, eviction ordering,
+  budget and byte measurement remain `medical-engine` policy; `view-engine`
+  consumes the settlement/snapshot and preserves semantic slot identity across
+  eviction and reload.
+- **Opaque shape checks are intentionally shallow.** The builder seam rejects
+  only non-object `plan`/`availability`; the manager's own typed
+  pre-validation remains the authority on the plan's deeper shape.
+
+

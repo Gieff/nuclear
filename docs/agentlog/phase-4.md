@@ -2403,3 +2403,163 @@ identity, reload restores residency; do not reimplement residency policy). Do
 ADR-012 is **Accepted** (R-1..R-4) and Phase 2B can produce a verifiable
 `SpatialTransform`; **P4.8** is the final independent phase review/QA and
 closure.
+
+---
+
+# Handover Report — P4.7: ResourceDemand Projection into ResourceManager
+
+## 1. What Was Implemented
+
+P4.7 delivered the view-engine's declarative demand → residency projection: it
+turns active slots' declared demand into lease requests, attaches the physical
+plan/availability through a caller-supplied builder, and reconciles against the
+accepted Phase 3 `ResourceManager` — without reimplementing residency policy and
+without naming the ingestion-plan type.
+
+- **Projection** (`residency/project.ts`): a slot projects a retention request
+  **iff** `status ∈ {bound, prepared}`, it declares a `resourceDemand`, and its
+  caller-supplied visibility entry is `'visible'` (missing entry = hidden).
+  Hidden / `empty` / `unavailable` / demand-less slots project nothing (their
+  lease is released on the next reconcile). Output is deterministic (slot
+  order) and never mutates its inputs.
+- **Lease id** (`resourceLeaseIdFor(slotId, assetId)` = `` `${slotId}::${assetId}` ``):
+  deterministic, derived only from the logical `ViewSlotId` + `AssetId`, stable
+  across re-layout, never a DOM node or the numeric slot index (ADR-010 §6/§9).
+  Two slots demanding the same asset produce two distinct leases on one volume.
+- **Boundary-respecting union with medical-engine** (`residency/reconcile.ts`):
+  `VolumeIngestionPlan` is type-only and deliberately not public, so
+  `view-engine` emits `ResourceRetentionRequest`s and a
+  `ResourceRetentionBuilder` attaches the physical `plan`/`availability`.
+  `view-engine` never names or reads the plan. All builder outputs are
+  validated (leaseId, structural demand equality, opaque non-null
+  `plan`/`availability`) **before** the single `manager.reconcile(retentions)`,
+  so a dishonest builder cannot partially mutate residency.
+- **Fail-closed typed errors** (`residency/errors.ts`): `ResidencyProjectionError`
+  with `RESIDENCY_PROJECTION_MALFORMED` (untyped/partial input, blank
+  `slot.id`/`demand.assetId`) and `RESIDENCY_PROJECTION_BUILDER_MISMATCH`
+  (wrong lease id, altered demand, non-object plan/availability). Untyped input
+  never leaks a bare `TypeError`.
+- **No policy duplication:** acquisition, eviction ordering, budget and byte
+  measurement remain `ResourceManager` concerns; the engine consumes the
+  settlement/snapshot and preserves semantic slot identity across eviction and
+  reload. The module is standalone (not wired into `ImagingWorkspace`).
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/view-engine/src/residency/types.ts` (49 lines)
+- `packages/view-engine/src/residency/errors.ts` (35 lines)
+- `packages/view-engine/src/residency/project.ts` (121 lines)
+- `packages/view-engine/src/residency/reconcile.ts` (107 lines)
+- `packages/view-engine/src/residency/index.ts` (12 lines)
+- `tests/view-engine/residency-projection.test.ts` (298 lines; 9 tests a–i)
+- `tests/view-engine/fixtures/residency-projection-fixtures.ts` (278 lines)
+
+Modified:
+- `packages/view-engine/src/index.ts` (+1 barrel line)
+
+Documentation:
+- `docs/decisions/ADR-010-…md` §9 addendum (lease-id scheme, projection mapping,
+  builder seam, one-demand-authority-per-manager, demand-only scope).
+
+Unchanged: `packages/shared-types/**`, `packages/medical-engine/**`, every other
+package, plans, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- **Visibility is an explicit engine input** (`ReadonlyMap<ViewSlotId,
+  SlotVisibility>`; missing = hidden) because `ViewSlot` has no visibility field
+  and hiding a bound slot must not require unbinding it. The mapping is
+  documented in ADR-010 §9.
+- **The physical plan stays behind the boundary.** Rather than expose the
+  type-only `VolumeIngestionPlan` from `medical-engine` (which would widen the
+  package surface), the builder seam keeps `view-engine` free of ingestion
+  internals and requires **no** `medical-engine` change.
+- **One demand authority per `ResourceManager`.** `reconcile` is a full
+  replacement, so a manager must be owned by exactly one workspace/session;
+  two authorities sharing one manager would evict each other's resources
+  (ADR-010 §9).
+- The builder shape check is intentionally opaque (non-null object); the
+  manager's typed pre-validation remains authoritative on the plan's deeper
+  shape.
+- P4.7 is standalone; wiring demand projection into `ImagingWorkspace` is not
+  part of this slice.
+
+## 4. Tests Added & Executed
+
+Added `tests/view-engine/residency-projection.test.ts` (9 tests a–i) with a
+reusable fixture that builds slots and reuses the Phase 3
+`makePlan`/`MockResidencyBackend` via the caller-supplied builder.
+
+| Command | Observed result |
+| --- | --- |
+| `node --test tests/view-engine/residency-projection.test.ts` | **9 pass / 0 fail** |
+| `npm run typecheck` | exit 0 |
+| `npm test` | **440 pass / 0 fail / 80 suites** (0 skipped/todo) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:python` | 219 passed (P4.7 adds no Python; the concurrent Phase-2B writer added 12) |
+| `npm run typecheck:python` | clean over 54 files (includes concurrent Phase-2B files) |
+
+Delta: committed P4.6 baseline 431/79 + **9 P4.7 tests / 1 suite** = 440/80
+exact.
+
+Coverage: projection filtering + order + fresh demand copy + no input mutation;
+shared asset → one resource / two leases / one acquire; distinct assets; remove
+one keeps the other resident, remove both evicts exactly once; `ViewSlot`
+identity/deep-equality preserved across reconcile/evict and reload restores the
+same `volumeId`; four builder mismatches + two dishonest-shape builders → typed
+refusals with the manager snapshot unchanged (proving validation precedes
+`reconcile`); 12 container-level malformed variants + blank `slot.id`/blank
+`assetId` → typed `MALFORMED`; delegation to `manager.reconcile` proven with a
+spy; no `VolumeIngestionPlan` named anywhere in `view-engine`.
+
+Independent verdicts: `nuclear-reviewer` **CONCERNS → PASS** — the two initial
+findings (F1 unenforced non-blank-id guarantee; F2 bare `TypeError` from a
+plan-less builder) were fixed and re-verified; the F3
+one-demand-authority-per-manager invariant and the projection mapping were
+recorded in ADR-010 §9. `nuclear-qa` **PASS** on all ten executable gates
+(focused 9/9, typecheck/build, `npm test` 440/440/80, pytest 219, mypy 54,
+file-length, hygiene, staged-empty), independently confirming the shared-asset,
+eviction-identity/reload, builder-mismatch-before-mutation and boundary checks.
+Image tolerance declared **NOT YET APPLICABLE** (pure Node, deterministic
+in-memory backend).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-010 §9 addendum records the lease-id scheme, the exact
+  visibility → lease mapping, the builder seam, the one-demand-authority rule
+  and the demand-only scope.
+- This report satisfies the AgentLog Gate for P4.7.
+- `CHANGELOG.md` untouched; release notes are compiled via `/promote-changelog 4`.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema change. `ResourceRetentionRequest`,
+  `ResourceRetentionBuilder`, `SlotVisibility` and `ResidencyProjectionError`
+  are view-engine-local ephemeral/process types, not persisted contracts.
+
+## 7. Known Limitations & Technical Debt
+
+- The builder shape check is opaque (non-null object only); an array-shaped
+  `plan` passes the seam and is left to the manager's typed validation.
+- One `ResourceManager` must be owned by one demand authority; this is caller
+  discipline documented in ADR-010 §9, not enforced by the engine.
+- `residency-projection.test.ts` (298) and its fixture (278) are near the
+  300-line ceiling and are split candidates.
+- The slice is not yet wired into `ImagingWorkspace`; a workspace-level demand
+  facade is future integration work.
+- A concurrent Phase-2B writer moved HEAD and committed repeatedly during the
+  slice; only the P4.7 paths were staged. Carried Phase 3 debt unchanged
+  (renderer size headroom; hardware-GPU and a true production bundle remain
+  `NOT YET APPLICABLE`).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P4.8 — independent phase review/QA and Phase 4 closure**: confirm
+the whole phase boundary (no UI/React/DOM/Cornerstone import; acyclic package
+graph; Rule 02 file-size limit), run all gates including `npm run docs`, record
+the final reviewer/QA verdicts and the Phase 5 entry conditions, and append the
+phase-closure report. **P4.4b** (inter-study application/propagation) remains
+blocked until ADR-012 is **Accepted** (R-1..R-4) and Phase 2B can produce a
+verifiable `SpatialTransform`; it must not be started from P4.7.
+

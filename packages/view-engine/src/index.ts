@@ -6,3 +6,4 @@ export * from './shared-state/index.js';
 export * from './locks/index.js';
 export * from './overrides/index.js';
 export * from './surfaces/index.js';
+export * from './residency/index.js';
