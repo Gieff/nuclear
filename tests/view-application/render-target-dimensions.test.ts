@@ -46,7 +46,7 @@ const PLAN = {
   viewId: 'view-ct',
   layers: [
     {
-      assetId: 'asset-ct',
+      assetId: 'asset-ct-001',
       volumeId: 'nuclear-volume:volume-ct',
       role: 'base',
       modality: 'ct',

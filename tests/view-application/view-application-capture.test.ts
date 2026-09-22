@@ -39,7 +39,7 @@ describe('NuClear P3.4-C.1 — capture provenance', () => {
     });
     const provenance = buildCaptureProvenance(
       plan,
-      [{ assetId: 'asset-ct', scalarDataDomain: 'rescaled-hu' }],
+      [{ assetId: mockCtAsset.id, scalarDataDomain: 'rescaled-hu' }],
       VIEW_BLEND_MODE,
     );
 
@@ -58,7 +58,7 @@ describe('NuClear P3.4-C.1 — capture provenance', () => {
 
     assert.equal(provenance.layers.length, 1);
     const [layer] = provenance.layers;
-    assert.equal(layer.assetId, 'asset-ct');
+    assert.equal(layer.assetId, mockCtAsset.id);
     assert.equal(layer.volumeId, 'volume-ct');
     assert.equal(layer.role, 'base');
     assert.equal(layer.modality, 'ct');

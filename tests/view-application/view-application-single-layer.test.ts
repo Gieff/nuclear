@@ -38,7 +38,7 @@ describe('NuClear P3.4-B.2.1 — single-layer view application', () => {
     assert.equal(plan.viewId, 'view-ct');
     assert.equal(plan.layers.length, 1);
     const [layer] = plan.layers;
-    assert.equal(layer.assetId, 'asset-ct');
+    assert.equal(layer.assetId, mockMedicalView.dataBinding.assetId);
     assert.equal(layer.volumeId, 'volume-ct');
     assert.equal(layer.role, 'base');
     assert.deepEqual(layer.properties.voiRange, { lower: -1000, upper: 1000 });

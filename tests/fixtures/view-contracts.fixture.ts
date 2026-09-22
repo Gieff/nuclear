@@ -18,7 +18,7 @@ import type {
   ViewportSurface,
 } from '../../packages/shared-types/src/index.js';
 import type {
-  AssetId, ComposerViewInstanceId, PreparedViewId, PreviewId, SurfaceId, ViewId, ViewportId,
+  ComposerViewInstanceId, PreparedViewId, PreviewId, SurfaceId, ViewId, ViewportId,
 } from '../../packages/shared-types/src/index.js';
 import {
   MOCK_CT_SERIES_UID,
@@ -37,7 +37,7 @@ const identity: CoordinateTransformSet = {
   viewportSizePx: [512, 512],
 };
 
-const binding: DataBinding = { assetId: id<AssetId>('asset-ct'), role: 'base' };
+const binding: DataBinding = { assetId: mockCtAsset.id, role: 'base' };
 const spatial: SpatialState = {
   frameOfReferenceUID: mockCtAsset.geometry.frameOfReferenceUID,
   orientation: [1, 0, 0, 0, 1, 0],

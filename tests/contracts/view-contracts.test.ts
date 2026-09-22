@@ -67,6 +67,27 @@ describe('NuClear Phase 1.3 — View contracts', () => {
     assert.equal(isInterStudyLink({ ...mockInterStudyLink, sourceFrameOfReferenceUID: mockInterStudyLink.targetFrameOfReferenceUID }), false);
   });
 
+  it('enforces snapshot self-consistency and accepts different digests under one verified FoR', () => {
+    // The accepted fixture models native CT and PET in one verified Frame of
+    // Reference with two different geometric digests: co-reference is valid.
+    const digests = mockIntraStudyLink.geometryEvidence.snapshots.map((snapshot) => snapshot.geometricDigest);
+    assert.equal(new Set(digests).size, 2, 'fixture must exercise two distinct geometric digests');
+    assert.ok(isIntraStudyLink(mockIntraStudyLink));
+
+    const withSnapshots = (snapshots: readonly unknown[]) => ({
+      ...mockIntraStudyLink,
+      geometryEvidence: { ...mockIntraStudyLink.geometryEvidence, snapshots },
+    });
+
+    // Every snapshot fingerprint must share the same study instance UID.
+    assert.equal(isIntraStudyLink(withSnapshots(mockIntraStudyLink.geometryEvidence.snapshots.map((snapshot, index) =>
+      index === 1 ? { ...snapshot, sourceFingerprint: { ...snapshot.sourceFingerprint, studyInstanceUID: 'mixed-study' } } : snapshot))), false);
+
+    // A snapshot geometricDigest must agree with its own defined fingerprint digest.
+    assert.equal(isIntraStudyLink(withSnapshots(mockIntraStudyLink.geometryEvidence.snapshots.map((snapshot, index) =>
+      index === 0 ? { ...snapshot, geometricDigest: 'sha256:not-the-fingerprint' } : snapshot))), false);
+  });
+
   it('keeps locks, links, and local overrides as separate contracts', () => {
     assert.ok(mockPreparedView.links.every(isViewLink));
     assert.ok(isLocalViewOverride(mockLocalOverride));

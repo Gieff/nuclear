@@ -53,6 +53,20 @@ const compositionState = (value: unknown): value is CompositionState => {
 const resourceDemand = (value: unknown): boolean => record(value) && typeof value.assetId === 'string' && ['visible-interactive', 'visible-read-only', 'prepared-hidden', 'prefetch-candidate', 'unused'].includes(String(value.priority)) && Array.isArray(value.requiredTiers) && value.requiredTiers.every((tier) => ['metadata-only', 'source-available', 'cpu-cached', 'gpu-ready', 'gpu-resident', 'loading', 'evicted'].includes(String(tier)));
 const geometrySnapshot = (value: unknown): boolean => record(value) && typeof value.assetId === 'string' && typeof value.frameOfReferenceUID === 'string' && isSourceFingerprint(value.sourceFingerprint) && typeof value.geometricDigest === 'string' && direction(value.orientation) && vector(value.spacingMm) && value.spacingMm.every((item) => item > 0) && vector(value.originLpsMm) && record(value.boundsLpsMm) && vector(value.boundsLpsMm.min) && vector(value.boundsLpsMm.max) && record(value.workerMetadata) && typeof value.workerMetadata.workerVersion === 'string' && typeof value.workerMetadata.operation === 'string' && typeof value.workerMetadata.timestamp === 'string';
 
+// ADR-010 §7.2: every snapshot must carry the same `sourceFingerprint`
+// study, and a snapshot's `geometricDigest` must agree with its own
+// fingerprint digest when that digest is defined. Digests are NOT required to
+// be equal across snapshots (native CT/PET in one FoR differ).
+const snapshotStudyInstanceUID = (snapshot: unknown): string | undefined =>
+  record(snapshot) && record(snapshot.sourceFingerprint) && typeof snapshot.sourceFingerprint.studyInstanceUID === 'string'
+    ? snapshot.sourceFingerprint.studyInstanceUID
+    : undefined;
+const snapshotDigestCorrelates = (snapshot: unknown): boolean => {
+  if (!record(snapshot) || !record(snapshot.sourceFingerprint)) return false;
+  const fingerprintDigest = snapshot.sourceFingerprint.geometricDigest;
+  return fingerprintDigest === undefined || snapshot.geometricDigest === fingerprintDigest;
+};
+
 export const isCoordinateTransformSet = (value: unknown): boolean => record(value) && matrix(value.patientToViewPlane) && matrix(value.viewPlaneToViewport) && tuple(value.viewportSizePx, 2) && value.viewportSizePx[0] > 0 && value.viewportSizePx[1] > 0;
 
 export const isMedicalViewState = (value: unknown): value is MedicalViewState => {
@@ -79,7 +93,9 @@ export const isIntraStudyLink = (value: unknown): value is IntraStudyLink => {
   if (!record(value) || value.kind !== 'co-referenced' || typeof value.sourceViewId !== 'string' || typeof value.targetViewId !== 'string' || typeof value.frameOfReferenceUID !== 'string' || !Array.isArray(value.synchronizedState) || !value.synchronizedState.every((item) => stateNames.includes(item as typeof stateNames[number])) || !record(value.geometryEvidence) || value.geometryEvidence.verified !== true || value.geometryEvidence.frameOfReferenceUID !== value.frameOfReferenceUID || !Array.isArray(value.geometryEvidence.assetIds) || value.geometryEvidence.assetIds.length === 0 || new Set(value.geometryEvidence.assetIds).size !== value.geometryEvidence.assetIds.length || !Array.isArray(value.geometryEvidence.snapshots) || value.geometryEvidence.snapshots.length !== value.geometryEvidence.assetIds.length || !value.geometryEvidence.snapshots.every(geometrySnapshot)) return false;
   const frameOfReferenceUID = value.geometryEvidence.frameOfReferenceUID;
   const assetIds = new Set(value.geometryEvidence.assetIds);
-  return value.geometryEvidence.snapshots.every((snapshot) => record(snapshot) && assetIds.has(snapshot.assetId) && snapshot.frameOfReferenceUID === frameOfReferenceUID) && new Set(value.geometryEvidence.snapshots.map((snapshot) => record(snapshot) ? snapshot.assetId : '')).size === assetIds.size;
+  const snapshotStudies = new Set(value.geometryEvidence.snapshots.map(snapshotStudyInstanceUID));
+  if (snapshotStudies.size !== 1 || snapshotStudies.has(undefined)) return false;
+  return value.geometryEvidence.snapshots.every((snapshot) => record(snapshot) && assetIds.has(snapshot.assetId) && snapshot.frameOfReferenceUID === frameOfReferenceUID && snapshotDigestCorrelates(snapshot)) && new Set(value.geometryEvidence.snapshots.map((snapshot) => record(snapshot) ? snapshot.assetId : '')).size === assetIds.size;
 };
 
 export const isInterStudyLink = (value: unknown): value is InterStudyLink => {

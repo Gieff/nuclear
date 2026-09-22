@@ -4,8 +4,9 @@ Status: **REOPENED** (2026-09-22). P4.0 (`72fbaee`), P4.1 (`8cdad35`) and
 P4.2 (`a70983c`) were accepted locally and then **reopened by an independent
 human review**; none of them is an approvable closed slice as committed.
 Corrective progress: **C8 complete** (`db4ba42`, corrected by `f71d609`),
-**C1 complete** (`7680acc`) and **C2+C5+C6 complete** (bundled, one commit).
-Remaining ratified correctives before P4.3: `C4 → C3 → C7`. See
+**C1 complete** (`7680acc`), **C2+C5+C6 complete** (`0c8921e`) and
+**C3+C7 complete** (bundled). Remaining ratified corrective before P4.3:
+**C4**. See
 `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` §“Reopened — Ratified Correction
 Slices”, `docs/decisions/ADR-010-…md` §7 and
 `docs/decisions/ADR-011-prepared-view-immutability-and-shared-state-mutation.md`.
@@ -900,6 +901,144 @@ registration cannot change what was validated or what a read returns. The
 holder’s controlled replacement must preserve the identity guarantees the C6
 tests now pin (`getPreparedView(view.id) === view`). Do not add linking (C3)
 or the fixture-hygiene change (C7) in C4.
+
+---
+
+# Handover Report — Bundle B (C3 + C7): Co-Reference Correlation & Fixture Hygiene
+
+## 1. What Was Implemented
+
+Two ratified corrective slices bundled (both touch the co-reference
+contract/fixtures; zero unrelated churn), again by explicit user authorisation
+to optimise — not a reorder (C4 remains next).
+
+- **C3 — co-reference contract honesty + correlation.** The pure test oracle
+  `isIntraStudyLink` gained intra-evidence self-consistency: all snapshots must
+  share one `sourceFingerprint.studyInstanceUID`, and each snapshot’s
+  `geometricDigest` must agree with its own defined fingerprint digest. A new
+  pure, Node-safe engine helper `packages/view-engine/src/linking/co-reference.ts`
+  (`assertCoReferenceEligibility`) adds the registry-aware correlation:
+  `verified` → known asset → snapshot/asset `FrameOfReferenceUID` → shared
+  study → asset series ↔ snapshot fingerprint series → `structurallyEqual`
+  fingerprint → snapshot digest ↔ its own fingerprint digest. **No
+  cross-snapshot `geometricDigest` equality is required** (ADR-010 §7.2).
+- **C7 — Phase 1 fixture hygiene.** `mockMedicalView` now binds
+  `mockCtAsset.id` (`'asset-ct-001'`) instead of the literal `'asset-ct'`, and
+  every dependent P3/P4 assertion was retargeted in the same change
+  (`CT_VOLUME_IDS`, capture input+assert, single-layer assert,
+  render-target plan literal, `prepared-view.test.ts` case 13). The fixture
+  seam is now cross-referentially coherent and `mockPreparedView` is valid.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/view-engine/src/linking/errors.ts` (40 lines)
+- `packages/view-engine/src/linking/co-reference.ts` (123 lines)
+- `packages/view-engine/src/linking/index.ts` (9 lines)
+- `tests/view-engine/co-reference.test.ts` (163 lines, 8 tests)
+
+Modified:
+- `packages/view-engine/src/index.ts` (exports `./linking/index.js`)
+- `tests/contracts/view-validators.ts` (`isIntraStudyLink` self-consistency)
+- `tests/contracts/view-contracts.test.ts` (C3 oracle tests)
+- `tests/fixtures/view-contracts.fixture.ts` (C7 binding id)
+- `tests/view-application/fixtures/view-application-fixtures.ts`,
+  `tests/view-application/view-application-single-layer.test.ts`,
+  `tests/view-application/view-application-capture.test.ts`,
+  `tests/view-application/render-target-dimensions.test.ts` (C7 retargets)
+- `tests/view-engine/prepared-view.test.ts` (case 13 → positive coherence)
+
+Unchanged: `packages/shared-types/**`, every other package, `python/**`,
+plans/ADRs, `CHANGELOG.md`, the version. `tests/residency/resource-manager.test.ts`
+was deliberately left untouched (its `'asset-ct'` literals are synthetic
+demand-plan ids, not fixture cross-references).
+
+## 3. Architectural Assumptions Made
+
+- **Enforcement locus clarified.** ADR-010 §7.2 says “the contract validator
+  `isIntraStudyLink` must enforce the snapshot ↔ asset ↔ series ↔ fingerprint
+  correlation”; a pure predicate cannot reach an asset registry, so the
+  registry-aware correlation lives in `assertCoReferenceEligibility` while the
+  validator enforces intra-evidence self-consistency. This is the only
+  coherent reading and is recorded here so §7.2 is not mistaken for
+  unimplemented.
+- The helper trusts the `isIntraStudyLink` precondition (non-empty,
+  one-to-one snapshots); **P4.4 must wire validator → helper in that order.**
+- `CO_REFERENCE_NOT_VERIFIED` is only reachable through a cast because the
+  contract types `verified` as literal `true`; the test exercises it with a
+  single documented `as unknown as`.
+- `structurallyEqual` (C5) is reused for fingerprint equality; no digest
+  equality across snapshots anywhere.
+
+## 4. Tests Added & Executed
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npx tsc -p tsconfig.test.json` | exit 0 |
+| `npm test` | **329 pass / 0 fail / 67 suites** (0 skipped/todo) = Bundle A baseline 320/66 + 9 tests / +1 suite |
+| `npm run build` | clean (exit 0) |
+| `node --test tests/view-engine/co-reference.test.ts` | 8/8 |
+| `node --test tests/contracts/view-contracts.test.ts` | 11/11 |
+| `node --test tests/view-engine/prepared-view.test.ts` | 14/14 |
+| `node --test tests/view-application/view-application-single-layer.test.ts` | 8/8 |
+| `npm run test:python` | 189 passed (unchanged) |
+| `npm run typecheck:python` | 47 files clean (unchanged) |
+
+Coverage: the positive different-digest/same-FoR case (asserts two distinct
+digests are accepted), and a negative for every `CoReferenceError` code
+including the required same-FoR/different-series case; validator
+self-consistency negatives plus the positive corrected-rule case. The sole
+removed `it(` in the whole diff is the old `prepared-view.test.ts` case 13,
+replaced 1:1 by a positive coherence assertion (the old negative pinned the
+defect C7 removes; the refusal remains independently covered by cases 9 and
+14). No skipped/todo/vacuous assertions.
+
+Independent verdicts: `nuclear-reviewer` **PASS** (zero blocking; 4
+non-blocking) and `nuclear-qa` **PASS** for the executable scope.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-010 §7.2 wording is now accompanied by the enforcement-locus
+  clarification in §3 above; no ADR text change was required (the §7 addendum
+  already corrected the digest-equality error).
+- This report satisfies the AgentLog Gate for C3 and C7.
+- `CHANGELOG.md` untouched; release notes are compiled later via
+  `/promote-changelog 4` only on explicit request.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema change. The co-reference helper is exported but not
+  yet wired into P4.1/P4.2 APIs (P4.4 consumes it).
+
+## 7. Known Limitations & Technical Debt
+
+- **Precondition-trusting helper (carried to C4/P4.4).** `assertCoReferenceEligibility`
+  relies on `isIntraStudyLink` for shape and 1:1 snapshots, and an empty
+  `snapshots` array would pass vacuously; P4.4 must compose validator →
+  helper.
+- **Aliased mutability until C4.** `mockIntraStudyLink` snapshots alias asset
+  fingerprints by reference, so until C4 deep-freezes published DTOs *and*
+  registered evidence atomically, a post-validation mutation could silently
+  invalidate the correlation. C4’s freeze discipline should explicitly cover
+  `IntraStudyLink.geometryEvidence` snapshots.
+- `render-target-dimensions.test.ts` keeps a self-contained `'asset-ct-001'`
+  literal rather than importing the fixture id (consistent with that file’s
+  style; a future id change would not be caught there).
+- `CO_REFERENCE_NOT_VERIFIED` requires a cast to exercise (contract literal
+  `true`).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **C4 (P4.2.1) — published-DTO immutability + private controlled
+shared-state holder** per ADR-011 (the last remaining corrective before P4.3).
+Deep-freeze `provenance`/`state`/`links`/`locks` and co-reference evidence at
+assembly/registration time, atomically; add a regression test proving
+post-registration mutation of the caller’s object cannot change what was
+validated or read; and preserve the identity guarantees pinned by the C6 tests
+(`getPreparedView(view.id) === view`). Do not wire P4.4 linking or add P4.3
+shared-state mutation in C4.
+
 
 
 

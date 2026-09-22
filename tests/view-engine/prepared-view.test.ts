@@ -1,12 +1,11 @@
 /**
  * NuClear P4.2 — pure `PreparedView` assembly and provenance tests.
  *
- * Pure Node: no DOM, WebGL or Cornerstone. Fixture seam: the shared
- * `mockMedicalView` binds the literal `'asset-ct'`, absent from
- * `mockViewProvenance`, and the accepted P3 suite asserts that literal id. So
- * positive assembly uses the internally consistent `mockPetView` /
- * `mockFusionView` pairs, and case 13 records the mismatch as an explicit
- * fail-closed regression guard.
+ * Pure Node: no DOM, WebGL or Cornerstone. Fixture seam (resolved by C7): the
+ * shared `mockMedicalView` binds `mockCtAsset.id`, which `mockViewProvenance`
+ * declares, so the canonical `mockMedicalView` + `mockViewProvenance` pair is
+ * cross-referentially coherent and assembles positively. Positive assembly
+ * also uses the `mockPetView` / `mockFusionView` pairs.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -224,12 +223,15 @@ describe('NuClear P4.2 — PreparedView assembly and provenance', () => {
     assert.equal(view.state, mockPetView, 'a refused registration must not mutate the view');
   });
 
-  it('13. fixture seam: mockMedicalView binds a literal id absent from mockViewProvenance', () => {
-    assert.deepEqual([...boundAssetIds(mockMedicalView)], ['asset-ct']);
-    expectPreparedViewError(
-      () => assemblePreparedView({ preparedViewId: PET_PREPARED, state: mockMedicalView, provenance: mockViewProvenance }),
-      'PREPARED_VIEW_BINDING_NOT_IN_PROVENANCE',
-    );
+  it('13. the fixture seam is coherent: mockMedicalView assembles with mockViewProvenance', () => {
+    assert.deepEqual([...boundAssetIds(mockMedicalView)], [mockCtAsset.id]);
+    const view = assemblePreparedView({
+      preparedViewId: PET_PREPARED,
+      state: mockMedicalView,
+      provenance: mockViewProvenance,
+    });
+    assert.equal(view.state, mockMedicalView, 'state must be preserved by reference');
+    assert.equal(view.provenance, mockViewProvenance, 'provenance must be preserved by reference');
   });
 
   it('14. validation order is pinned: provenance checks run before the lock check', () => {

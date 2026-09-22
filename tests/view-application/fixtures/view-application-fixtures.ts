@@ -83,7 +83,7 @@ export {
 export const SUV_FACTOR = mockPetAsset.metadata.petQuantitation?.suvFactor as number;
 export const TOLERANCE = 1e-12;
 const petBinding = resolvePetQuantitationBinding(mockPetAsset, 'rescaled-bqml');
-export const CT_VOLUME_IDS = new Map([['asset-ct', 'volume-ct']]);
+export const CT_VOLUME_IDS = new Map([[mockCtAsset.id, 'volume-ct']]);
 export const PET_VOLUME_IDS = new Map([[mockPetAsset.id, 'volume-pet']]);
 export const FUSION_VOLUME_IDS = new Map([
   [mockCtAsset.id, 'volume-ct'],
