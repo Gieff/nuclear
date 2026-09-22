@@ -15,6 +15,7 @@
 import type { PreparedView, PreparedViewId } from '@nuclear/shared-types';
 import { PreparedViewError } from './errors.js';
 import { deepFreeze } from '../internal/deep-freeze.js';
+import { assertSerializableValue } from '../workspace/value-integrity.js';
 
 export class PreparedViewRegistry {
   private readonly viewById = new Map<PreparedViewId, PreparedView>();
@@ -27,6 +28,12 @@ export class PreparedViewRegistry {
         `Prepared view id '${view.id}' is already registered. Remediation: reuse the registered view or register it under a distinct PreparedViewId.`,
       );
     }
+    // C4b: a hand-built view never passed assembly, so refuse a non-plain /
+    // explicitly-undefined member (WORKSPACE_UNSUPPORTED_VALUE /
+    // WORKSPACE_UNDEFINED_VALUE) before the defensive freeze. The check runs
+    // after the duplicate-id check, so a refused duplicate is not validated
+    // and nothing is frozen or mutated.
+    assertSerializableValue(view, `prepared view '${view.id}'`);
     const frozen = deepFreeze(view);
     this.viewById.set(frozen.id, frozen);
     this.viewOrder.push(frozen.id);

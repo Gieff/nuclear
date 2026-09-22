@@ -36,6 +36,7 @@ import type {
 } from '@nuclear/shared-types';
 import { PreparedViewError } from './errors.js';
 import { deepFreeze } from '../internal/deep-freeze.js';
+import { assertSerializableValue } from '../workspace/value-integrity.js';
 
 export interface AssemblePreparedViewInput {
   readonly preparedViewId: PreparedViewId;
@@ -134,5 +135,9 @@ export function assemblePreparedView(input: AssemblePreparedViewInput): Prepared
       ? {}
       : { cachedPreviewReference: input.cachedPreviewReference }),
   };
+  // C4b: prove the published value stays in the plain-JSON domain before it is
+  // frozen. Validation precedes the freeze, so a refused assembly never freezes
+  // or mutates the caller's `state`/`provenance`.
+  assertSerializableValue(view, `prepared view '${preparedViewId}'`);
   return deepFreeze(view);
 }

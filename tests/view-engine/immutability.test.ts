@@ -36,10 +36,12 @@ import {
 // dependency, so the real product sources below import by value.
 const preparedViewModule = await import('../../packages/view-engine/src/prepared-view/index.ts');
 const workspaceModule = await import('../../packages/view-engine/src/workspace/index.ts');
-const { deepFreeze } = await import('../../packages/view-engine/src/internal/deep-freeze.ts');
+const { DeepFreezeError, deepFreeze } = await import(
+  '../../packages/view-engine/src/internal/deep-freeze.ts'
+);
 
 const { assemblePreparedView, PreparedViewRegistry } = preparedViewModule;
-const { ViewSlotRegistry } = workspaceModule;
+const { ViewSlotRegistry, WorkspaceError } = workspaceModule;
 
 type Workspace = InstanceType<typeof ImagingWorkspace>;
 
@@ -56,6 +58,16 @@ function freshPetView(): MedicalViewState {
 
 function freshPetProvenance(): ViewProvenance {
   return structuredClone(mockPetViewProvenance);
+}
+
+/** A fresh PET state plus one deliberately non-plain member, for refusal tests. */
+function stateWithExtraMember(extra: Record<string, unknown>): MedicalViewState {
+  return { ...freshPetView(), ...extra } as unknown as MedicalViewState;
+}
+
+/** A fresh PET provenance plus one deliberately non-plain member. */
+function provenanceWithExtraMember(extra: Record<string, unknown>): ViewProvenance {
+  return { ...freshPetProvenance(), ...extra } as unknown as ViewProvenance;
 }
 
 function workspaceWithBothAssets(): Workspace {
@@ -253,5 +265,108 @@ describe('NuClear C4 — published-DTO immutability (ADR-011)', () => {
       mockPetView.camera.zoom,
       'the registered view must still read back unchanged',
     );
+  });
+
+  it('6. deepFreeze fails closed on a non-plain member instead of freezing it silently', () => {
+    assert.throws(
+      () => deepFreeze({ when: new Date('2026-09-22T00:00:00Z') }),
+      (error: unknown) =>
+        error instanceof DeepFreezeError &&
+        error.code === 'DEEP_FREEZE_UNSUPPORTED_VALUE' &&
+        error.message.includes('Date'),
+    );
+    assert.throws(
+      () => deepFreeze({ nested: { map: new Map() } }),
+      (error: unknown) =>
+        error instanceof DeepFreezeError &&
+        error.code === 'DEEP_FREEZE_UNSUPPORTED_VALUE' &&
+        error.message.includes('Map'),
+    );
+  });
+
+  it('7. deepFreeze fails closed on a symbol-keyed property', () => {
+    const withSymbol: Record<string, unknown> & { [key: symbol]: unknown } = { ok: true };
+    withSymbol[Symbol('secret')] = 1;
+    assert.throws(
+      () => deepFreeze(withSymbol),
+      (error: unknown) =>
+        error instanceof DeepFreezeError &&
+        error.code === 'DEEP_FREEZE_UNSUPPORTED_VALUE' &&
+        error.message.includes('Symbol(secret)'),
+    );
+  });
+
+  it('8. deepFreeze still freezes a plain graph', () => {
+    const plain = deepFreeze({ a: [1, { b: 'x' }] });
+    assert.ok(Object.isFrozen(plain));
+    assert.ok(Object.isFrozen(plain.a));
+    assert.ok(Object.isFrozen(plain.a[1]));
+    assert.deepEqual(JSON.parse(JSON.stringify(plain)), plain);
+  });
+
+  it('9. registry refuses a hand-built view whose state carries a Date without freezing it', () => {
+    const registry = new PreparedViewRegistry();
+    const state = stateWithExtraMember({ when: new Date('2026-09-22T00:00:00Z') });
+    const handBuilt: PreparedView = {
+      id: PET_PREPARED,
+      sourceViewId: mockPetView.id,
+      state,
+      links: [],
+      locks: [],
+      provenance: freshPetProvenance(),
+    };
+
+    assert.throws(
+      () => registry.register(handBuilt),
+      (error: unknown) => {
+        assert.ok(error instanceof WorkspaceError, `expected WorkspaceError, got ${String(error)}`);
+        assert.equal(error.code, 'WORKSPACE_UNSUPPORTED_VALUE');
+        assert.ok(error.message.includes('when'), 'message must name the offending path');
+        return true;
+      },
+    );
+    assert.equal(registry.list().length, 0, 'a refused registration must not mutate the registry');
+    assert.equal(Object.isFrozen(handBuilt), false, 'a refused registration must not freeze the caller');
+    assert.equal(Object.isFrozen(state), false, 'a refused registration must not freeze the caller state');
+  });
+
+  it('10. registry refuses a hand-built view whose provenance carries a Map', () => {
+    const registry = new PreparedViewRegistry();
+    const handBuilt: PreparedView = {
+      id: PET_PREPARED,
+      sourceViewId: mockPetView.id,
+      state: freshPetView(),
+      links: [],
+      locks: [],
+      provenance: provenanceWithExtraMember({ engineVersion: new Map() }),
+    };
+
+    assert.throws(
+      () => registry.register(handBuilt),
+      (error: unknown) =>
+        error instanceof WorkspaceError && error.code === 'WORKSPACE_UNSUPPORTED_VALUE',
+    );
+    assert.equal(registry.list().length, 0);
+  });
+
+  it('11. assemblePreparedView refuses a Date state before freezing the caller', () => {
+    const state = stateWithExtraMember({ when: new Date('2026-09-22T00:00:00Z') });
+    assert.equal(Object.isFrozen(state), false, 'the caller state starts mutable');
+
+    assert.throws(
+      () =>
+        assemblePreparedView({
+          preparedViewId: PET_PREPARED,
+          state,
+          provenance: freshPetProvenance(),
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof WorkspaceError, `expected WorkspaceError, got ${String(error)}`);
+        assert.equal(error.code, 'WORKSPACE_UNSUPPORTED_VALUE');
+        assert.ok(error.message.includes('when'), 'message must name the offending path');
+        return true;
+      },
+    );
+    assert.equal(Object.isFrozen(state), false, 'validation must precede the freeze');
   });
 });

@@ -253,6 +253,52 @@ describe('NuClear P4.1.1 — workspace input integrity', () => {
     assert.equal(snapshotJson(workspace), before);
     assert.equal(workspace.listStudies().length, 0);
   });
+
+  it('9. an explicitly-undefined metadata property is refused with its exact path and no mutation', () => {
+    const workspace = registeredWorkspace();
+    const before = snapshotJson(workspace);
+    const invalid = invalidAsset({
+      id: 'asset-undefined-metadata' as AssetId,
+      metadata: { ...mockCtAsset.metadata, seriesNumber: undefined },
+    });
+
+    expectRefusal(
+      () => workspace.registerAsset(invalid),
+      'WORKSPACE_UNDEFINED_VALUE',
+      'metadata.seriesNumber',
+    );
+    assert.equal(snapshotJson(workspace), before);
+    assert.equal(workspace.listAssets().length, 1);
+  });
+
+  it('10. an explicitly-undefined array element is refused naming the exact index', () => {
+    const workspace = registeredWorkspace();
+    const before = snapshotJson(workspace);
+    const invalid = invalidAsset({
+      id: 'asset-undefined-array' as AssetId,
+      geometry: { ...mockCtAsset.geometry, origin: [undefined, -249.51171875, -500] },
+    });
+
+    expectRefusal(
+      () => workspace.registerAsset(invalid),
+      'WORKSPACE_UNDEFINED_VALUE',
+      'geometry.origin[0]',
+    );
+    assert.equal(snapshotJson(workspace), before);
+  });
+
+  it('11. an asset whose optional property is omitted (absent) still registers', () => {
+    const workspace = registeredWorkspace();
+    // No key is present with value `undefined`: an absent optional property is
+    // the representable form, so a fresh fixture spread must still register.
+    const asset: ImagingAsset = { ...mockCtAsset, id: 'asset-omitted-optional' as AssetId };
+    workspace.registerAsset(asset);
+    assert.equal(
+      workspace.getAsset('asset-omitted-optional' as AssetId).id,
+      'asset-omitted-optional',
+    );
+    assert.equal(workspace.listAssets().length, 2);
+  });
 });
 
 describe('NuClear P4.1.1 — value-integrity guarantees', () => {
@@ -286,5 +332,61 @@ describe('NuClear P4.1.1 — value-integrity guarantees', () => {
         error.code === 'WORKSPACE_UNSUPPORTED_VALUE' &&
         error.message.includes('Symbol(secret)'),
     );
+  });
+
+  it('refuses an explicitly-undefined object property and names its path', () => {
+    assert.throws(
+      () => assertSerializableValue({ optional: undefined }, "probe 'undefined-property'"),
+      (error: unknown) =>
+        error instanceof WorkspaceError &&
+        error.code === 'WORKSPACE_UNDEFINED_VALUE' &&
+        error.message.includes('optional'),
+    );
+  });
+
+  it('refuses an explicitly-undefined array element and a hole, naming the index', () => {
+    assert.throws(
+      () => assertSerializableValue([1, undefined], "probe 'undefined-element'"),
+      (error: unknown) =>
+        error instanceof WorkspaceError &&
+        error.code === 'WORKSPACE_UNDEFINED_VALUE' &&
+        error.message.includes('[1]'),
+    );
+
+    const holey: unknown[] = new Array(3);
+    holey[0] = 1;
+    holey[2] = 3;
+    assert.throws(
+      () => assertSerializableValue(holey, "probe 'undefined-hole'"),
+      (error: unknown) =>
+        error instanceof WorkspaceError &&
+        error.code === 'WORKSPACE_UNDEFINED_VALUE' &&
+        error.message.includes('[1]'),
+    );
+  });
+
+  it('refuses a nested explicitly-undefined property and names the nested path', () => {
+    assert.throws(
+      () => assertSerializableValue({ a: { b: undefined } }, "probe 'undefined-nested'"),
+      (error: unknown) =>
+        error instanceof WorkspaceError &&
+        error.code === 'WORKSPACE_UNDEFINED_VALUE' &&
+        error.message.includes('a.b'),
+    );
+  });
+
+  it('refuses a root undefined value', () => {
+    assert.throws(
+      () => assertSerializableValue(undefined, "probe 'undefined-root'"),
+      (error: unknown) =>
+        error instanceof WorkspaceError &&
+        error.code === 'WORKSPACE_UNDEFINED_VALUE' &&
+        error.message.includes("probe 'undefined-root'"),
+    );
+  });
+
+  it('accepts absent optional properties (no key present at all)', () => {
+    assert.doesNotThrow(() => assertSerializableValue({ present: 1 }, "probe 'absent-optional'"));
+    assert.doesNotThrow(() => assertSerializableValue({}, "probe 'empty-object'"));
   });
 });

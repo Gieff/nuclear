@@ -5,8 +5,10 @@ P4.2 (`a70983c`) were accepted locally and then **reopened by an independent
 human review**; none of them is an approvable closed slice as committed.
 Corrective progress: **C8 complete** (`db4ba42`, corrected by `f71d609`),
 **C1 complete** (`7680acc`), **C2+C5+C6 complete** (`0c8921e`),
-**C3+C7 complete** (`95a04fb`) and **C4 complete**. **All ratified
-correctives (C1–C8) are done**, so the deferred P4.3 work may resume. See
+**C3+C7 complete** (`95a04fb`) and **C4 complete** (`f8a5571`), plus the
+integrative boundary hardening **C1b+C4b**. **All ratified correctives are
+done and the publication boundary is closed**, so the deferred P4.3 work may
+resume under the ADR-011 addendum contract. See
 `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` §“Reopened — Ratified Correction
 Slices”, `docs/decisions/ADR-010-…md` §7 and
 `docs/decisions/ADR-011-prepared-view-immutability-and-shared-state-mutation.md`.
@@ -1161,6 +1163,133 @@ re-publish new frozen views). Never mutate the frozen values in place (it now
 throws), never clone shared state (it would break the identity observability
 assembled in C4), and never hand out a new mutable object. All eight ratified
 correctives (C1–C8) are now complete, so P4.3 may proceed.
+
+---
+
+# Handover Report — C1b + C4b: Publication-Boundary Hardening
+
+## 1. What Was Implemented
+
+An independent review reopened C1 and C4 with two boundary defects that the
+P4.3 shared-state holder would otherwise inherit. Both are closed by this
+brief integrative slice.
+
+- **C1b — `undefined` is not JSON-lossless.** `assertSerializableValue` now
+  refuses explicit `undefined` at the **root**, on **any object property** and
+  in **any array element or hole**, with the new typed code
+  `WORKSPACE_UNDEFINED_VALUE`, the exact path, and a remediation stating that
+  optional properties must be **absent**. Absent optionals still validate.
+- **C4b — published DTOs are truly immutable.** `deepFreeze` is now
+  fail-closed: a non-plain object (`Date`/`Map`/class instance) or a
+  symbol-keyed property throws `DeepFreezeError`/`DEEP_FREEZE_UNSUPPORTED_VALUE`
+  instead of being silently left mutable. `assemblePreparedView` runs
+  `assertSerializableValue(view, …)` **then** `deepFreeze(view)` after all
+  semantic validation, and `PreparedViewRegistry.register` validates before its
+  defensive freeze.
+
+## 2. Files Changed / Created
+
+Modified:
+- `packages/view-engine/src/workspace/value-integrity.ts` (154 lines)
+- `packages/view-engine/src/workspace/errors.ts` (46 lines, +`WORKSPACE_UNDEFINED_VALUE`)
+- `packages/view-engine/src/internal/deep-freeze.ts` (98 lines, fail-closed)
+- `packages/view-engine/src/prepared-view/assemble.ts` (143 lines)
+- `packages/view-engine/src/prepared-view/registry.ts` (69 lines)
+- `tests/view-engine/workspace-integrity.test.ts` (19 tests)
+- `tests/view-engine/immutability.test.ts` (11 tests)
+
+Unchanged: `packages/shared-types/**`, other packages, `python/**`, ADRs
+(amended separately), `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- **Publication order is `assertSerializableValue` → `deepFreeze`.** `deepFreeze`
+  is fail-closed but **non-transactional** (it freezes per node), so a
+  freeze-before-validate path could half-freeze shared state; the pairing is now
+  the sanctioned discipline.
+- **`DeepFreezeError` is an internal invariant guard**, not part of the public
+  error contract: with assert→freeze it is unreachable for validated payloads.
+  It is not exported from the package barrels by design (recorded for P4.3).
+- **The serializable domain is the publication domain**: explicit `undefined`,
+  non-finite numbers, `bigint`/`function`/`symbol`/symbol keys, non-plain
+  objects and cycles are refused; `-0` and shared non-cyclic references remain
+  accepted.
+- No `prepared-view → workspace` cycle was introduced (`value-integrity.ts`
+  imports only `./errors.js`).
+
+## 4. Tests Added & Executed
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npx tsc -p tsconfig.test.json` | exit 0 |
+| `npm test` | **348 pass / 0 fail / 68 suites** (0 skipped/todo) = C4 baseline 334/68 + 14 tests / +0 suites |
+| `npm run build` | clean (exit 0) |
+| `node --test tests/view-engine/workspace-integrity.test.ts` | 19/19 |
+| `node --test tests/view-engine/immutability.test.ts` | 11/11 |
+| `node --test tests/view-engine/prepared-view.test.ts` | 14/14 |
+| `node --test tests/view-engine/workspace-provenance-binding.test.ts` | 13/13 |
+| `node --test tests/view-engine/co-reference.test.ts` | 8/8 |
+| `npm run test:python` | 189 passed (unchanged) |
+| `npm run typecheck:python` | 47 files clean (unchanged) |
+
+QA independently reproduced both original defects at the pre-slice baseline
+and proved them fixed: `{ optional: undefined }` and `[1, undefined]` now throw
+`WORKSPACE_UNDEFINED_VALUE`; `deepFreeze({ when: new Date() })` now throws
+`DEEP_FREEZE_UNSUPPORTED_VALUE`; plain values remain accepted. Tests cover the
+root/property/nested/array/hole paths, absent-optional acceptance, a hand-built
+JavaScript `PreparedView` with a non-plain `state`/`provenance` (refused at the
+registry), and assembly with a `Date` in `state` (refused before freeze). No
+existing assertion was weakened or deleted.
+
+Independent verdicts: `nuclear-reviewer` **PASS** (zero blocking; 6
+non-blocking) and `nuclear-qa` **PASS** for the executable scope.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- **ADR-011 gained an addendum**: the publication boundary is validate→freeze;
+  `deepFreeze` is fail-closed and non-transactional; `DeepFreezeError` is an
+  internal guard; and the binding **P4.3 contract**
+  (`private holder → atomic replacement → new projection → frozen published DTO`,
+  with identity/value regeneration specified and tested).
+- The P4.3 row of `PHASE_4_VIEW_ENGINE_PLAN.md` was updated to that contract.
+- This report satisfies the AgentLog Gate for C1b and C4b.
+- `CHANGELOG.md` untouched; release notes are compiled later via
+  `/promote-changelog 4` only on explicit request.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema change; the domain is stricter but values remain
+  JSON-serializable.
+
+## 7. Known Limitations & Technical Debt
+
+- **Residual freeze edges (recorded for P4.3/P4.5).** Non-enumerable
+  string-keyed properties and getter accessors bypass the `Object.keys` walk;
+  subclassed arrays are treated as arrays; standalone `deepFreeze` skips
+  function-valued members; a mid-walk throw is non-transactional. All are
+  outside the plain-JSON value-domain contract and unreachable on the
+  publication paths (assert→freeze).
+- Optional **slot-level** `undefined` inputs (`links`/`locks`/`cachedPreviewReference`,
+  `ViewGroup.label`) are normalized to absent rather than refused; published
+  values stay JSON-clean (contrast with clinical values inside
+  `state`/`provenance`, which are refused).
+- `DeepFreezeError` is not exported from the package barrels; decide the policy
+  in P4.3 if a consumer must name it.
+- `workspace-integrity.test.ts` (392) and `immutability.test.ts` (372) exceed
+  300 lines; tests are outside the Rule 02 source gate.
+- Two new test-local `as unknown as` widenings (disclosed) build
+  deliberately-invalid payloads per test; not fixture escapes.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P4.3 — shared-state groups** under the ADR-011 addendum contract:
+implement the private holder with atomic replacement that regenerates a frozen
+DTO projection, specify and test which identity stays stable (holder /
+`PreparedViewId` / `ViewSlot`) and which value is regenerated, and route every
+replacement payload through `assertSerializableValue` → `deepFreeze`. Never
+mutate frozen state in place and never clone shared state.
+
 
 
 

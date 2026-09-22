@@ -84,6 +84,48 @@ This ADR concerns `view-engine` value objects only. It does not change the
   canonical value unchanged.
 - Snapshot output stays JSON-serializable; freezing does not change its shape.
 
+## Addendum — Publication Boundary: Validate, then Freeze (C1b/C4b, 2026-09-22)
+
+An independent review reopened C1 and C4 with two boundary defects: a property
+explicitly set to `undefined` was accepted (it is not JSON-lossless), and
+`deepFreeze` silently skipped non-plain objects, so a hand-built DTO could
+publish a mutable `Date`/`Map`. Both are now closed:
+
+- **The serializable domain (C1) is the publication domain.** Explicit
+  `undefined` at the root, on any object property, or in any array element/hole
+  is refused with `WORKSPACE_UNDEFINED_VALUE`; optional properties must be
+  **absent**, never present-with-`undefined`. Non-finite numbers, `bigint`,
+  `function`, `symbol`/symbol keys, non-plain objects and true cycles remain
+  refused.
+- **Every publication boundary runs `assertSerializableValue` before
+  `deepFreeze`.** `deepFreeze` is now fail-closed: a non-plain object or a
+  symbol-keyed property throws `DEEP_FREEZE_UNSUPPORTED_VALUE` instead of being
+  left mutable. `DeepFreezeError` is an **internal invariant guard** — with the
+  assert→freeze pairing it is unreachable for validated payloads, so it is not
+  part of the public error contract.
+- **Freezing is non-transactional and irreversible.** `deepFreeze` freezes
+  per node as it walks; a throw mid-walk can leave already-visited siblings
+  frozen. Always validate first, and build replacement values as fresh plain
+  data.
+
+### P4.3 contract (binding)
+
+C4 froze and made identity-stable the published `PreparedView.state`. A
+parallel holder is **not** sufficient: a view already obtained holds a frozen
+`state` and cannot observe an in-place update. P4.3 must implement exactly:
+
+```text
+private holder → atomic replacement → new projection → frozen published DTO
+```
+
+and must specify and test **which identity remains stable** (holder identity,
+`PreparedViewId`, `ViewSlot`) and **which value is regenerated** after an
+update. Never mutate frozen state in place (it throws), never clone shared
+state (it would break identity observability), and never hand out a mutable
+object. Every replacement payload must pass `assertSerializableValue` →
+`deepFreeze` (a spread/merge of prior state can silently introduce
+`{ field: undefined }`, which is now refused).
+
 ## Conditions That Might Warrant a Revision
 
 - If a required shared-state update cannot be expressed as an atomic

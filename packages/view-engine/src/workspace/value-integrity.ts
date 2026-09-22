@@ -29,6 +29,13 @@ function failNonFiniteNumber(path: string): never {
   );
 }
 
+function failUndefinedValue(path: string): never {
+  throw new WorkspaceError(
+    'WORKSPACE_UNDEFINED_VALUE',
+    `Explicit undefined at '${path}' is not JSON-lossless. Remediation: an optional property must be absent, not present with value undefined; JSON.stringify drops object properties and turns array holes into null, so the meaning would change on persistence.`,
+  );
+}
+
 function failUnsupportedValue(path: string, detail: string): never {
   throw new WorkspaceError(
     'WORKSPACE_UNSUPPORTED_VALUE',
@@ -57,7 +64,13 @@ function walk(value: unknown, subPath: string, state: WalkState): void {
     return;
   }
   const type = typeof value;
-  if (type === 'string' || type === 'boolean' || type === 'undefined') {
+  if (type === 'undefined') {
+    // Root, object-property value and array element (including a hole) all
+    // reach here: JSON.stringify would drop the property or emit null for the
+    // hole, so an explicitly-undefined value is refused fail-closed.
+    failUndefinedValue(displayPath(state.context, subPath));
+  }
+  if (type === 'string' || type === 'boolean') {
     return;
   }
   if (type === 'number') {
