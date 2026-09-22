@@ -227,11 +227,28 @@ contract).
 
 **Status:** Accepted (details §6; no contract change).
 
-- **Lease id scheme.** A projected lease is identified by
-  `` `${slotId}::${assetId}` `` — derived only from the logical `ViewSlotId`
-  and the `AssetId`, never from a DOM node or the numeric slot index, and
-  stable across re-layout (§6). Two slots demanding the same asset therefore
-  produce two distinct leases on one physical volume.
+- **Lease id scheme (collision-free).** A projected lease is identified by the
+  **length-prefixed injective encoding**
+  `` `${slotId.length}:${slotId}:${assetId}` `` (e.g. `('a::b','c')` →
+  `4:a::b:c`, distinct from `('a','b::c')` → `1:a:b::c`). It is derived only
+  from the logical `ViewSlotId` and the `AssetId`, never from a DOM node or the
+  numeric slot index, and is stable across re-layout (§6). The plain
+  `` `${slotId}::${assetId}` `` form is **rejected as ambiguous**: two distinct
+  logical demands could encode to the same lease id (`('a::b','c')` and
+  `('a','b::c')` both yield `a::b::c`; `('a:',':b')` and `('a','::b')` both
+  yield `a:::b`, so even forbidding `::` is insufficient). The decimal length
+  contains no `:`, so the first `:` uniquely delimits `slotId` and the encoding
+  is injective for arbitrary identifiers. Lease ids stay opaque to the
+  `ResourceManager`. Two slots demanding the same asset therefore produce two
+  distinct leases on one physical volume.
+- **Nested input is validated structurally before any dereference.** Every
+  `slots[i]` must be a non-null object; a projectable slot's `resourceDemand`
+  must be a non-null object; `assetId`/`slot.id` must be non-blank strings;
+  `priority` must be an accepted `ResourcePriority`; `requiredTiers` must be an
+  array of accepted `AssetResidencyTier`. Any violation is a typed
+  `ResidencyProjectionError('RESIDENCY_PROJECTION_MALFORMED')` naming the field
+  — a malformed runtime value can never leak a bare `TypeError`, and no
+  `ResourceManager` mutation occurs before every retention is validated.
 - **Projection mapping (visibility → lease).** A slot projects a retention
   request **iff** its `status` is `bound` or `prepared`, it declares a
   `resourceDemand`, and its entry in the caller-supplied visibility map is

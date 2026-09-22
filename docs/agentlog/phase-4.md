@@ -2563,3 +2563,121 @@ phase-closure report. **P4.4b** (inter-study application/propagation) remains
 blocked until ADR-012 is **Accepted** (R-1..R-4) and Phase 2B can produce a
 verifiable `SpatialTransform`; it must not be started from P4.7.
 
+---
+
+# Handover Report — P4.7a: Nested Fail-Closed Validation & Collision-Free Lease Ids
+
+## 1. What Was Implemented
+
+An external review reopened P4.7 with verdict **CONCERNS** (two real defects).
+P4.7a is the corrective; no public API shape, visibility mapping or residency
+policy changed.
+
+- **F1 — nested runtime inputs now fail closed.** `projectResourceRetentionRequests`
+  performs structural validation **before any dereference**: every `slots[i]`
+  must be a non-null object; a projectable slot's `resourceDemand` must be a
+  non-null object; `slot.id`/`demand.assetId` must be non-blank strings;
+  `demand.priority` must be an accepted `ResourcePriority`; `demand.requiredTiers`
+  must be an array of accepted `AssetResidencyTier`. Every violation raises the
+  typed `ResidencyProjectionError('RESIDENCY_PROJECTION_MALFORMED')` naming the
+  field — no bare `TypeError` can escape (`slots:[null]`,
+  `resourceDemand:null`, missing/non-iterable `requiredTiers`, invalid element,
+  bad `priority` all covered). Skip semantics (status, `demand === undefined`,
+  visibility) are unchanged and validated only for the projectable path.
+- **F2 — collision-free lease id (ratified ADR-010 §9).** The ambiguous
+  `` `${slotId}::${assetId}` `` form is replaced by the **length-prefixed
+  injective encoding** `` `${slotId.length}:${slotId}:${assetId}` `` (e.g.
+  `('a::b','c')` → `4:a::b:c` vs `('a','b::c')` → `1:a:b::c`). Forbidding `::`
+  alone was shown insufficient (`('a:',':b')` and `('a','::b')` both yield
+  `a:::b`); the length prefix makes the encoding injective for arbitrary
+  identifiers, so two logical demands never merge. Lease ids remain opaque to
+  `ResourceManager`.
+
+## 2. Files Changed / Created
+
+Modified:
+- `packages/view-engine/src/residency/project.ts` (212 lines; F1 structural
+  validation + F2 encoding)
+- `tests/view-engine/residency-projection.test.ts` (300 lines; +tests j, k;
+  test a's format assertion made format-agnostic)
+- `tests/view-engine/fixtures/residency-projection-fixtures.ts` (375 lines;
+  hostile-shape cases + collision-pair cases)
+
+Documentation:
+- `docs/decisions/ADR-010-…md` §9 (lease-id encoding + nested-validation
+  clauses).
+
+Unchanged: `packages/shared-types/**`, `packages/medical-engine/**`, every other
+package, plans, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- The lease id is an **opaque, injective** encoding, not a parseable composite;
+  no consumer splits it. The length prefix is the minimum change that removes
+  the aliasing without restricting id vocabularies (the alternative —
+  forbidding `:` in ids — is stricter and was not chosen).
+- Validation order keeps the existing skips first; nested demand validation runs
+  only for projectable slots, so a malformed demand on a hidden/inactive slot
+  stays skipped (no spurious refusals). An empty `requiredTiers: []` passes the
+  projection seam and is refused downstream by the manager's typed
+  `invalidDemand` — the two-layer fail-closed boundary is intentional.
+- `RESOURCE_PRIORITIES`/`ASSET_RESIDENCY_TIERS` are module-local mirrors of the
+  shared-types unions (no `shared-types` edit, which would be out of scope).
+
+## 4. Tests Added & Executed
+
+Added tests `j` (hostile nested shapes) and `k` (collision-free leases).
+
+| Command | Observed result |
+| --- | --- |
+| `node --test tests/view-engine/residency-projection.test.ts` | **11 pass / 0 fail** (a–k) |
+| `npm run typecheck` | exit 0 |
+| `npm test` | **442 pass / 0 fail / 80 suites** (0 skipped/todo) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:python` | 219 passed (P4.7a adds no Python) |
+| `npm run typecheck:python` | clean over 54 files |
+
+Delta: committed P4.7 440/80 + **2 tests / 0 suites** = 442/80.
+
+Independent verdicts: `nuclear-reviewer` **PASS** — a falsification probe of 16
+hostile nested categories through both entry points always yielded the typed
+`MALFORMED` (never `TypeError`), with the builder never invoked and zero manager
+mutation; an injectivity probe of 1369 adversarial id pairs found 0 collisions
+and 0 round-trip decode failures; tests a–i unchanged in substance.
+`nuclear-qa` **PASS** on all applicable gates (focused 11/11, `npm test`
+442/442/80, typecheck/build, pytest 219, mypy 54, file-length, hygiene,
+staged-empty). Image tolerance **NOT YET APPLICABLE**.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-010 §9 now records the length-prefixed injective lease-id encoding (with
+  the ambiguity of the old form and why forbidding `::` is insufficient) and the
+  nested structural-validation guarantee.
+- This report satisfies the AgentLog Gate for P4.7a.
+- `CHANGELOG.md` untouched; release notes are compiled via `/promote-changelog 4`.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema or shared contract change; the lease-id encoding is a
+  view-engine-local process detail.
+
+## 7. Known Limitations & Technical Debt
+
+- `residency-projection-fixtures.ts` is **375 lines** (>300); the test file is
+  exactly 300. Both are outside the Rule 02 source gate but are split candidates
+  before Phase-4 close (continuing the recorded test-file debt).
+- `requiredTiers: []` is accepted by the projection seam and refused by the
+  manager; the seam could mirror that check if a single-layer refusal is ever
+  wanted (residency policy correctly stays in the manager).
+- The slice remains unwired to `ImagingWorkspace`; a workspace-level demand
+  facade is future integration work. Carried Phase 3 debt unchanged.
+
+## 8. Exact Next Recommended Task
+
+P4.7a closes the external-review CONCERNS. Proceed to **P4.8 — independent
+phase review/QA and Phase 4 closure** (whole-phase boundary, all gates including
+`npm run docs`, final verdicts and Phase 5 entry conditions). **P4.4b** remains
+blocked on **ADR-012 Accepted** (R-1..R-4) plus Phase 2B `SpatialTransform`
+evidence.
+
+

@@ -26,8 +26,10 @@ import {
   SLOT_PET,
   SLOT_UNAVAILABLE,
   buildRetention,
+  expectCollisionFreeLeases,
   expectDishonestShapeRefusals,
   expectMalformedIdentityRefusals,
+  expectMalformedShapeRefusals,
   expectProjectionError,
   makeDemand,
   makeSlot,
@@ -62,11 +64,7 @@ describe('NuClear P4.7 — resource-demand projection & reconciliation (ADR-010 
       [SLOT_NO_DEMAND, 'visible'],
     );
 
-    assert.equal(
-      resourceLeaseIdFor(SLOT_CT, CT_ASSET),
-      `${SLOT_CT}::${CT_ASSET}`,
-      'lease id is slotId::assetId',
-    );
+    assert.ok(resourceLeaseIdFor(SLOT_CT, CT_ASSET).length > 0, 'the lease id is non-empty');
 
     const requests = projectResourceRetentionRequests({ slots, visibility });
     assert.equal(requests.length, 2, 'hidden/absent/empty/unavailable/no-demand slots project nothing');
@@ -295,4 +293,8 @@ describe('NuClear P4.7 — resource-demand projection & reconciliation (ADR-010 
   it('h. a projectable slot with a blank/missing id or blank asset id fails closed as MALFORMED', expectMalformedIdentityRefusals);
 
   it('i. a builder omitting plan/availability fails closed as BUILDER_MISMATCH before any reconcile', expectDishonestShapeRefusals);
+
+  it('j. hostile nested runtime shapes fail closed as MALFORMED, never a bare TypeError', expectMalformedShapeRefusals);
+
+  it('k. length-prefixed lease ids are collision-free and never silently merge', expectCollisionFreeLeases);
 });

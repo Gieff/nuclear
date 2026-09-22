@@ -8,29 +8,60 @@
  *
  * Node-safe: no DOM, no WebGL, no Cornerstone.
  */
-import type { AssetId, ViewSlotId } from '@nuclear/shared-types';
+import type {
+  AssetId,
+  AssetResidencyTier,
+  ResourcePriority,
+  ViewSlotId,
+} from '@nuclear/shared-types';
 import { ResidencyProjectionError } from './errors.js';
 import type {
   ProjectResourceRetentionRequestsInput,
   ResourceRetentionRequest,
 } from './types.js';
 
+/** Accepted demand priorities; mirror of the `ResourcePriority` contract. */
+const RESOURCE_PRIORITIES: readonly ResourcePriority[] = [
+  'visible-interactive',
+  'visible-read-only',
+  'prepared-hidden',
+  'prefetch-candidate',
+  'unused',
+];
+
+/** Accepted residency tiers; mirror of the `AssetResidencyTier` contract. */
+const ASSET_RESIDENCY_TIERS: readonly AssetResidencyTier[] = [
+  'metadata-only',
+  'source-available',
+  'cpu-cached',
+  'gpu-ready',
+  'gpu-resident',
+  'loading',
+  'evicted',
+];
+
 /**
- * Stable lease identity for a slot's demand on an asset: `slotId::assetId`.
+ * Stable, collision-free lease identity for a slot's demand on an asset.
  *
- * Deterministic and stable across re-layout: it is derived from the logical
- * `ViewSlotId` and the `AssetId` only, never from a DOM node or the numeric
- * slot index alone (ADR-010 §6). Two slots demanding the same asset therefore
- * hold two distinct leases on one physical resource.
+ * The encoding is length-prefixed: `<slotId.length>:<slotId>:<assetId>`. The
+ * decimal length plus its first `:` uniquely delimits `slotId`, so arbitrary
+ * identifiers can never alias: `('a::b','c')` and `('a','b::c')` — both
+ * `a::b::c` under a naive `slotId::assetId` scheme — now differ, as do
+ * `('a:',':b')` and `('a','::b')`. Both ids are validated as non-blank strings
+ * before encoding. It is deterministic and stable across re-layout: derived
+ * only from the logical `ViewSlotId` and `AssetId`, never from a DOM node or
+ * the numeric slot index (ADR-010 §6). Two slots demanding the same asset
+ * therefore hold two distinct leases on one physical resource, and the opaque
+ * id stays opaque to `ResourceManager`.
  */
 export function resourceLeaseIdFor(slotId: ViewSlotId, assetId: AssetId): string {
-  return `${slotId}::${assetId}`;
+  return `${slotId.length}:${slotId}:${assetId}`;
 }
 
 function malformed(detail: string): ResidencyProjectionError {
   return new ResidencyProjectionError(
     'RESIDENCY_PROJECTION_MALFORMED',
-    `Resource-demand projection input is malformed: ${detail} Remediation: pass { slots: ViewSlot[], visibility: ReadonlyMap<ViewSlotId, 'visible'|'hidden'> } with a non-blank slot id and a non-blank demand asset id on every projectable slot.`,
+    `Resource-demand projection input is malformed: ${detail} Remediation: pass { slots: ViewSlot[], visibility: ReadonlyMap<ViewSlotId, 'visible'|'hidden'> } whose every projectable slot carries a non-blank id and a demand with a non-blank assetId, a valid priority and an array of valid requiredTiers.`,
   );
 }
 
@@ -60,8 +91,34 @@ function malformedIdentity(
   );
 }
 
+/** Fail-closed refusal for a projectable slot whose nested demand shape is invalid. */
+function malformedField(
+  slotId: unknown,
+  field: 'resourceDemand' | 'demand.priority' | 'demand.requiredTiers',
+  value: unknown,
+  expected: string,
+): ResidencyProjectionError {
+  return new ResidencyProjectionError(
+    'RESIDENCY_PROJECTION_MALFORMED',
+    `Resource-demand projection input is malformed: '${field}' of projectable slot ${describeIdentity(slotId)} must be ${expected} but is ${describeIdentity(value)}. Remediation: declare 'priority' as one of ${RESOURCE_PRIORITIES.join(', ')} and 'requiredTiers' as an array of ${ASSET_RESIDENCY_TIERS.join(', ')} on every projectable slot; hidden, empty, unavailable and demand-less slots stay skipped.`,
+  );
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isAcceptedPriority(value: unknown): value is ResourcePriority {
+  return typeof value === 'string' && (RESOURCE_PRIORITIES as readonly string[]).includes(value);
+}
+
+function isAcceptedTier(value: unknown): value is AssetResidencyTier {
+  return typeof value === 'string' && (ASSET_RESIDENCY_TIERS as readonly string[]).includes(value);
+}
+
+/** Narrowing `Array.isArray` wrapper that avoids leaking an implicit `any[]`. */
+function isUnknownArray(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
 }
 
 /** Fail-closed validation of untyped runtime input; never leaks a `TypeError`. */
@@ -84,36 +141,70 @@ function requireProjectInput(input: unknown): ProjectResourceRetentionRequestsIn
  *
  * A slot is skipped when its `status` is neither `'bound'` nor `'prepared'`,
  * when it declares no `resourceDemand`, or when it is not `'visible'` (a
- * missing visibility entry is hidden). A projectable (active + demanding +
- * visible) slot must carry a non-blank `id` and a non-blank
- * `demand.assetId`; otherwise projection fails closed with
+ * missing visibility entry is hidden). Every slot must be a non-null object
+ * (`slots[i]`), and a projectable (active + demanding + visible) slot must
+ * carry a non-blank `id` and a `resourceDemand` that is a non-null object with
+ * a non-blank `assetId`, a valid `priority` and an array of valid
+ * `requiredTiers`; otherwise projection fails closed with
  * `RESIDENCY_PROJECTION_MALFORMED` so a malformed-only lease id can never be
- * emitted. Each request carries a fresh plain demand copy with no
- * `undefined`-valued keys; inputs are never mutated.
+ * emitted and no bare `TypeError` escapes. Each request carries a fresh plain
+ * demand copy with no `undefined`-valued keys; inputs are never mutated.
  */
 export function projectResourceRetentionRequests(
   input: ProjectResourceRetentionRequestsInput,
 ): readonly ResourceRetentionRequest[] {
   const source = requireProjectInput(input);
   const requests: ResourceRetentionRequest[] = [];
-  for (const slot of source.slots) {
+  for (let index = 0; index < source.slots.length; index += 1) {
+    const slot = source.slots[index];
+    if (!isObject(slot)) {
+      throw malformed(
+        `'slots[${index}]' must be a non-null object but is ${describeIdentity(slot)}.`,
+      );
+    }
     if (slot.status !== 'bound' && slot.status !== 'prepared') continue;
-    const demand = slot.resourceDemand;
+    const demand: unknown = slot.resourceDemand;
     if (demand === undefined) continue;
     if (source.visibility.get(slot.id) !== 'visible') continue;
+    if (!isObject(demand)) {
+      throw malformedField(slot.id, 'resourceDemand', demand, 'a non-null object');
+    }
     if (!isNonBlankString(slot.id)) {
       throw malformedIdentity(slot.id, 'slot.id', slot.id);
     }
-    if (!isNonBlankString(demand.assetId)) {
-      throw malformedIdentity(slot.id, 'demand.assetId', demand.assetId);
+    const rawAssetId: unknown = demand.assetId;
+    if (!isNonBlankString(rawAssetId)) {
+      throw malformedIdentity(slot.id, 'demand.assetId', rawAssetId);
     }
+    const rawPriority: unknown = demand.priority;
+    if (!isAcceptedPriority(rawPriority)) {
+      throw malformedField(
+        slot.id,
+        'demand.priority',
+        rawPriority,
+        `one of ${RESOURCE_PRIORITIES.join(', ')}`,
+      );
+    }
+    const rawTiers: unknown = demand.requiredTiers;
+    const expectedTiers = `an array of ${ASSET_RESIDENCY_TIERS.join(', ')}`;
+    if (!isUnknownArray(rawTiers)) {
+      throw malformedField(slot.id, 'demand.requiredTiers', rawTiers, expectedTiers);
+    }
+    const projectedTiers: AssetResidencyTier[] = [];
+    for (const tier of rawTiers) {
+      if (!isAcceptedTier(tier)) {
+        throw malformedField(slot.id, 'demand.requiredTiers', tier, expectedTiers);
+      }
+      projectedTiers.push(tier);
+    }
+    const assetId = rawAssetId as AssetId;
     requests.push({
-      leaseId: resourceLeaseIdFor(slot.id, demand.assetId),
+      leaseId: resourceLeaseIdFor(slot.id, assetId),
       slotId: slot.id,
       demand: {
-        assetId: demand.assetId,
-        priority: demand.priority,
-        requiredTiers: [...demand.requiredTiers],
+        assetId,
+        priority: rawPriority,
+        requiredTiers: projectedTiers,
       },
     });
   }
