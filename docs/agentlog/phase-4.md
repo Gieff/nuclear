@@ -10,8 +10,9 @@ projection → frozen published DTO`); its test file was split by `8ab08f5`
 (co-referenced application restricted to the exact `{spatial, camera}`
 synchronized set; 384/384, 72 suites). **P4.5 (lock + LocalViewOverride) is
 closed**: `StateLock` enforcement on the shared-state `attach`/`replace`
-mutations plus a frozen local override resolver; `npm test` **402/402 (75
-suites)**, typecheck/build clean. **P4.6–P4.8 pending**; the next slice is P4.6
+mutations plus a frozen local override resolver with deep value validation
+(C5a); `npm test` **404/404 (75 suites)**, typecheck/build clean. **P4.6–P4.8
+pending**; the next slice is P4.6
 (surfaces and layout). Reopened slices closed: P4.0
 (co-reference contract honesty),
 P4.1 (workspace input integrity, slot rule), P4.2 (`PreparedView` assembly,
@@ -1861,6 +1862,136 @@ viewer-slot/composer-panel placement geometry. Before consuming a
 `ResolvedLocalView`, decide whether to deep-validate substituted values or
 ratify the P4.5 boundary documented in `overrides/apply.ts`. Do not add P4.7
 demand.
+
+---
+
+# Handover Report — C5a: Deep `LocalViewOverride` Validation
+
+## 1. What Was Implemented
+
+C5a closed the P4.5 review boundary (F2/F3): the `LocalViewOverride` resolver
+now deep-validates every substituted value against its clinical contract,
+clones the value before publication, and never freezes or mutates the caller's
+input. This supersedes the earlier "does not deep-validate" scope note.
+
+- **New `overrides/validate.ts`**: a Node-safe product runtime mirror of the
+  five contract state validators (`isSpatialState`, `isCameraState`,
+  `isPresentationState`, `isProjectionState`, `isCompositionState`) plus
+  `isSameCompositionVariant`/`isCoherentWithDataBinding` and runtime
+  `STATE_VALIDATORS`/`STATE_EXPECTATIONS` maps. Rule-for-rule with
+  `tests/contracts/view-validators.ts` (which stays authoritative). Deep module,
+  **not** re-exported from the barrel.
+- **Deep validation**: every entry's `value` is checked by its state validator
+  before merging; a clinically malformed or non-serializable value is refused
+  with the new typed `OverrideError` code `OVERRIDE_STATE_MALFORMED` (a
+  value-integrity `WorkspaceError` from the clone walk is rethrown typed with
+  `cause`), never a `TypeError`.
+- **Clone-before-freeze**: each substituted value is deep-cloned
+  (`cloneSerializableValue`) before it enters the merged `MedicalViewState`;
+  `deepFreeze` then freezes the clones, not the caller's objects. Non-overridden
+  members keep the source's object identity; the source `PreparedView` is never
+  mutated; the returned `ResolvedLocalView` is deep-frozen and JSON-lossless.
+- **Validation order** (unchanged semantics, extended):
+  `OVERRIDE_MALFORMED` (envelope) → `OVERRIDE_SOURCE_MISMATCH` →
+  `OVERRIDE_EMPTY` → `OVERRIDE_DUPLICATE_STATE` → `OVERRIDE_STATE_MALFORMED`
+  (deep clinical shape) → `OVERRIDE_STATE_NOT_APPLICABLE` (valid but wrong
+  variant / incoherent `dataBinding`). A local override remains deliberately
+  **not** blocked by a `StateLock` (ADR-010 §4).
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/view-engine/src/overrides/validate.ts` (257 lines)
+
+Modified:
+- `packages/view-engine/src/overrides/apply.ts` (298 lines; per-entry deep
+  validation + clone; `isCompositionShape` removed in favour of the deep
+  validator)
+- `packages/view-engine/src/overrides/errors.ts` (39 lines;
+  +`OVERRIDE_STATE_MALFORMED`)
+- `tests/view-engine/overrides.test.ts` (383 lines; test `i` retargeted, new
+  tests `j` and `k`)
+
+Unchanged: `packages/shared-types/**`, every other package, `tests/contracts/
+view-validators.ts`, plans/ADRs, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- The product validator is a hand mirror; the contract validator remains the
+  authoritative definition and must not be edited to follow the mirror. There is
+  **no automated parity test** (recorded as debt N1).
+- Only substituted values are cloned; non-overridden members stay by reference
+  from the already-frozen source, preserving the P4.5 identity contract.
+- Substituting a value cannot change the state variant: `presentation` requires
+  a single source, and a `composition` override must keep the variant class and
+  stay coherent with `dataBinding`.
+
+## 4. Tests Added & Executed
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `node --test tests/view-engine/overrides.test.ts` | **11 pass / 0 fail** (a–k) |
+| `node --test tests/view-engine/locks.test.ts` | 9 pass / 0 fail |
+| `npm test` | **404 pass / 0 fail / 75 suites** (0 skipped/todo) = P4.5 402/75 + 2 tests |
+| `npm run build` | clean (exit 0, `tsc -b`) |
+| `npm run test:python` | 189 passed |
+| `npm run typecheck:python` | clean over 47 files |
+
+Coverage: every malformed value for each of the five states (+ hostile
+null/primitive/missing-nested) → `OVERRIDE_STATE_MALFORMED`; the caller's
+`override`/entry/value objects stay unfrozen and deep-equal a pre-call clone;
+the resolved member is a frozen deep clone (identity differs, value equal);
+non-overridden members keep source identity; a post-call mutation of the
+caller's value cannot reach the resolved state; the source stays frozen and
+untouched; valid resolution + idempotency + JSON-losslessness unchanged. No
+`skip`/`todo`/`|| true`; no vacuous assertions.
+
+Independent verdicts: `nuclear-reviewer` **PASS** (F2/F3 closed; mirror verified
+rule-for-rule; N1 parity-test gap and `apply.ts` 298/300 headroom recorded as
+non-blocking) and `nuclear-qa` **PASS** for all seven gates (11/11 · 9/9 ·
+404/404 · pytest 189 · mypy 47 · typecheck/build clean).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- No ADR change was required; C5a is an implementation refinement of ADR-010 §4.
+- This report satisfies the AgentLog Gate for C5a.
+- `CHANGELOG.md` untouched; release notes are compiled via
+  `/promote-changelog 4` only on explicit request.
+
+## 6. Project Model Impact
+
+- None. `ResolvedLocalView` remains a view-engine-local DTO.
+
+## 7. Known Limitations & Technical Debt
+
+- **No automated parity test** between `overrides/validate.ts` and
+  `tests/contracts/view-validators.ts` (N1); a shared valid/invalid corpus test
+  is recommended before P4.8.
+- `overrides/apply.ts` is **298/300** — only 2 lines of headroom; the next edit
+  must decompose (natural seam: the error builders / merge logic).
+- `overrides.test.ts` is 383 lines (test files are outside the Rule 02 source
+  gate; continuing test-file debt).
+- Hostile throwing-getter payloads still propagate a raw `Error` (N3, probed);
+  this is an ecosystem-wide limit shared by the contract validator and the
+  value-integrity walk, not a C5a regression.
+- Carried Phase 3 debt unchanged.
+
+## 8. Exact Next Recommended Task
+
+Prepare (documentation only, no registration implementation):
+
+1. `docs/plans/PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md` — the worker/`medical-
+   engine` inputs and outputs (evidence) that produce a verifiable
+   `SpatialTransform` (automatic voxel registration and manual Procrustes), with
+   independent, worker-only tests.
+2. `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` — add slice **P4.4b** for
+   `applyInterStudyLink` (relative/transformed propagation) and its acceptance.
+3. `docs/decisions/ADR-012-inter-study-link-propagation.md` — causality, cycle
+   prevention (DAG), `toleranceMm` and `outOfDomainBehavior`.
+
+Then proceed to **P4.6**. Do not implement registration or inter-study
+propagation yet.
 
 
 

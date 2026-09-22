@@ -299,6 +299,8 @@ describe('NuClear P4.5 — local view override (ADR-010 §4)', () => {
       { source: single, value: 'garbage' },
       { source: single, value: { mode: 'single' } },
       { source: fusion, value: { mode: 'mystery', layers: [] } },
+      { source: single, value: { mode: 'single', layers: [null] } },
+      { source: fusion, value: { mode: 'multi-layer', layers: [{}] } },
     ];
     for (const { source, value } of malformedCompositions) {
       expectOverrideError(
@@ -307,24 +309,75 @@ describe('NuClear P4.5 — local view override (ADR-010 §4)', () => {
             source,
             overrideWith(source, [{ state: 'composition', value: value as CompositionState }]),
           ),
-        'OVERRIDE_MALFORMED',
-      );
-    }
-
-    // Structurally shaped but incoherent first layers must still be a typed
-    // refusal (never an unguarded `TypeError` on `layers[0]`/`binding`).
-    const incoherentLayers: ReadonlyArray<{ source: PreparedView; value: CompositionState }> = [
-      { source: single, value: { mode: 'single', layers: [null] } as unknown as CompositionState },
-      { source: fusion, value: { mode: 'multi-layer', layers: [{}] } as unknown as CompositionState },
-    ];
-    for (const { source, value } of incoherentLayers) {
-      expectOverrideError(
-        () => resolveLocalViewOverride(source, overrideWith(source, [{ state: 'composition', value }])),
-        'OVERRIDE_STATE_NOT_APPLICABLE',
+        'OVERRIDE_STATE_MALFORMED',
       );
     }
 
     assert.ok(Object.isFrozen(single.state), 'a refused override leaves the source frozen/untouched');
     assert.ok(Object.isFrozen(fusion.state));
+  });
+
+  it('j. refuses a clinically malformed value for every overridable state', () => {
+    const single = ctPrepared();
+    const malformed: ReadonlyArray<{
+      readonly state: ViewStateOverride['state'];
+      readonly value: unknown;
+    }> = [
+      { state: 'spatial', value: {} },
+      { state: 'spatial', value: { ...spatialValue(), viewUp: [0, 0, 2] } },
+      { state: 'camera', value: { zoom: 0 } },
+      { state: 'presentation', value: { invert: 'no' } },
+      { state: 'presentation', value: { ...presentationValue(), opacity: 2 } },
+      { state: 'projection', value: { mode: 'bogus' } },
+      { state: 'composition', value: { mode: 'single' } },
+    ];
+    for (const { state, value } of malformed) {
+      expectOverrideError(
+        () =>
+          resolveLocalViewOverride(
+            single,
+            overrideWith(single, [{ state, value } as ViewStateOverride]),
+          ),
+        'OVERRIDE_STATE_MALFORMED',
+      );
+    }
+    assert.ok(Object.isFrozen(single.state), 'a refused override leaves the source frozen/untouched');
+  });
+
+  it('k. never freezes or mutates the caller override and value objects', () => {
+    const source = ctPrepared();
+    const callerValue = cameraValue(2.5);
+    const override = overrideWith(source, [{ state: 'camera', value: callerValue }]);
+    const snapshot = structuredClone(override);
+
+    const resolved = resolveLocalViewOverride(source, override);
+
+    assert.equal(Object.isFrozen(override), false, 'override envelope not frozen');
+    for (const entry of override.overrides) {
+      assert.equal(Object.isFrozen(entry), false, 'override entry not frozen');
+      assert.equal(Object.isFrozen(entry.value), false, 'override value not frozen');
+    }
+    assert.deepEqual(override, snapshot, 'override deep-equals a pre-call clone');
+
+    const clonedCamera = resolved.state.camera;
+    assert.notEqual(clonedCamera, callerValue, 'resolved camera is a clone, not the caller object');
+    assert.deepEqual(clonedCamera, callerValue, 'resolved camera deep-equals the caller value');
+    assert.ok(Object.isFrozen(clonedCamera), 'resolved clone is frozen');
+
+    const sourceRecord = source.state as unknown as Record<string, unknown>;
+    const resolvedRecord = resolved.state as unknown as Record<string, unknown>;
+    for (const other of SINGLE_STATES) {
+      if (other === 'camera') continue;
+      assert.equal(
+        resolvedRecord[other],
+        sourceRecord[other],
+        `non-overridden '${other}' identity preserved`,
+      );
+    }
+
+    (callerValue as { zoom: number }).zoom = 99;
+    (callerValue.panMm as unknown as number[])[0] = 99;
+    assert.equal(resolved.state.camera.zoom, 2.5, 'caller mutation cannot reach resolved state');
+    assert.deepEqual(resolved.state.camera.panMm, [0, 0], 'caller mutation cannot reach clones');
   });
 });

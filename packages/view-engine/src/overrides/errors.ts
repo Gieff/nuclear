@@ -16,6 +16,7 @@ export type OverrideErrorCode =
   | 'OVERRIDE_SOURCE_MISMATCH'
   | 'OVERRIDE_EMPTY'
   | 'OVERRIDE_DUPLICATE_STATE'
+  | 'OVERRIDE_STATE_MALFORMED'
   | 'OVERRIDE_STATE_NOT_APPLICABLE';
 
 /** Optional underlying failure preserved for diagnostics. */
