@@ -2403,11 +2403,3 @@ identity, reload restores residency; do not reimplement residency policy). Do
 ADR-012 is **Accepted** (R-1..R-4) and Phase 2B can produce a verifiable
 `SpatialTransform`; **P4.8** is the final independent phase review/QA and
 closure.
-
-
-
-
-
-
-
-
