@@ -26,10 +26,6 @@ import {
   SLOT_PET,
   SLOT_UNAVAILABLE,
   buildRetention,
-  expectCollisionFreeLeases,
-  expectDishonestShapeRefusals,
-  expectMalformedIdentityRefusals,
-  expectMalformedShapeRefusals,
   expectProjectionError,
   makeDemand,
   makeSlot,
@@ -41,6 +37,10 @@ import {
   visibilityOf,
   volumeIdFor,
 } from './fixtures/residency-projection-fixtures.ts';
+import {
+  expectCollisionFreeLeases, expectDishonestShapeRefusals,
+  expectMalformedIdentityRefusals, expectMalformedShapeRefusals,
+} from './fixtures/residency-projection-hostile-fixtures.ts';
 
 type Manager = InstanceType<typeof ResourceManager>;
 

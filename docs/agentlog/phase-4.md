@@ -2680,4 +2680,151 @@ phase review/QA and Phase 4 closure** (whole-phase boundary, all gates including
 blocked on **ADR-012 Accepted** (R-1..R-4) plus Phase 2B `SpatialTransform`
 evidence.
 
+---
 
+# Phase 4 Closure Record — `@nuclear/view-engine` (P4.8)
+
+## 1. What Was Implemented
+
+Phase 4 delivered `@nuclear/view-engine` as the headless orchestration layer
+between the accepted Phase 1 contracts and the Phase 3 `medical-engine`:
+`ImagingWorkspace` (1–4 `ViewGroup`s × 4 slots), immutable `PreparedView`
+assembly with fail-closed positional provenance correlation, shared-state groups
+with atomic replacement regenerating a frozen projection, intra-study
+co-referenced and inter-study link **eligibility**, `StateLock` enforcement and
+local (non-canonical) `LocalViewOverride`, the persistent
+`ViewportSurfaceRegistry` with the pure `SurfaceLayoutManager`, and declarative
+`ResourceDemand` projection into the `ResourceManager` through a caller-supplied
+retention builder seam.
+
+P4.8 is the closure slice: it split the over-limit residency test fixture, made
+the docs/ADR EOF clean, and ran the whole-phase review/QA. It added **no product
+behaviour**.
+
+## 2. Files Changed / Created (P4.8)
+
+Modified:
+- `tests/view-engine/fixtures/residency-projection-fixtures.ts` (206 lines; base
+  seams/builders only)
+- `tests/view-engine/residency-projection.test.ts` (300 lines; imports only)
+- `docs/decisions/ADR-010-…md` (EOF whitespace only)
+- `docs/agentlog/phase-4.md` (this record + EOF whitespace)
+- `AGENTS.md` (baseline header → “Phase 4 Complete (P4.0–P4.7)”; Fase 4 row
+  rewritten)
+
+Created:
+- `tests/view-engine/fixtures/residency-projection-hostile-fixtures.ts` (211
+  lines; the F1/F2 adversarial cases moved verbatim; dependency one-way
+  hostile → base, no cycle)
+
+Unchanged: product code under `packages/**`, `shared-types`, `CHANGELOG.md`, the
+version.
+
+## 3. Architectural Assumptions Made / Phase Boundary
+
+- **UI-agnostic and DOM-free.** `packages/view-engine/src/**` imports no React,
+  no DOM/browser global, no `@cornerstonejs/*`, no `@nuclear/ui` and no
+  `@nuclear/figure-engine`; the package graph is acyclic and within the
+  ownership matrix (`view-engine` → `shared-types`, `rendering-presets`,
+  `medical-engine`). One test asserts the barrel leaks no
+  `webgl|context|document|window` symbol.
+- **Out of scope and untouched:** figure-sheet layout/export, TIFF/PDF, UI and
+  mouse interaction, any second renderer/WebGL context, and new scientific
+  algorithms. No Phase-4 commit touched `packages/medical-engine/**`,
+  `python/**` or `tests/medical/**` except the ratified C8 type-only test
+  correction.
+- Invariants 1–10 of the Phase 4 plan (UI-agnostic; semantic lifetime ≠
+  residency; declarative demand; one surface identity/one renderer; physically
+  distinct link modes; lock vs override; no duplicated science; no invented
+  placement defaults; immutable published DTOs; positional provenance) were
+  independently verified as upheld.
+- The fixture split is test-only and dependency-ordered (hostile imports the
+  base, which registers the `ts-resolve-hook`); the base never imports hostile.
+
+## 4. Tests Added & Executed
+
+No P4.8 product tests were added (the split is count-neutral: 11 P4.7 tests
+before and after). Whole-phase gates on the closure tree:
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm test` | **442 pass / 0 fail / 80 suites** (0 skipped/todo) |
+| `npm run build` | clean (exit 0) |
+| `npm run test:python` | 219 passed |
+| `npm run typecheck:python` | clean over 54 files |
+| `npm run docs` | exit 0 (typedoc → `docs/api/ts`, pdoc → `docs/api/python`, portal `docs/api/index.html`); `docs/api/` is gitignored |
+| `node --test tests/view-engine/*.test.ts` | 175 tests / 19 suites, all pass |
+| `node --test tests/residency/*.test.ts` | 23 tests / 2 suites, all pass |
+| `git diff --check` | clean (no trailing whitespace / blank line at EOF) |
+
+File-length gate: the only source file under `packages/**` above 300 lines is the
+pre-existing `rendering-presets/src/dicom-palettes.ts` (632, the declared
+pure-data-table exemption); every Phase-4-authored source file is ≤300, the
+largest being `overrides/apply.ts` (298), `surfaces/registry.ts` (264) and
+`residency/project.ts` (212). The former 375-line fixture is now 206 + 211, and
+the test is exactly 300.
+
+Independent verdicts: `nuclear-reviewer` **PASS** — boundary/graph, out-of-scope
+honesty, file-size, invariants 1–10, ADR status and evidence all substantiated;
+one LOW finding (`package.json` declares `@rendering-presets` with no current
+source import — matrix-permitted, to wire or prune at Phase-5 integration) and
+INFO items only. `nuclear-qa` **PASS** on all executed gates (typecheck, 442/80,
+build, pytest 219, mypy 54, docs, focused 175 + 23, file-length, hygiene,
+staged-empty, boundary); image tolerance remains **NOT YET APPLICABLE** (no
+image/pixel-tolerance gate exists in Phase 4).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- **ADR-010 Accepted** (with §7/§8/§9 addenda), **ADR-011 Accepted**,
+  **ADR-012 Proposed** — no Phase-4 code depends on ADR-012.
+- Eight-point AgentLog handovers exist for every slice (P4.0–P4.7 + C5a + N3 +
+  P4.7a) and this closure record.
+- `AGENTS.md` baseline updated to “Phase 4 Complete”.
+- `CHANGELOG.md` untouched; release notes are compiled via `/promote-changelog 4`
+  only on explicit request. No tag/release was created.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema change; `project-model` was untouched in Phase 4.
+
+## 7. Known Limitations & Remaining Risks (carried into Phase 5)
+
+- **P4.4b is blocked**: inter-study link application/propagation requires ADR-012
+  **Accepted** (R-1..R-4) and Phase 2B producing a verifiable
+  `SpatialTransform`. No such code exists.
+- The demand projection is **not wired into `ImagingWorkspace`**; composition
+  demand must be facaded explicitly rather than assumed.
+- `ViewportSurfaceRegistry` does **not** bind a `ComposerViewInstance` (the
+  frozen contract carries only `boundSlotId`/`boundViewId`); a
+  `shared-types` extension with its own ADR/validator/fixture is required before
+  the Composer can own a surface binding.
+- Capacity is a lifetime-total logical identity budget (no purge API); one
+  `ResourceManager` must be owned by one demand authority; the builder
+  shape-check is intentionally opaque (ADR-010 §8/§9).
+- C5a's product validator mirror has no automated parity test against the
+  contract validator.
+- Phase-3 carried debt: renderer size headroom; hardware-GPU and a true
+  production bundle remain `NOT YET APPLICABLE`.
+
+## 8. Phase 5 Entry Conditions
+
+Phase 5 is the figure engine and publication export. It may start from this
+closed baseline with:
+
+1. All Phase 4 gates green on the closure commit (442/442, 80 suites;
+   typecheck/build/pytest/mypy/docs clean; boundary and file-size gates
+   verified).
+2. `figure-engine` may consume the stable `ViewportSurfaceRegistry` and pure
+   `SurfaceLayoutManager` for panel framing, but must define its **own**
+   `ComposerViewInstance` ↔ surface binding semantics (not representable by the
+   current `ViewportSurface` contract) and must not invent viewport→panel
+   framing defaults — `PanelFramingState` is `figure-engine`'s domain.
+3. Composition-time residency demand must be declared through an explicit
+   facade over the P4.7 projection; the engine contributes demand only and never
+   owns a WebGL context.
+4. True high-resolution offscreen rendering (the ADR-009 `RenderTarget`
+   successor) must respect the existing renderer residency constraints and never
+   resize a live interactive canvas.
+5. `P4.4b` stays out of Phase-5 planning until ADR-012 is **Accepted** and Phase
+   2B yields `SpatialTransform` evidence.

@@ -279,5 +279,3 @@ contract).
 - **Opaque shape checks are intentionally shallow.** The builder seam rejects
   only non-object `plan`/`availability`; the manager's own typed
   pre-validation remains the authority on the plan's deeper shape.
-
-
