@@ -173,22 +173,25 @@ is recorded.
 | Quality | Typecheck, Node tests, configured Python tests, build and source-integrity report actual results |
 | Review | `nuclear-reviewer` and `nuclear-qa` independently inspect the final Phase 4 diff and evidence before closure |
 
-## Reopened — Ratified Correction Slices (2026-09-22)
+## Reopened — Ratified Correction Slices (2026-09-22) — COMPLETE
 
-An independent review reopened P4.0/P4.1/P4.2. The following corrective slices
-are ratified and must be completed **before P4.3**, in this order:
-`C8 → C1 → C5 → ADR-011 → C4 → C3 → C2 → C6 → C7`.
+An independent review reopened P4.0/P4.1/P4.2. All ratified corrective slices
+are now **complete** and P4.0–P4.2 are **closed** (agentlog closure record).
+They were executed as `C8 → C1 → C2/C5/C6 → C3/C7 → C4 → C1b/C4b` (C2/C5/C6
+and C3/C7 were bundled by explicit user authorisation; ADR-011 landed with
+C4). Corrective commits: `db4ba42`+`f71d609`, `7680acc`, `0c8921e`,
+`95a04fb`, `f8a5571`, `a46099d`.
 
 | ID | Slice | Deliverable | Acceptance |
 | --- | --- | --- | --- |
-| C8 | P4.T | `tests/**` brought into the `tsc` graph | `npm run typecheck` compiles tests; an intended TS error in a test fails the gate |
-| C1 | P4.1.1 | Workspace input integrity: reject non-finite / non-JSON-safe values instead of JSON-normalising them | `NaN`/`±Infinity`/`Date`/`Map`/`Set`/`bigint` refused with a typed path-naming error; no mutation on refusal; valid payload round-trips |
-| C5 | P4.2.2 | Provenance ↔ registered-asset cross-validation (positional 1:1 per ADR-010 §7.3) | PET view + CT fingerprint / series mismatch / length mismatch refused; coherent pair accepted |
-| C4 | P4.2.1 | Published-DTO immutability (ADR-011 §1/§2/§4); the private shared-state holder with atomic replacement (§3) lands with P4.3 | published DTOs deep-frozen at assembly/registration; external mutation cannot alter canonical state; identity preserved |
-| C3 | P4.0.1 | Co-reference contract honesty + snapshot↔asset↔series↔fingerprint check | negative series-mismatch test + positive different-digest/same-FoR test; ADR/piano wording corrected |
-| C2 | P4.1.2 | Slot/group rule 1–4 groups, default 4, ≥1 enforced | zero groups refused; reduced coherent layout accepted; ADR-010 §7.1 aligned |
-| C6 | P4.2.3 | Explicit fail-closed slot→PreparedView binding (view may exist unbound) | binding a registered view succeeds; unknown view / occupied slot refused |
-| C7 | Fixture hygiene | `mockMedicalView` asset id coherent with clinical fixtures | full suite green after coordinated fixture + P3 assertion + P4.2-case updates |
+| C8 ✅ | P4.T | `tests/**` brought into the `tsc` graph | `npm run typecheck` compiles tests; an intended TS error in a test fails the gate |
+| C1 ✅ | P4.1.1 | Workspace input integrity: reject non-finite / non-JSON-safe values instead of JSON-normalising them; then **C1b** also rejects explicit `undefined` (`WORKSPACE_UNDEFINED_VALUE`; optionals must be absent) | `NaN`/`±Infinity`/`undefined`/`Date`/`Map`/`Set`/`bigint` refused with a typed path-naming error; no mutation on refusal; valid payload round-trips |
+| C5 ✅ | P4.2.2 | Provenance ↔ registered-asset cross-validation (positional 1:1 per ADR-010 §7.3) | PET view + CT fingerprint / series mismatch / length mismatch refused; coherent pair accepted |
+| C4 ✅ | P4.2.1 | Published-DTO immutability (ADR-011 §1/§2/§4); **C4b** makes `deepFreeze` fail-closed and validates before freezing; the private holder (§3) lands with P4.3 | published DTOs deep-frozen and validated at assembly/registration; external mutation throws; identity preserved |
+| C3 ✅ | P4.0.1 | Co-reference contract honesty + snapshot↔asset↔series↔fingerprint check | negative series-mismatch test + positive different-digest/same-FoR test; ADR/piano wording corrected |
+| C2 ✅ | P4.1.2 | Slot/group rule 1–4 groups, default 4, ≥1 enforced | zero groups refused; reduced coherent layout accepted; ADR-010 §7.1 aligned |
+| C6 ✅ | P4.2.3 | Explicit fail-closed slot→PreparedView binding (view may exist unbound) | binding a registered view succeeds; unknown view / occupied slot refused |
+| C7 ✅ | Fixture hygiene | `mockMedicalView` asset id coherent with clinical fixtures | full suite green after coordinated fixture + P3 assertion + P4.2-case updates |
 
 ## Stop Conditions
 
@@ -206,7 +209,23 @@ Stop the active slice as `BLOCKED` rather than guessing when:
 
 ## Exact Next Step
 
-Phase 4 is **reopened**. Start with **C8** (`tests/**` into the `tsc` graph),
-then **C1** (workspace input integrity), then C5, ADR-011, C4, C3, C2, C6, C7.
-Do not resume P4.3 until the corrective slices above are accepted, and do not
-reinterpret the ADR-011 shared-state model in P4.3.
+P4.0–P4.2 are **closed**; all ratified correctives are complete. **Start P4.3
+(shared-state groups)** under the binding ADR-011 addendum contract:
+
+```text
+private holder → atomic replacement → new projection → frozen published DTO
+```
+
+P4.3 entry conditions:
+
+- Entry HEAD `a46099d`; gates green (`npm test` 348/348, 68 suites).
+- Define and **test** which identity stays stable (holder identity,
+  `PreparedViewId`, `ViewSlot`) and which published value is regenerated after
+  an update.
+- Every replacement payload passes `assertSerializableValue` → `deepFreeze`;
+  never mutate frozen state in place, never clone shared state, never publish
+  a mutable object.
+- Owner package: `@nuclear/view-engine` only; pure Node tests; ≤300-line
+  source files.
+- Do not reinterpret the ADR-011 model; do not add P4.4 linking, P4.5 locks,
+  P4.6 surfaces or P4.7 demand in P4.3.

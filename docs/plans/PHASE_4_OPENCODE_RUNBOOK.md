@@ -1,18 +1,18 @@
 # Phase 4 — OpenCode Orchestration Runbook
 
-> **Phase 4 is REOPENED (2026-09-22).** P4.0/P4.1/P4.2 were accepted locally
-> and then reopened by independent review. Before P4.3, execute the ratified
-> corrective slices in `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md`
-> §“Reopened — Ratified Correction Slices”, in the order
-> `C8 → C1 → C5 → ADR-011 → C4 → C3 → C2 → C6 → C7`. Do not resume P4.3 in
-> parallel with the correctives.
+> **Phase 4 correctives are COMPLETE (2026-09-22).** The independent review
+> reopened P4.0–P4.2; the ratified corrective chain (`C8 → C1 → C2/C5/C6 →
+> C3/C7 → C4 → C1b/C4b`) is done and **P4.0–P4.2 are closed** (see the AgentLog
+> closure record). **The next slice is P4.3 (shared-state groups)**, which must
+> follow the binding ADR-011 addendum contract
+> (`private holder → atomic replacement → new projection → frozen published DTO`).
 
 ## Start Command
 
 Run one bounded slice at a time:
 
 ```text
-/phase 4 P4.1: implement the ImagingWorkspace core (studies/assets, ViewGroup and ViewSlot allocation, bind/unbind/status) as pure Node-safe state in @nuclear/view-engine.
+/phase 4 P4.3: implement shared-state groups via a private holder with atomic replacement that regenerates a frozen published DTO, keeping holder / PreparedViewId / ViewSlot identity stable (ADR-011 §3 + addendum).
 ```
 
 Before delegation, the orchestrator must read:
@@ -70,50 +70,68 @@ Every delegation brief must include:
 
 ## Slice-specific Constraints
 
-### P4.0 — Baseline and Contracts Audit
+### P4.0 — Baseline and Contracts Audit — CLOSED
 
-- Record the current gate state (typecheck, `npm test`, build, Python gates)
-  without modifying `packages/`.
-- Audit Phase 1 view contracts for gaps; any new cross-package contract
-  requires validation, a fixture and an ADR when it changes a boundary.
-- Deliver plan + runbook + ADR-010 only. Do not implement workspace code.
+- Delivered plan/runbook/ADR-010; co-reference contract corrected by ADR-010 §7.
 
-### P4.1 — Workspace Core
+### P4.1 — Workspace Core — CLOSED
 
 - Keep the model serializable and pure. No `import` of React, DOM or
   `@cornerstonejs/*`.
-- Enforce exactly four groups of four roles; refuse a 17th slot, a duplicate
-  id, a foreign role or a group id mismatch.
+- **Slot rule (ADR-010 §7.1): 1–4 groups of exactly four slots (max 16); zero
+  groups refused**; refuse a 17th slot, a duplicate id, a foreign role or a
+  group-membership mismatch.
 - `ViewSlot.status` transitions (`empty` → `bound` → `prepared`, and
   `unavailable`) must be explicit; an illegal transition fails closed.
 
-### P4.2–P4.3 — PreparedView and Shared State
+### P4.2 — PreparedView and Provenance — CLOSED
 
 - `PreparedView` carries `MedicalViewState`, links, locks, provenance and an
   optional cached-preview reference; it is not a raster.
-- Assembly alone must not call `ResourceManager.retain`. Only P4.7 declares
-  demand.
-- **Published DTOs are immutable (ADR-011).** `PreparedView`, provenance,
-  links, locks and cached-preview references are deep-frozen at publication;
-  a consumer holding a reference from `get`/`list`/`snapshot` must not be
-  able to mutate canonical state. External mutation tests must prove this.
-- **Shared state is not a freely mutable published object (ADR-011).** Shared
-  `SpatialState`/`CameraState` are owned by a private holder and updated only
-  through explicit APIs that replace atomically; never an event chain, and
-  never a cloned state object that would break identity.
-- **Provenance is validated, positionally one-to-one (ADR-010 §7.3).** At the
-  workspace boundary, `sourceAssetIds[i]`, `sourceSeriesInstanceUIDs[i]` and
-  `sourceFingerprints[i]` must describe the same registered asset and share
-  `studyInstanceUID`; a mismatch fails closed.
-- **A prepared view may exist without a slot (ADR-010 §7 addendum).** Do not
-  require slot binding at assembly; slot→prepared-view binding is a separate
-  explicit, fail-closed operation.
+- Assembly never calls `ResourceManager.retain`. Only P4.7 declares demand.
+- **Published DTOs are immutable (ADR-011 §1/§4).** `PreparedView`, provenance,
+  links, locks and cached-preview references are validated against the
+  serializable domain and deep-frozen at publication; external mutation throws.
+- **Provenance is validated, positionally one-to-one (ADR-010 §7.3).**
+- **A prepared view may exist without a slot (ADR-010 §7).** Slot→prepared-view
+  binding is a separate explicit, fail-closed operation.
+
+### P4.3 — Shared-State Groups (NEXT)
+
+Bind contract (ADR-011 §3 + addendum) — do not reinterpret:
+
+```text
+private holder → atomic replacement → new projection → frozen published DTO
+```
+
+- **Objective.** Several views reference one shared `SpatialState`/
+  `CameraState` (architecture §2.5, §16) with **object identity observable** and
+  no imperative notify chain.
+- **Identity vs regeneration.** P4.3 must **define and test** which identity
+  stays stable (holder identity, `PreparedViewId`, `ViewSlot`) and which
+  published value is **regenerated** after an update.
+- **Replacement discipline.** Every replacement payload passes
+  `assertSerializableValue` → `deepFreeze`; never mutate frozen state in place
+  (it throws), never clone shared state (it would break identity
+  observability), never hand out a mutable object. A spread/merge of prior
+  state can introduce `{ field: undefined }` and will be refused.
+- **Fail-closed negatives.** A non-plain/`undefined`/non-finite replacement
+  value is refused with a typed error and leaves the holder and all bound views
+  unchanged; an update that cannot be published atomically is refused.
+- **Owner/scoping.** `@nuclear/view-engine` only; pure Node tests; ≤300-line
+  source files. Do not add P4.4 linking, P4.5 locks/overrides, P4.6 surfaces or
+  P4.7 demand in P4.3.
+- Suggested paths: `packages/view-engine/src/shared-state/*` and
+  `tests/view-engine/shared-state.test.ts`.
 
 ### P4.4 — Link Semantics
 
-- Intra-study co-reference requires an accepted geometry-evidence snapshot
-  set: matching `FrameOfReferenceUID`, matching `geometricDigest` and a
-  verified flag. Different FoRs without a valid transform must be refused.
+- Intra-study co-reference requires the same worker-verified
+  `FrameOfReferenceUID` plus one-to-one snapshot ↔ asset ↔ series ↔ fingerprint
+  correlation (use the existing `assertCoReferenceEligibility` **after**
+  `isIntraStudyLink`). **Never require an equal `geometricDigest`** — native
+  CT/PET in one FoR legitimately differ. Different FoRs without a valid
+  transform must be refused.
 - Inter-study relative links carry a `navigationDifferentialMm`; transformed
   links carry a valid `SpatialTransform` whose source/target FoRs match the
   link and whose `outOfDomainBehavior` matches. An invalid transform is

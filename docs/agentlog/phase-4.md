@@ -1,18 +1,18 @@
 # Phase 4 — View Engine: Workspace, Link/Lock/Override & Persistent Surfaces
 
-Status: **REOPENED** (2026-09-22). P4.0 (`72fbaee`), P4.1 (`8cdad35`) and
-P4.2 (`a70983c`) were accepted locally and then **reopened by an independent
-human review**; none of them is an approvable closed slice as committed.
-Corrective progress: **C8 complete** (`db4ba42`, corrected by `f71d609`),
-**C1 complete** (`7680acc`), **C2+C5+C6 complete** (`0c8921e`),
-**C3+C7 complete** (`95a04fb`) and **C4 complete** (`f8a5571`), plus the
-integrative boundary hardening **C1b+C4b**. **All ratified correctives are
-done and the publication boundary is closed**, so the deferred P4.3 work may
-resume under the ADR-011 addendum contract. See
+Status: **P4.0–P4.2 CLOSED** (2026-09-22), after the independent review
+reopened them and the ratified corrective chain landed. Final corrective HEAD
+`a46099d`; `npm test` **348/348 (68 suites)**, typecheck/build clean, pytest
+189, mypy 47. Reopened slices closed: P4.0 (co-reference contract honesty),
+P4.1 (workspace input integrity, slot rule), P4.2 (`PreparedView` assembly,
+provenance correlation, published-DTO immutability). **P4.3–P4.8 pending**;
+P4.3 is ready to start under the binding ADR-011 addendum contract
+(`private holder → atomic replacement → new projection → frozen published DTO`).
+Corrective commits: `db4ba42` + `f71d609` (C8), `7680acc` (C1), `0c8921e`
+(C2+C5+C6), `95a04fb` (C3+C7), `f8a5571` (C4), `a46099d` (C1b+C4b). See
 `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` §“Reopened — Ratified Correction
 Slices”, `docs/decisions/ADR-010-…md` §7 and
 `docs/decisions/ADR-011-prepared-view-immutability-and-shared-state-mutation.md`.
-P4.3–P4.8 pending in declared dependency order.
 Baseline entry: Phase 3 closed and released (HEAD `30ef205`, annotated tag
 `v0.2.0`, monorepo 0.2.0).
 
@@ -1289,6 +1289,66 @@ DTO projection, specify and test which identity stays stable (holder /
 `PreparedViewId` / `ViewSlot`) and which value is regenerated, and route every
 replacement payload through `assertSerializableValue` → `deepFreeze`. Never
 mutate frozen state in place and never clone shared state.
+
+---
+
+# Phase 4 Closure Record — P4.0, P4.1 and P4.2 Accepted (2026-09-22)
+
+The independent review reopened P4.0/P4.1/P4.2 because their committed
+implementations had defects not covered by green tests. The ratified
+corrective chain has now closed every defect, and the three slices are
+**accepted**.
+
+## Corrective chain and what it closed
+
+| Commit | Slice | Closes |
+| --- | --- | --- |
+| `8bb0978` | docs | ADR-010 §7 addendum (slot rule; co-reference without digest equality), ADR-011, plan/runbook/agentlog reopen |
+| `db4ba42` + `f71d609` | C8 / P4.T | `tests/**` brought into the `tsc` graph (83 → 0 errors); the one runtime exception (volume scalar-data access) made fail-closed and unit-tested |
+| `7680acc` | C1 / P4.1.1 | silent JSON normalization removed — non-finite / non-JSON-safe input now refused with typed path errors, no mutation on refusal |
+| `0c8921e` | C2+C5+C6 | slot rule 1–4 groups (zero refused); provenance ↔ asset positional correlation; explicit fail-closed slot→`PreparedView` binding |
+| `95a04fb` | C3+C7 | co-reference eligibility without digest equality; Phase 1 fixture coherence (`asset-ct` → `asset-ct-001`) |
+| `f8a5571` | C4 / P4.2.1 | published DTOs deep-frozen; reads identity-stable; external mutation throws |
+| `a46099d` | C1b+C4b | explicit `undefined` refused (`WORKSPACE_UNDEFINED_VALUE`); `deepFreeze` fail-closed; validate→freeze at every publication boundary; ADR-011 addendum and the binding P4.3 contract |
+
+## Accepted slice status
+
+- **P4.0 (baseline, plan, runbook, ADR-010)** — accepted with the co-reference
+  contract corrected (ADR-010 §7.2) and the enforcement locus documented.
+- **P4.1 (`ImagingWorkspace` core)** — accepted with input integrity (C1+C1b),
+  the 1–4-group slot rule (C2), provenance correlation and slot binding
+  (C5+C6), and published-DTO immutability (C4+C4b).
+- **P4.2 (`PreparedView` assembly + provenance)** — accepted with the
+  provenance correlation, immutability and validate→freeze boundary.
+
+## Final verified state (HEAD `a46099d`)
+
+`npm run typecheck` exit 0 · `npx tsc -p tsconfig.test.json` exit 0 ·
+`npm test` **348 pass / 0 fail / 68 suites** (0 skipped/todo) ·
+`npm run build` clean · `npm run test:python` 189 · `npm run typecheck:python`
+47 files. The last slice (C1b+C4b) was verified independently: the reviewing
+user reproduced both defects at `f8a5571` and confirmed them fixed, with
+typecheck/build/pytest/mypy PASS and 348/348. Earlier slices each have
+`nuclear-reviewer`/`nuclear-qa` PASS records above.
+
+## Entry conditions for P4.3 (next task)
+
+P4.3 may start. It must implement the **ADR-011 addendum contract**:
+
+```text
+private holder → atomic replacement → new projection → frozen published DTO
+```
+
+- Define and **test** which identity stays stable (holder identity,
+  `PreparedViewId`, `ViewSlot`) and which published value is regenerated after
+  an update.
+- Route every replacement payload through
+  `assertSerializableValue → deepFreeze`; never mutate frozen state in place
+  (it throws), never clone shared state, never hand out a mutable object.
+- Keep the package boundary and the ≤300-line source rule; no UI/React/DOM.
+
+`AGENTS.md` intentionally still reads “Phase 3 Complete”: it advances only when
+Phase 4 as a whole closes (P4.8). Nothing has been pushed.
 
 
 
