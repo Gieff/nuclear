@@ -4,9 +4,9 @@ Status: **REOPENED** (2026-09-22). P4.0 (`72fbaee`), P4.1 (`8cdad35`) and
 P4.2 (`a70983c`) were accepted locally and then **reopened by an independent
 human review**; none of them is an approvable closed slice as committed.
 Corrective progress: **C8 complete** (`db4ba42`, corrected by `f71d609`),
-**C1 complete** (`7680acc`), **C2+C5+C6 complete** (`0c8921e`) and
-**C3+C7 complete** (bundled). Remaining ratified corrective before P4.3:
-**C4**. See
+**C1 complete** (`7680acc`), **C2+C5+C6 complete** (`0c8921e`),
+**C3+C7 complete** (`95a04fb`) and **C4 complete**. **All ratified
+correctives (C1–C8) are done**, so the deferred P4.3 work may resume. See
 `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` §“Reopened — Ratified Correction
 Slices”, `docs/decisions/ADR-010-…md` §7 and
 `docs/decisions/ADR-011-prepared-view-immutability-and-shared-state-mutation.md`.
@@ -1038,6 +1038,130 @@ post-registration mutation of the caller’s object cannot change what was
 validated or read; and preserve the identity guarantees pinned by the C6 tests
 (`getPreparedView(view.id) === view`). Do not wire P4.4 linking or add P4.3
 shared-state mutation in C4.
+
+---
+
+# Handover Report — C4 (P4.2.1): Published-DTO Immutability (ADR-011)
+
+## 1. What Was Implemented
+
+C4 made every value published by a `view-engine` API **deep-frozen**, closing
+the runtime-mutability defect found in review (a consumer could mutate the
+canonical `view.state.camera.zoom` through a returned reference). This is the
+last ratified corrective; the shared-state holder is deferred to P4.3 per
+ADR-011 §3 (see §3).
+
+- **`internal/deep-freeze.ts`**: `deepFreeze<T>(value): T` — in-place,
+  identity-preserving, idempotent, cycle-safe (`WeakSet`); freezes only plain
+  objects/arrays; no Node/DOM/Cornerstone/`Math.`.
+- **`assemblePreparedView`** publishes a deep-frozen `PreparedView` (container,
+  `state`, `provenance`, `links`, `locks`, `cachedPreviewReference`) **without
+  cloning**, after all validation, so refusals never freeze the caller.
+- **`PreparedViewRegistry.register`** freezes defensively after the duplicate
+  check; `get`/`list`/`snapshot` return the stored frozen object by identity.
+- **`ImagingWorkspace`** freezes the stored validation clones (never the
+  caller’s object); `getStudy`/`getAsset`/`list*`/`snapshot()` return deep-frozen
+  values; `getPreparedView(id) === view` identity holds.
+- **`ViewSlotRegistry`** stores/returns deep-frozen groups/slots and freezes
+  every transition result.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/view-engine/src/internal/deep-freeze.ts` (60 lines)
+- `tests/view-engine/immutability.test.ts` (5 tests)
+
+Modified:
+- `packages/view-engine/src/prepared-view/assemble.ts` (138 lines)
+- `packages/view-engine/src/prepared-view/registry.ts` (62 lines)
+- `packages/view-engine/src/workspace/imaging-workspace.ts` (214 lines)
+- `packages/view-engine/src/workspace/view-slot-registry.ts` (285 lines)
+- `tests/view-engine/workspace-core.test.ts` (case 5 retargeted to frozen semantics)
+- `tests/view-engine/workspace-integrity.test.ts` (case 2 retargeted)
+- `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` (C4 row aligned: holder §3 → P4.3)
+
+Unchanged: `packages/shared-types/**`, other packages, `python/**`, ADRs,
+`CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- **Reads now return the stored frozen value by identity, superseding C1’s
+  `structuredClone`-on-read.** This is the intended ADR-011 §1 consequence:
+  `Object.freeze` replaces cloning as the immutability guarantee and is what
+  makes shared `MedicalViewState` identity observable for P4.3. The C1
+  handover’s “reads return `structuredClone` copies” statement is thereby
+  superseded by C4.
+- **Freezing happens after validation** so a refusal leaves the caller and the
+  workspace untouched (C1/C5 discipline preserved).
+- **`assemblePreparedView` freezes the caller’s `state`/`provenance` in place**
+  (no clone) so identity is preserved; P4.3 must update shared state by atomic
+  replacement, never in-place mutation (which now throws).
+- **The shared-state holder and atomic replacement (ADR-011 §3) are P4.3
+  work**, not C4; the plan’s C4 row was aligned accordingly.
+
+## 4. Tests Added & Executed
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npx tsc -p tsconfig.test.json` | exit 0 |
+| `npm test` | **334 pass / 0 fail / 68 suites** (0 skipped/todo) = Bundle B baseline 329/67 + 5 tests / +1 suite |
+| `npm run build` | clean (exit 0) |
+| `node --test tests/view-engine/immutability.test.ts` | 5/5 |
+| `node --test tests/view-engine/prepared-view.test.ts` | 14/14 |
+| `node --test tests/view-engine/workspace-core.test.ts` | 11/11 |
+| `node --test tests/view-engine/workspace-integrity.test.ts` | 11/11 |
+| `node --test tests/view-engine/workspace-provenance-binding.test.ts` | 13/13 |
+| `npm run test:python` | 189 passed (unchanged) |
+| `npm run typecheck:python` | 47 files clean (unchanged) |
+
+Coverage: frozen-ness at every published level including
+`cachedPreviewReference`; mutation-attempt `TypeError` with canonical state
+unchanged; the carried-over post-registration mutation regression; identity
+preservation; idempotent/cycle-safe freeze and JSON round-trip equality. The
+two retargeted existing cases are strictly stronger than the old “mutate a
+copy” form (frozen + throws + unchanged). No skipped/todo/vacuous assertions.
+
+Independent verdicts: `nuclear-reviewer` **PASS** (zero blocking; 6
+non-blocking) and `nuclear-qa` **PASS** for the executable scope.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-011 remains **Accepted**; C4 implements §1/§2/§4 and defers §3 to P4.3.
+  The plan’s C4 row was corrected to match.
+- This report satisfies the AgentLog Gate for C4.
+- `CHANGELOG.md` untouched; release notes are compiled later via
+  `/promote-changelog 4` only on explicit request.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema change; frozen values remain JSON-serializable.
+
+## 7. Known Limitations & Technical Debt
+
+- **No-freeze-on-refusal for a hand-built view is code-verified only** (all C5
+  refusal tests assemble first, so the input is already frozen). Low risk; a
+  focused test would close it.
+- **`workspace-core.test.ts` is 359 lines** (tests are outside the Rule 02
+  source gate); split it when the file is next touched.
+- `deepFreeze` skips symbol-keyed properties and does not traverse into
+  non-plain objects; `assemblePreparedView` does not run the C1
+  serializability validation, so a hand-supplied non-plain `state` member
+  would be only partially frozen. Keep contract DTOs plain; relevant to P4.5
+  lock enforceability.
+- `workspace-integrity.test.ts` “caller fixture must stay mutable” message
+  asserts value equality rather than `!Object.isFrozen` (wording only).
+
+## 8. Exact Next Recommended Task
+
+Resume **P4.3 — shared-state groups** per ADR-011 §3: implement the private
+shared-state holder with **atomic replacement** and define how bound views
+observe a replacement (read through the holder’s identity, or have the holder
+re-publish new frozen views). Never mutate the frozen values in place (it now
+throws), never clone shared state (it would break the identity observability
+assembled in C4), and never hand out a new mutable object. All eight ratified
+correctives (C1–C8) are now complete, so P4.3 may proceed.
+
 
 
 

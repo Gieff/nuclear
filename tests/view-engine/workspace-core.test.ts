@@ -144,24 +144,56 @@ describe('NuClear P4.1 — ImagingWorkspace core', () => {
     assert.equal(rebound.resourceDemand, undefined, 'stale demand must not survive a rebind');
   });
 
-  it('5. returned slots and lists are fresh copies that never mutate the registry', () => {
+  it('5. returned slots, groups and lists are deep-frozen and cannot mutate the registry', () => {
     const registry = ViewSlotRegistry.createDefault();
     const slotId = registry.listSlots()[0].id;
 
     const first = registry.getSlot(slotId);
-    (first as unknown as { status: string }).status = 'prepared';
+    assert.ok(Object.isFrozen(first), 'getSlot must publish a frozen value');
+    assert.throws(
+      () => {
+        (first as unknown as { status: string }).status = 'prepared';
+      },
+      TypeError,
+      'mutating a published slot must throw in strict mode',
+    );
     assert.equal(registry.getSlot(slotId).status, 'empty');
 
-    const list = registry.listSlots() as ViewSlot[];
+    const list = registry.listSlots();
+    assert.ok(Object.isFrozen(list), 'listSlots must publish a frozen array');
     assert.equal(list.length, MAX_VIEW_SLOTS);
-    (list[0] as unknown as { status: string }).status = 'bound';
-    list.pop();
+    assert.ok(list.every((slot) => Object.isFrozen(slot)), 'every listed slot must be frozen');
+    assert.throws(
+      () => {
+        (list as unknown as ViewSlot[]).pop();
+      },
+      TypeError,
+      'mutating a published list must throw in strict mode',
+    );
     assert.equal(registry.listSlots().length, MAX_VIEW_SLOTS);
     assert.equal(registry.getSlot(list[0].id).status, 'empty');
 
-    const groups = registry.listGroups() as ViewGroup[];
-    groups.pop();
+    const groups = registry.listGroups();
+    assert.ok(Object.isFrozen(groups), 'listGroups must publish a frozen array');
+    assert.ok(groups.every((group) => Object.isFrozen(group)), 'every listed group must be frozen');
+    assert.throws(
+      () => {
+        (groups as unknown as ViewGroup[]).pop();
+      },
+      TypeError,
+      'mutating a published group list must throw in strict mode',
+    );
     assert.equal(registry.listGroups().length, MAX_VIEW_GROUPS);
+
+    const snapshot = registry.snapshot();
+    assert.ok(Object.isFrozen(snapshot), 'snapshot must be frozen');
+    assert.ok(Object.isFrozen(snapshot.groups), 'snapshot.groups must be frozen');
+    assert.ok(Object.isFrozen(snapshot.slots), 'snapshot.slots must be frozen');
+    assert.ok(
+      snapshot.groups.every((group) => Object.isFrozen(group)) &&
+        snapshot.slots.every((slot) => Object.isFrozen(slot)),
+      'snapshot members must be frozen',
+    );
   });
 
   it('6. duplicate study, duplicate asset and asset without a study fail closed', () => {

@@ -86,15 +86,23 @@ describe('NuClear P4.1.1 — workspace input integrity', () => {
     assert.deepEqual(snapshot.assets, [mockCtAsset, mockPetAsset]);
   });
 
-  it('2. getAsset returns an equal copy; mutating it never touches stored state', () => {
+  it('2. getAsset returns a deep-frozen value; mutation throws and never touches stored state', () => {
     const workspace = registeredWorkspace();
     const returned = workspace.getAsset(mockCtAsset.id);
     assert.deepEqual(returned, mockCtAsset);
+    assert.ok(Object.isFrozen(returned), 'getAsset must publish a frozen value');
+    assert.ok(Object.isFrozen(returned.metadata), 'nested asset metadata must be frozen');
 
-    const mutable = returned as { metadata: { rescaleSlope: number } };
-    mutable.metadata.rescaleSlope = 999;
+    const mutable = returned as unknown as { metadata: { rescaleSlope: number } };
+    assert.throws(
+      () => {
+        mutable.metadata.rescaleSlope = 999;
+      },
+      TypeError,
+      'mutating a published asset must throw in strict mode',
+    );
     assert.equal(workspace.getAsset(mockCtAsset.id).metadata.rescaleSlope, 1.0);
-    assert.equal(mockCtAsset.metadata.rescaleSlope, 1.0);
+    assert.equal(mockCtAsset.metadata.rescaleSlope, 1.0, 'the caller fixture must stay mutable');
   });
 
   it('3. NaN in geometry.origin[0] is refused without mutating state', () => {

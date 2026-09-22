@@ -5,11 +5,13 @@
  * `ViewGroup`/`ViewSlot` layout. It is not React state, a DOM tree or a
  * Cornerstone `RenderingEngine`, and it never pins RAM or VRAM (ADR-010 §1).
  * Registration validates the caller's original value fail-closed before any
- * state changes (C1); reads and `snapshot()` return JSON-serializable deep
- * copies, while unknown or duplicate workspace ids fail closed with a typed
- * `WorkspaceError`. Prepared-view provenance is cross-validated positionally
- * (C5) and slot binding is an explicit fail-closed operation (C6), both
- * raising a typed `PreparedViewError`.
+ * state changes (C1). Registered studies/assets are cloned, then deep-frozen;
+ * reads and `snapshot()` return those stored frozen values by identity, so a
+ * consumer cannot mutate canonical workspace state (ADR-011 §1). Unknown or
+ * duplicate workspace ids fail closed with a typed `WorkspaceError`.
+ * Prepared-view provenance is cross-validated positionally (C5) and slot
+ * binding is an explicit fail-closed operation (C6), both raising a typed
+ * `PreparedViewError`.
  */
 import type {
   AssetId,
@@ -29,6 +31,7 @@ import { PreparedViewRegistry } from '../prepared-view/registry.js';
 import { PreparedViewError } from '../prepared-view/errors.js';
 import { assertProvenanceCorrelation } from '../prepared-view/provenance-correlation.js';
 import { cloneSerializableValue } from './value-integrity.js';
+import { deepFreeze } from '../internal/deep-freeze.js';
 
 export interface ImagingWorkspaceSnapshot {
   readonly studies: readonly StudyReference[];
@@ -55,8 +58,9 @@ export class ImagingWorkspace {
 
   registerStudy(study: StudyReference): void {
     // Validate the caller's original value before touching any map/Set, so a
-    // refusal leaves the workspace exactly as it was (C1, fail-closed).
-    const registered = cloneSerializableValue(study, `study '${study.id}'`);
+    // refusal leaves the workspace exactly as it was (C1, fail-closed). The
+    // clone (never the caller's object) is frozen before it is stored.
+    const registered = deepFreeze(cloneSerializableValue(study, `study '${study.id}'`));
     if (this.studyById.has(study.id)) {
       throw new WorkspaceError(
         'WORKSPACE_DUPLICATE_STUDY',
@@ -70,8 +74,9 @@ export class ImagingWorkspace {
 
   registerAsset(asset: ImagingAsset): void {
     // Validate the caller's original value before touching any map, so a
-    // refusal leaves the workspace exactly as it was (C1, fail-closed).
-    const registered = cloneSerializableValue(asset, `asset '${asset.id}'`);
+    // refusal leaves the workspace exactly as it was (C1, fail-closed). The
+    // clone (never the caller's object) is frozen before it is stored.
+    const registered = deepFreeze(cloneSerializableValue(asset, `asset '${asset.id}'`));
     if (this.assetById.has(asset.id)) {
       throw new WorkspaceError(
         'WORKSPACE_DUPLICATE_ASSET',
@@ -116,6 +121,8 @@ export class ImagingWorkspace {
       provenance: view.provenance,
       lookupAsset: (assetId) => this.assetById.get(assetId),
     });
+    // The registry deep-freezes defensively after the duplicate check, so a
+    // hand-built view is frozen too and a refusal never freezes the caller.
     return this.preparedViews.register(view);
   }
 
@@ -148,39 +155,39 @@ export class ImagingWorkspace {
     return this.preparedViews.list();
   }
 
-  // Stored studies/assets were validated and cloned at registration, so a
-  // plain `structuredClone` is sufficient here and keeps the JSON-serializable
-  // semantics without re-walking the graph on every read.
+  // Stored studies/assets were validated, cloned and frozen at registration;
+  // reads return those same frozen values and only the ordering arrays are
+  // materialised afresh (and frozen) per call.
 
   getStudy(studyId: StudyId): StudyReference {
-    return structuredClone(this.requireStudy(studyId));
+    return this.requireStudy(studyId);
   }
 
   getAsset(assetId: AssetId): ImagingAsset {
-    return structuredClone(this.requireAsset(assetId));
+    return this.requireAsset(assetId);
   }
 
   listStudies(): readonly StudyReference[] {
-    return this.studyOrder.map((studyId) => structuredClone(this.requireStudy(studyId)));
+    return deepFreeze(this.studyOrder.map((studyId) => this.requireStudy(studyId)));
   }
 
   listAssets(): readonly ImagingAsset[] {
-    return this.assetOrder.map((assetId) => structuredClone(this.requireAsset(assetId)));
+    return deepFreeze(this.assetOrder.map((assetId) => this.requireAsset(assetId)));
   }
 
   snapshot(): ImagingWorkspaceSnapshot {
     const layout = this.slots.snapshot();
-    return {
+    return deepFreeze({
       studies: this.listStudies(),
       assets: this.listAssets(),
       groups: layout.groups,
       slots: layout.slots,
-      // Deliberate asymmetry (ADR-010 §1 / P4.3): studies, assets and slots are
-      // value-cloned, while prepared views are returned by reference so the
-      // shared `MedicalViewState` object identity stays observable. Do not
-      // "fix" this by cloning prepared views.
+      // Studies, assets and slots are frozen clones, while prepared views are
+      // returned by reference so the shared `MedicalViewState` object identity
+      // stays observable (ADR-010 §1 / ADR-011 §1). Freezing, not cloning,
+      // provides the immutability guarantee. Do not "fix" this by cloning.
       preparedViews: this.listPreparedViews(),
-    };
+    });
   }
 
   private requireStudy(studyId: StudyId): StudyReference {

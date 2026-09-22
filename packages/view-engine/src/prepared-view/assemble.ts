@@ -8,9 +8,17 @@
  *
  * Identity rule (deliberate): `state` and `provenance` are stored **by
  * reference** — no JSON clone, no spread of their contents. Only `links` and
- * `locks` are shallow-copied into new arrays. P4.3 shared-state groups rely on
- * the same `MedicalViewState` object reference surviving across views, so
- * cloning here would silently break observability of identity.
+ * `locks` are copied into new arrays. P4.3 shared-state groups rely on the
+ * same `MedicalViewState` object reference surviving across views, so cloning
+ * here would silently break observability of identity.
+ *
+ * Immutability rule (ADR-011 §1/§4): the assembled `PreparedView` and every
+ * value reachable from it (`links`, `locks`, `provenance`, the referenced
+ * `state` and `cachedPreviewReference`) are deep-frozen **in place** at
+ * publication, so a consumer cannot mutate canonical state through the
+ * reference. Freezing is applied after all validation, so a refused assembly
+ * never freezes the caller's input. P4.3 replaces shared state atomically; it
+ * does not mutate these frozen values.
  *
  * `sourceViewId` is derived from `MedicalViewState.id`; there is deliberately
  * no separate input that could disagree with the state it describes.
@@ -27,6 +35,7 @@ import type {
   ViewProvenance,
 } from '@nuclear/shared-types';
 import { PreparedViewError } from './errors.js';
+import { deepFreeze } from '../internal/deep-freeze.js';
 
 export interface AssemblePreparedViewInput {
   readonly preparedViewId: PreparedViewId;
@@ -114,7 +123,7 @@ export function assemblePreparedView(input: AssemblePreparedViewInput): Prepared
   const resolvedLocks = locks ?? [];
   assertDuplicateLocks(preparedViewId, resolvedLocks);
 
-  return {
+  const view: PreparedView = {
     id: preparedViewId,
     sourceViewId,
     state,
@@ -125,4 +134,5 @@ export function assemblePreparedView(input: AssemblePreparedViewInput): Prepared
       ? {}
       : { cachedPreviewReference: input.cachedPreviewReference }),
   };
+  return deepFreeze(view);
 }

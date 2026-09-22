@@ -184,7 +184,7 @@ are ratified and must be completed **before P4.3**, in this order:
 | C8 | P4.T | `tests/**` brought into the `tsc` graph | `npm run typecheck` compiles tests; an intended TS error in a test fails the gate |
 | C1 | P4.1.1 | Workspace input integrity: reject non-finite / non-JSON-safe values instead of JSON-normalising them | `NaN`/`±Infinity`/`Date`/`Map`/`Set`/`bigint` refused with a typed path-naming error; no mutation on refusal; valid payload round-trips |
 | C5 | P4.2.2 | Provenance ↔ registered-asset cross-validation (positional 1:1 per ADR-010 §7.3) | PET view + CT fingerprint / series mismatch / length mismatch refused; coherent pair accepted |
-| C4 | P4.2.1 | Published-DTO immutability + private controlled shared-state holder (ADR-011) | published DTOs deep-frozen; external mutation cannot alter canonical state; controlled replacement is atomic |
+| C4 | P4.2.1 | Published-DTO immutability (ADR-011 §1/§2/§4); the private shared-state holder with atomic replacement (§3) lands with P4.3 | published DTOs deep-frozen at assembly/registration; external mutation cannot alter canonical state; identity preserved |
 | C3 | P4.0.1 | Co-reference contract honesty + snapshot↔asset↔series↔fingerprint check | negative series-mismatch test + positive different-digest/same-FoR test; ADR/piano wording corrected |
 | C2 | P4.1.2 | Slot/group rule 1–4 groups, default 4, ≥1 enforced | zero groups refused; reduced coherent layout accepted; ADR-010 §7.1 aligned |
 | C6 | P4.2.3 | Explicit fail-closed slot→PreparedView binding (view may exist unbound) | binding a registered view succeeds; unknown view / occupied slot refused |

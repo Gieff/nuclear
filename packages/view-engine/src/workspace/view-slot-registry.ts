@@ -5,6 +5,12 @@
  * PET, GENERIC, FUSION (zero groups is refused; the default factory allocates
  * four). A slot carries semantic binding state only; it never pins RAM or VRAM
  * (ADR-010 §2); illegal transitions fail closed.
+ *
+ * Immutability (ADR-011 §1): the registry stores deep-frozen canonical
+ * group/slot values and every read (`getSlot`/`getGroup`/`list*`/`snapshot`)
+ * and every transition (`bind`/`markPrepared`/`markUnavailable`/`unbind`/
+ * `setDemand`) returns the stored frozen value by identity. A caller cannot
+ * mutate canonical slot state; changes only happen through these transitions.
  */
 import type {
   PreparedViewId,
@@ -17,6 +23,7 @@ import type {
   ViewSlotStatus,
 } from '@nuclear/shared-types';
 import { WorkspaceError } from './errors.js';
+import { deepFreeze } from '../internal/deep-freeze.js';
 
 export const VIEW_SLOT_ROLES = ['MIP', 'PET', 'GENERIC', 'FUSION'] as const;
 export const MAX_VIEW_GROUPS = 4;
@@ -145,7 +152,7 @@ export function createDefaultViewSlotLayout(): ViewSlotLayout {
   return { groups, slots };
 }
 
-/** Owns the logical slot layout; every read returns fresh immutable copies. */
+/** Owns the logical slot layout; every read returns the stored frozen value. */
 export class ViewSlotRegistry {
   private readonly groupById = new Map<ViewGroupId, ViewGroup>();
   private readonly slotById = new Map<ViewSlotId, ViewSlot>();
@@ -158,12 +165,12 @@ export class ViewSlotRegistry {
     assertValidLayout(layout);
     const registry = new ViewSlotRegistry();
     for (const group of layout.groups) {
-      const copy = cloneGroup(group);
+      const copy = deepFreeze(cloneGroup(group));
       registry.groupById.set(copy.id, copy);
       registry.groupOrder.push(copy.id);
     }
     for (const slot of layout.slots) {
-      const copy = cloneSlot(slot);
+      const copy = deepFreeze(cloneSlot(slot));
       registry.slotById.set(copy.id, copy);
       registry.slotOrder.push(copy.id);
     }
@@ -175,19 +182,19 @@ export class ViewSlotRegistry {
   }
 
   listGroups(): readonly ViewGroup[] {
-    return this.groupOrder.map((groupId) => cloneGroup(this.requireGroup(groupId)));
+    return deepFreeze(this.groupOrder.map((groupId) => this.requireGroup(groupId)));
   }
 
   listSlots(): readonly ViewSlot[] {
-    return this.slotOrder.map((slotId) => cloneSlot(this.requireSlot(slotId)));
+    return deepFreeze(this.slotOrder.map((slotId) => this.requireSlot(slotId)));
   }
 
   getGroup(groupId: ViewGroupId): ViewGroup {
-    return cloneGroup(this.requireGroup(groupId));
+    return this.requireGroup(groupId);
   }
 
   getSlot(slotId: ViewSlotId): ViewSlot {
-    return cloneSlot(this.requireSlot(slotId));
+    return this.requireSlot(slotId);
   }
 
   bind(slotId: ViewSlotId, preparedViewId: PreparedViewId): ViewSlot {
@@ -238,12 +245,13 @@ export class ViewSlotRegistry {
   }
 
   snapshot(): ViewSlotLayout {
-    return { groups: this.listGroups(), slots: this.listSlots() };
+    return deepFreeze({ groups: this.listGroups(), slots: this.listSlots() });
   }
 
   private replace(slot: ViewSlot): ViewSlot {
-    this.slotById.set(slot.id, slot);
-    return cloneSlot(slot);
+    const frozen = deepFreeze(slot);
+    this.slotById.set(frozen.id, frozen);
+    return frozen;
   }
 
   private requireGroup(groupId: ViewGroupId): ViewGroup {
