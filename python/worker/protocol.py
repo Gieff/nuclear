@@ -35,8 +35,8 @@ PROTOCOL_VERSION_MISMATCH = -32001
 SOURCE_UNAVAILABLE = -32010
 OPERATION_NOT_IMPLEMENTED = -32011
 #: Refused registration: a scientific validation (same Frame of Reference,
-#: degenerate landmarks, improper/reflection fit) failed fail-closed. The
-#: reserved code is pending phase-owner ratification (Phase 2B.2).
+#: degenerate landmarks, improper/reflection fit) failed fail-closed. Ratified
+#: by the phase owner on 2026-09-22 (2B.0 R10).
 REGISTRATION_INVALID = -32012
 
 STANDARD_ERROR_CODES = frozenset(

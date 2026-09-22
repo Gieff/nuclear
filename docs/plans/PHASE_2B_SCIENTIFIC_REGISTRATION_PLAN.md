@@ -135,6 +135,12 @@ protocol and the numeric degeneracy bound remain open.
 - **R9** — lockstep `protocolVersion "1.0"`; `nuclear.registration` is a required
   handshake operation; pre-2B.1 workers are incompatible. This is a recorded
   **compatibility decision** to surface in the release changelog.
+- **R10 — reserved code `-32012` (ratified 2026-09-22).** `REGISTRATION_INVALID`
+  (`-32012`, "Registration invalid") is ratified as the reserved scientific
+  refusal for `nuclear.registration`, distinct from `-32602` (schema) and `-32011`
+  (unimplemented). Its `data` carries exactly `{diagnostic, mode, reason}` with
+  `reason ∈ {same-frame-of-reference, degenerate-landmarks, reflection-required}`
+  and **never** a transform/matrix. Documented in Python and TypeScript.
 
 **Ratified fixture criteria — NOT universal clinical tolerances.**
 
@@ -158,16 +164,52 @@ protocol and the numeric degeneracy bound remain open.
 
 **Still `[TO RATIFY]`.**
 
-- **2B-T2 / R4 — MI determinism (P2B.3).** Not ratifiable until the
-  deterministic MI protocol is fixed: SimpleITK version, initialisation, seed,
-  metric sampling, maximum iterations, stopping criterion and multi-thread
-  behaviour. Does **not** block 2B.2.
-- **2B-T4 / R6 — numeric degeneracy bound.** Structural refusals (`< 3` points,
-  coincident points, collinear points) are **ratified**. The condition-number
-  bound (`κ = 1e6` is only a **candidate**) stays `[TO RATIFY]` until its matrix,
-  centring/normalisation, singular-value ratio, near-zero handling and scale
-  dependence are defined and justified by a degeneracy sensitivity test — to be
-  ratified after 2B.2 review/QA.
+- **2B-T4 / R6 — degeneracy classification (amended 2026-09-22).** Structural
+  degeneracy is **ratified**: fewer than 3 points, coincident points, and **every
+  mathematically collinear set must be refused as `degenerate-landmarks`**. The
+  current implementation detects collinearity with an **exact** `σ₂ ≤ 0` test,
+  which misses arbitrary (non-axis-aligned) collinear sets — float round-off gives
+  `σ₂ ≈ 1e-16`, so they are still refused but mis-classified
+  `reflection-required` instead of `degenerate-landmarks` (fail-closed, wrong
+  **reason** only). To ratify, the rule must be:
+  - **scale-aware** (relative to the landmark spread / physical mm scale) and
+    **stable** across orientations;
+  - the candidate `κ = 1e6` (or a singular-value-ratio bound) remains a
+    **candidate, not fixed** — its matrix, centring/normalisation, near-zero
+    handling and scale dependence must be defined and justified by a degeneracy
+    sensitivity test;
+  - a **diagonal-collinear regression test** is added **after** ratification,
+    asserting the stable `degenerate-landmarks` classification.
+  - The algorithm must **not** be silently changed to force the reason before
+    this is ratified.
+- **2B-T2 / R4 — deterministic MI protocol (proposed; must be ratified before
+  2B.3).** The resolved environment is **SimpleITK 2.5.6** (declared floor
+  `>=2.3.0`); the plan is to pin the effective version and freeze the protocol so
+  repeated runs are bitwise deterministic. Candidate protocol (all values are
+  **proposals**, not yet fixed):
+  - **Version** — pin exactly `2.5.6`; any bump re-runs the determinism fixture.
+  - **Transform** — `sitk.Euler3DTransform` (rigid, 6 DOF).
+  - **Initialisation** — `sitk.CenteredTransformInitializer` from image
+    **geometry** (origin/spacing/direction), never intensity moments, so it is
+    deterministic and intensity-independent.
+  - **Metric** — Mattes Mutual Information, candidate `numberOfHistogramBins = 50`.
+  - **Sampling** — for the curated phantom, `MetricSamplingStrategy = NONE`
+    (all voxels) so there is **no RNG at all** and determinism is structural. A
+    production `RANDOM` strategy (fixed `SetMetricSamplingSeed` +
+    `SetMetricSamplingPercentage`) is a **separate** decision to ratify; until
+    then the phantom uses NONE.
+  - **Interpolator** — `sitk.sitkLinear`.
+  - **Optimiser** — `sitk.RegularStepGradientDescent` with candidate
+    `learningRate`, `numberOfIterations = 200`, `minimalStepLength` and
+    `convergenceWindowSize` values.
+  - **Stopping criterion** — a fixed iteration budget plus the optimiser
+    convergence window; the effective iteration count is recorded in provenance.
+  - **Multi-thread** — force `sitk.ProcessObject.SetGlobalDefaultNumberOfThreads(1)`
+    before optimisation, so thread scheduling cannot affect the result.
+  - **Determinism acceptance** — two runs on the same fixture must be
+    **bitwise-identical**; provenance records the SimpleITK version and the
+    effective parameters. A looser `≤ 1e-9` float comparison is **not** used until
+    this protocol is ratified.
 
 ### Tolerance candidates (historical — superseded by the record above)
 

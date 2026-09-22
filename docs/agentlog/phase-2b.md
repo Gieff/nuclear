@@ -373,3 +373,46 @@ Mutual-Information registration** with the ratified deterministic MI protocol
 (R4). Do not start 2B.3 before R4 is fixed, and do not consume this evidence in
 P4.4b until 2B.4 (validity/`errorMarginMm`/fail-closed) is complete and
 ADR-012 is **Accepted**.
+
+## Addendum — Phase Owner Verdict on 2B.2 (2026-09-22)
+
+The phase owner independently re-verified slice 2B.2 and approved commit
+`335926e` as **PASS — technical and scientific, manual Procrustes path**, with a
+limited reservation on the classification of *near*-collinear degeneracies.
+
+Owner-reported independent evidence: focused Python **30/30**; TS real-worker
+**4/4**; `npm run typecheck` clean; `npm run build` clean; Git tree clean.
+
+### Ratified
+- **`-32012 REGISTRATION_INVALID` is ratified** (now recorded as **R10** in the
+  plan): a scientific refusal distinct from `-32602`/`-32011`, carrying exactly
+  `{diagnostic, mode, reason}` and never a transform. Source comments updated
+  from "pending" to "ratified 2026-09-22 (2B.0 R10)".
+
+### R6 amended (not fixed)
+- **Structural degeneracy is ratified**: `<3` points, coincident points, and
+  **every mathematically collinear set must be `degenerate-landmarks`**.
+- The candidate `κ = 1e6` **remains a candidate, not fixed**. The QA finding
+  (a diagonal exactly-collinear set is refused but classified
+  `reflection-required` because `σ₂ ≈ 1e-16 > 0`) is a **diagnostic
+  classification** defect, not a safety defect: the worker never returns an
+  invalid transform.
+- Before ratification, R6 must require a **scale-aware and stable**
+  classification (relative to landmark spread / physical mm scale), defined
+  matrix, centring/normalisation, near-zero handling and scale dependence,
+  justified by a degeneracy sensitivity test. A **diagonal-collinear regression
+  test** is added **after** ratification.
+- The algorithm must **not** be silently changed to force the reason.
+
+### R4 — next operational block
+- The deterministic MI protocol must be **defined and ratified before 2B.3**.
+  A concrete proposal is recorded in the plan §2B.0 (`SimpleITK` pinned `2.5.6`;
+  `Euler3DTransform`; geometry-based `CenteredTransformInitializer`; Mattes MI;
+  `MetricSamplingStrategy = NONE` for the phantom (no RNG); linear interpolator;
+  RegularStepGradientDescent; fixed iteration budget + convergence window;
+  `SetGlobalDefaultNumberOfThreads(1)`; bitwise-identical acceptance). All values
+  are proposals pending ratification.
+
+### Standing constraints
+- P4.4b stays blocked until **2B.4** is complete and **ADR-012 is Accepted**.
+- No push without explicit instruction.

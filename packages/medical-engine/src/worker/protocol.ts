@@ -45,7 +45,7 @@ export const NUCLEAR_OPERATION_NOT_IMPLEMENTED = -32011;
 /**
  * Reserved scientific-refusal code for `nuclear.registration` (Phase 2B.2):
  * same Frame of Reference, degenerate landmarks or an improper/reflection fit.
- * Pending phase-owner ratification.
+ * Ratified by the phase owner on 2026-09-22 (2B.0 R10).
  */
 export const NUCLEAR_REGISTRATION_INVALID = -32012;
 
