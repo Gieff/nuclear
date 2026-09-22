@@ -2074,6 +2074,37 @@ Ratify ADR-012 and the Phase 2B tolerances/operation names, then proceed to
 **P4.6** (surfaces and layout) as the next Phase 4 slice; **P4.4b** follows once
 ADR-012 is Accepted and Phase 2B can produce a `SpatialTransform`.
 
+---
+
+## Preparation Review Follow-up — ADR-012 stays **Proposed** (2026-09-22)
+
+A documentation review kept ADR-012 **Proposed** and asked for four points to be
+clarified before ratification. The docs were refined (no code changed):
+
+- **R-1 — Tolerance semantics.** ADR-012 §5 now separates the worker's advisory
+  `errorMarginMm` (evidence) from the caller's `toleranceMm` (acceptance
+  threshold): tolerance blocks **link admission** (a single evaluation), never
+  each propagation step. PHASE_2B was aligned to the same wording; new **OD-6**
+  covers a transform with no `errorMarginMm`.
+- **R-2 — Relative "differential domain".** The accepted `InterStudyLink`
+  contract defines no differential domain for `relative`; ADR-012 §6 no longer
+  claims a relative out-of-domain behaviour. P4.4b ships `transformed` first and
+  defers `relative` until R-2 is decided (a contract extension would need its own
+  ADR + validator + fixture).
+- **R-3 — Mandatory DAG.** ADR-012 §1 now marks the DAG (which **forbids
+  bidirectional links**) as a decision **requiring explicit ratification**, not
+  an assumed restriction.
+- **R-4 — Math ownership.** ADR-012 OD-2 keeps the single owner of
+  `applySpatialTransform` **open**, listing candidates and the invariant-7
+  constraint (no duplicated geometry science in `view-engine`).
+
+ADR-012 Status remains **Proposed**; its "Ratification Checklist" records that
+none of R-1..R-4 is yet met, and the Phase 4 plan's P4.4b slice now states it
+depends on R-1..R-4 being resolved.
+
+Next: ratify R-1..R-4 (or revise R-2/R-3 into a superseding decision), then
+proceed to **P4.6**.
+
 
 
 

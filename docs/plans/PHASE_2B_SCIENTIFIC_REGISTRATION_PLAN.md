@@ -88,8 +88,8 @@ One `SpatialTransform`:
 - `units: 'mm'`;
 - `provenance` — method (`dicom-registration` | `rigid-coregistration` |
   `manual-alignment` | `identity`), `workerVersion`, timestamp;
-- `validity` — `isValid`, `errorMarginMm` (the declared residual),
-  `outOfDomainBehavior`.
+- `validity` — `isValid`, `errorMarginMm` (**the worker's advisory registration
+  residual — evidence, not an acceptance decision**) and `outOfDomainBehavior`.
 
 No new cross-package shape is introduced unless a genuine gap is found; if one
 appears it is added to `shared-types` with a validator and a fixture (ADR-010 §1).
@@ -120,8 +120,19 @@ start the discussion (declared, versioned, tested) — not final:
   collinear points, or a condition number above a declared bound.
 
 `toleranceMm` on a link stays **caller-declared** (P4.4 already enforces finite
-`≥ 0`); the worker's `errorMarginMm` is advisory evidence, not an implicit
-propagation tolerance (ADR-012 §5).
+`≥ 0`). The worker **never** applies `toleranceMm` and never accepts or rejects a
+link: it reports `errorMarginMm` as advisory evidence. The consumer
+(`view-engine`) compares `errorMarginMm` to the caller's `toleranceMm` at the
+**link-admission gate** (ADR-012 §5, OD-6); tolerance does **not** gate each
+propagation step. Until **ADR-012 R-1 / OD-6** are ratified, the admission policy
+— including the handling of a transform with no `errorMarginMm` — is provisional.
+
+**[Contract gap — ADR-012 R-2 / OD-4]** The `relative` mode's
+`navigationDifferentialMm` has **no defined differential domain** in the accepted
+`InterStudyLink` contract. Phase 2B produces a `SpatialTransform` (the
+`transformed` mode); it neither defines nor extends the relative vocabulary. Any
+relative-domain field would be a `shared-types` extension with its own ADR,
+validator and fixture.
 
 ## Worker / IPC & Bridge Policy
 

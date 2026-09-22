@@ -4,6 +4,7 @@
 
 **Proposed** — must be ratified (or revised) before slice **P4.4b** is implemented.
 No code in `packages/**` may depend on this ADR until its Status is **Accepted**.
+The ratification checklist (**R-1..R-4**, below) is **not yet met**.
 
 ## Date
 
@@ -56,6 +57,13 @@ section 9 lists the items that still require explicit ratification.
 - Multiple incoming edges are allowed (a view may be a target of more than one
   link), but each propagation traverses forward only.
 
+> **Requires explicit ratification (R-3).** A mandatory DAG **forbids
+> bidirectional links**: two views that must scroll each other (A ↔ B) cannot be
+> expressed as two opposite links. This is a deliberate limitation, not an
+> assumed one; it must be ratified — or replaced by a bidirectional model with a
+> causality guard — before P4.4b is implemented. If bidirectional links are
+> required, the cycle rule of this section is wrong and must be revised.
+
 ### 2. Propagation is explicit, never an observer/notify chain
 
 - There is **no** subscription/observer/event chain (consistent with
@@ -91,19 +99,41 @@ section 9 lists the items that still require explicit ratification.
 - A missing/invalid transform or a malformed differential is refused; it is
   never silently treated as co-referenced.
 
-### 5. Tolerance
+### 5. Tolerance — a link-admission gate, not per-step propagation
 
-- `toleranceMm` (validated in P4.4 as finite and `≥ 0`) is the **declared
-  registration error margin**. No default is invented.
-- When the computed residual/offset exceeds `toleranceMm`, the engine refuses to
-  assert an anatomical correspondence and the outcome is governed by
-  `outOfDomainBehavior` (section 6). Tolerance is never used as a silent fudge
-  factor.
+`toleranceMm` and `errorMarginMm` are **different values owned by different
+parties** and must not be conflated:
+
+- `SpatialTransform.validity.errorMarginMm` is the **scientific worker's advisory
+  registration residual** (evidence). The worker neither accepts nor rejects any
+  link; it reports an estimate.
+- `InterStudyLink.toleranceMm` is the **caller-declared acceptance threshold**
+  for that link (P4.4 already validates it as finite and `≥ 0`). No default is
+  invented.
+
+**Proposed admission gate (evaluated once, at link registration — OD-6).** For a
+`transformed` link whose transform carries a defined `errorMarginMm`, the engine
+refuses to register the link when `errorMarginMm > toleranceMm`
+(`LINK_REGISTRATION_ERROR_EXCEEDS_TOLERANCE`). A transform with **no**
+`errorMarginMm` is handled by an explicit policy to ratify (accept with a
+recorded warning, or refuse). This admission gate is the **only** place
+`toleranceMm` can block.
+
+Propagation itself is deterministic and does **not** re-evaluate `toleranceMm`
+per step: once a link is admitted, each target update is the exact mapping of
+section 4. The per-step out-of-domain decision (section 6) concerns the target
+domain, not the registration error.
+
+> This corrects the earlier draft wording that implied an over-`toleranceMm`
+> residual blocks every propagation step. That conflated the worker's advisory
+> evidence with the caller's acceptance threshold; PHASE_2B and this ADR are now
+> aligned (R-1).
 
 ### 6. Out-of-domain behaviour
 
 Applied when the mapped target coordinate falls outside the target volume bounds
-(for `transformed`) or beyond the declared differential domain (for `relative`):
+(for `transformed`). For `relative` the boundary is **not defined by the current
+contract** (see the gap note below):
 
 - `clamp`: clamp the target to its nearest in-domain location; the target still
   moves and the result is flagged as clamped.
@@ -114,6 +144,17 @@ Applied when the mapped target coordinate falls outside the target volume bounds
 The link declares the policy; there is no implicit default (P4.4 already refuses
 an unknown value). The target volume bounds used here are **consumed** from the
 registered asset geometry evidence, not recomputed.
+
+> **Relative mode is under-specified — a contract gap (R-2).**
+> `navigationDifferentialMm` is a bare mm vector; the accepted `InterStudyLink`
+> contract defines **neither** a "differential domain" **nor** the frame
+> (source LPS vs target LPS) in which the offset is expressed. Its out-of-domain
+> boundary is therefore undefined today. This ADR does **not** claim a relative
+> out-of-domain behaviour: **P4.4b implements `transformed` mode first**, and
+> `relative` mode is deferred until OD-4 is ratified — and, if a valid range is
+> required, until `shared-types` gains that field with a validator and fixture
+> (its own ADR). Until then, applying a `relative` link must fail closed rather
+> than guess a domain.
 
 ### 7. Locks win
 
@@ -151,18 +192,57 @@ a locked target fails closed and leaves every view unchanged.
   `setViewSpatial(originViewId, nextSpatial, { epoch })` that both replaces the
   origin projection and propagates, versus a two-step replace-then-propagate).
   Must remain an explicit, atomic API (ADR-011 §3).
-- **OD-2 — Math ownership.** Where the single `applySpatialTransform(matrix,
-  SpatialState)` / differential-offset implementation lives. Candidate:
-  `@nuclear/medical-engine` (pure helper), consumed by `view-engine`.
-  `@nuclear/shared-types` is zero-runtime and cannot host it. This must not
-  duplicate geometry science (invariant 7 / non-simplification law).
+- **OD-2 — Math ownership (OPEN, R-4).** Where the single
+  `applySpatialTransform(matrix, SpatialState)` (and, when ratified,
+  differential-offset) implementation lives. Candidates and their costs:
+  - `@nuclear/medical-engine` pure helper, consumed by `view-engine`
+    (preferred: keeps coordinate science out of `view-engine`; adds a package
+    dependency edge that already exists);
+  - a new pure module in `shared-types` — **not viable**, `shared-types` is
+    zero-runtime;
+  - `view-engine`-local math — **rejected** by invariant 7 unless it provably
+    composes an owned primitive rather than re-deriving geometry.
+  This must be ratified and must not duplicate geometry science
+  (invariant 7 / non-simplification law).
 - **OD-3 — Out-of-domain bounds source.** The exact evidence field used for the
   target volume bounds (from the registered `ImagingAsset.geometry`), and whether
   a resliced domain differs from the axis-aligned bounds.
-- **OD-4 — Relative-mode semantics.** The precise frame of
-  `navigationDifferentialMm` (source LPS vs target LPS) and its sign convention.
+- **OD-4 — Relative-mode semantics + differential domain (R-2).** The precise
+  frame of `navigationDifferentialMm` (source LPS vs target LPS), its sign
+  convention, and whether a valid/differential domain exists in the contract at
+  all (currently it does not). Deferred: `relative` mode is not implemented until
+  this is ratified; a contract extension would need its own ADR + validator +
+  fixture.
 - **OD-5 — Error taxonomy.** Final `LinkError` codes for cycle, locked target,
   out-of-domain clamp/hide/warn, tolerance exceeded, and unknown origin.
+- **OD-6 — Missing `errorMarginMm` admission policy.** Whether a `transformed`
+  link whose transform carries no `errorMarginMm` is accepted (with a recorded
+  warning) or refused, given the admission gate of section 5.
+
+## Ratification Checklist (NOT yet met — Status stays **Proposed**)
+
+- **R-1 — Tolerance semantics.** Ratify the two-gate model of section 5
+  (`errorMarginMm` = advisory worker evidence; `toleranceMm` = caller-declared
+  admission threshold; tolerance blocks **admission**, not per-step propagation)
+  and the OD-6 policy for a missing `errorMarginMm`. PHASE_2B must remain
+  consistent with the ratified wording.
+- **R-2 — Relative "differential domain".** The current `InterStudyLink`
+  contract does not define a differential domain for `relative`. Decide either
+  (a) defer `relative` mode entirely (P4.4b ships `transformed` only), or
+  (b) add an explicit valid-range field to `shared-types` (own ADR + validator +
+  fixture) and only then define its out-of-domain behaviour. Until decided,
+  `relative` application fails closed.
+- **R-3 — Mandatory DAG.** Ratify the restriction that a link closing a directed
+  cycle is refused (this **forbids bidirectional A ↔ B**), or replace it with a
+  bidirectional model guarded by the causality token. This is a product
+  capability decision, not an implementation detail.
+- **R-4 — Math ownership.** Ratify OD-2 (single owner of
+  `applySpatialTransform`), so `view-engine` composes rather than re-derives
+  geometry (invariant 7).
+
+The phase owner records ratification by promoting this ADR to **Accepted** (or by
+revising R-2/R-3 into a superseding decision). No P4.4b code may assume a
+resolution to R-1..R-4.
 
 ## Conditions That Might Warrant a Revision
 

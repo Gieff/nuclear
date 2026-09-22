@@ -148,9 +148,11 @@ P4.4 validates an inter-study link but deliberately refuses to apply it, because
 the two views live in different `FrameOfReferenceUID`s and must not share
 `SpatialState`. P4.4b adds the relative application:
 
-- `applyInterStudyLink` registers a `kind: 'inter-study'` link (relative or
-  transformed) after P4.4 eligibility, and refuses a link that would close a
-  directed cycle (DAG topology, ADR-012 §1).
+- `applyInterStudyLink` registers a `kind: 'inter-study'` link after P4.4
+  eligibility, and refuses a link that would close a directed cycle (DAG
+  topology). **Both are contingent on ADR-012 ratification: R-3** (a mandatory
+  DAG forbids bidirectional links) **and R-2** (relative mode has no defined
+  differential domain — P4.4b ships `transformed` first and defers `relative`).
 - Propagation is an **explicit** engine operation (no observer/notify chain):
   given an origin view’s new `SpatialState`, it walks the DAG forward and
   regenerates each target’s frozen projection through the ADR-011 §3 atomic
@@ -159,20 +161,25 @@ the two views live in different `FrameOfReferenceUID`s and must not share
 - Causality: each propagation carries an origin token and visits each view at
   most once, so chains of 3–4 views terminate (ADR-012 §3).
 - Locks: a `StateLock` on a target’s `spatial` refuses propagation (P4.5).
-- `toleranceMm` and `outOfDomainBehavior` (`clamp`/`hide`/`warn`) are honoured
-  with no invented default; the matrix/offset application is a single owned pure
-  function consumed (not re-implemented) by `view-engine` (ADR-012 §4/§5/§6,
-  Open Decisions OD-2/OD-4).
+- `errorMarginMm` (worker evidence) is compared to the caller’s `toleranceMm`
+  once at the **link-admission gate**; propagation is deterministic and does not
+  re-check tolerance (ADR-012 §5, OD-6, R-1). `outOfDomainBehavior`
+  (`clamp`/`hide`/`warn`) applies to `transformed` only until R-2 is decided.
+  The matrix application is a single owned pure function consumed (not
+  re-implemented) by `view-engine` (ADR-012 §4, OD-2, R-4).
 
-Acceptance evidence: positive transformed and relative propagation over curated
-fixtures; cycle/self-loop refusal; locked-target refusal; out-of-domain
-`clamp`/`hide`/`warn`; 3–4 view chains terminate and are deterministic and
-idempotent; every refusal leaves all views and groups unchanged; no
-`SharedStateGroup` for an inter-study link.
+Acceptance evidence: positive `transformed` propagation over curated fixtures
+(`relative` deferred pending ADR-012 R-2); cycle/self-loop refusal;
+locked-target refusal; out-of-domain `clamp`/`hide`/`warn`; 3–4 view chains
+terminate and are deterministic and idempotent; a transform whose
+`errorMarginMm` exceeds `toleranceMm` is refused at admission; every refusal
+leaves all views and groups unchanged; no `SharedStateGroup` for an inter-study
+link.
 
-P4.4b depends on P4.4, an **Accepted** ADR-012 and the Phase 2B `SpatialTransform`
-evidence (`docs/plans/PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md`). It is planned
-only; no P4.4b code exists as of the P4.5/C5a close.
+P4.4b depends on P4.4, an **Accepted** ADR-012 (i.e. R-1..R-4 resolved) and the
+Phase 2B `SpatialTransform` evidence
+(`docs/plans/PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md`). It is planned only; no
+P4.4b code exists as of the P4.5/C5a close.
 
 ## Fixture and Test Policy
 
