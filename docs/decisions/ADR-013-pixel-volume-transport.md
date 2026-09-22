@@ -119,36 +119,66 @@ yet accepted constants.
   count, geometric digest, series/FoR), mirroring the Phase 4 provenance ↔ asset
   cross-validation (C5), before the payload reaches the renderer.
 
-### 6. Limits (**OD-B — proposed values `[TO RATIFY]`**)
+### 6. Limits (**OD-B — exact accounting; values `[TO RATIFY]`**)
 
-Concrete, declared limits; **no reliance on filesystem or RAM defaults**.
+**Two distinct budgets, never conflated.**
 
-| Limit | Proposed value | Rationale |
+**(a) Tracked transport payloads** — the bytes of temp files the worker has
+produced and is tracking. This is **not** an RSS estimate.
+
+| Limit | Proposed value | Meaning |
 | --- | --- | --- |
-| `MAX_VOXELS_PER_VOLUME` | `2^28 = 268_435_456` | supports 512×512×1024 or 1024×1024×256 |
+| `MAX_VOXELS_PER_VOLUME` | `2^28 = 268_435_456` | per decoded volume |
 | `MAX_BYTES_PER_VOXEL` | `4` (float32) | largest accepted element type |
-| `MAX_PAYLOAD_BYTES` | `2^30 = 1_073_741_824` (1 GiB) = voxel cap × 4 | derived, not filesystem/RAM |
-| `MAX_REQUEST_PEAK_BYTES` | `2 GiB` | decode + serialize + hash working set ≈ 2× payload |
-| `MAX_RESIDENT_PAYLOADS` | `2` | concurrent live handles per worker |
-| `MAX_WORKER_AGGREGATE_BYTES` | `4 GiB` | resident payloads + in-flight decode |
+| `MAX_PAYLOAD_BYTES` | `2^30 = 1_073_741_824` (1 GiB) | per temp payload (= voxel cap × 4) |
+| `MAX_RESIDENT_PAYLOADS` | `2` | **active, non-expired** handles |
+| `MAX_TRACKED_PAYLOAD_BYTES` | `4 GiB` | sum of tracked temp-payload bytes (active + not-yet-swept expired) |
+
+**(b) Registration working set** — process-level, for **one** MI registration
+request (this replaces the ambiguous `MAX_REQUEST_PEAK_BYTES`):
+
+```
+estimate = bytesPerVoxel × (V_fixed + V_moving) × REGISTRATION_PYRAMID_OVERHEAD_FACTOR
+```
+
+with `REGISTRATION_PYRAMID_OVERHEAD_FACTOR = 3` (covers the full-resolution
+SimpleITK `Float32` images, the multi-resolution pyramid at shrink `[4, 2, 1]`,
+physical-unit smoothing buffers, interpolator and optimizer working arrays),
+checked against **`MAX_REGISTRATION_WORKING_SET_BYTES = 8 GiB`** by a
+**pre-flight estimate before loading**. Two maximum volumes (1 GiB each,
+float32) estimate to `2 GiB × 3 = 6 GiB ≤ 8 GiB` and are allowed; the earlier
+`2 GiB` figure silently ignored the pyramid and is withdrawn.
+
+**(c) Concurrency.** The worker is single-threaded and **serializes** registration
+requests (R4 forces 1 thread and determinism), so **at most one registration
+working set** exists at a time; concurrent transport requests are serialized and
+bounded by the tracked-payload budget. `MAX_RESIDENT_PAYLOADS` bounds live
+handles, not concurrent registrations.
 
 **Behaviour when a limit is exceeded:** fail closed with
-`VOLUME_LIMIT_EXCEEDED`, refusing **before** allocating where the grid is known
-from metadata (otherwise as soon as the size is known). **Never** truncate,
-downsample, subsample, or partially load.
+`VOLUME_LIMIT_EXCEEDED` (reason `voxel-limit | payload-limit |
+tracked-payload-limit | working-set-limit`), refusing **before** allocating where
+the grid is known from metadata (otherwise as soon as the size is known).
+**Never** truncate, downsample, subsample, or partially load.
 
-### 7. Lifecycle, cleanup, timeout, cancellation (**OD-C — proposed values `[TO RATIFY]`**)
+**Profile, not clinical constant.** These are the **v1 deployment profile**;
+changing them requires a new ratified profile, never an implicit edit.
+
+### 7. Lifecycle, cleanup, timeout, cancellation (**OD-C — ratified with the precision below**)
 
 - **Temp root / permissions:** worker-created, owner-only (`0700`); payload files
   `0600`. The bridge reads a file only after canonical-containment validation.
 - **Atomic write** (§2) then descriptor; no handle exists until the file is
   complete and hashed.
-- **TTL:** `HANDLE_TTL_SECONDS = 300` (5 min). After TTL a handle is **expired**;
-  a sweeper deletes the file and the bridge fails closed on use.
+- **TTL:** `HANDLE_TTL_SECONDS = 300` (5 min), **starting at descriptor
+  publication** (not at request receipt). The TTL is a **declared v1 deployment
+  policy profile**, not implicit modifiable behaviour. It is **checked on every
+  bridge read** (and on release/use); an expired handle fails closed and its file
+  is swept.
 - **Orphan cleanup at start:** the worker deletes every payload file in its temp
-  root at startup, because no handle can survive a restart.
-- **Crash behaviour:** a worker crash fails any pending request; the temp root is
-  cleaned at the next worker start. No handle survives a restart.
+  root at startup, because **no handle survives a restart**.
+- **Crash behaviour:** a worker crash fails any pending request; a **restart
+  invalidates all handles**; the temp root is cleaned at the next worker start.
 - **Release after timeout — explicitly defined:**
   - if the descriptor (and therefore the handle) was **already received**, the
     bridge calls `nuclear.volume.release { handle }` (idempotent);
@@ -157,27 +187,37 @@ downsample, subsample, or partially load.
     primitive). This is the chosen cancellation model: there is no safe
     protocol-level cancel that guarantees the temp file is removed, and the
     restart triggers orphan cleanup deterministically.
+- **Failed cleanup is never reported as success.** A release/unlink failure
+  yields `VOLUME_CLEANUP_FAILED`, is **retryable**, and leaves the file
+  **quarantined** for the next orphan sweep; the caller must not assume the file
+  is gone. This is distinct from a successful idempotent no-op on an
+  already-released handle.
 - Handles are **single-owner** (the owning bridge session); use of a released or
   expired handle fails closed.
 
-### 8. Failure taxonomy (**OD-D — proposed values `[TO RATIFY]`**)
+### 8. Failure taxonomy (**OD-D — ratified with the behaviour table below**)
 
-Reserved worker error codes in `-32000..-32099`; each with a non-empty
-`data.diagnostic` and **no fallback**:
+Reserved worker error codes in `-32000..-32099`; each carries a non-empty
+`data.diagnostic`, a `reason` from the closed enum below, and **no fallback**.
 
-| Code | Name | Covers |
-| --- | --- | --- |
-| `-32013` | `VOLUME_DECODE_FAILED` | unsupported/missing pixel representation or pixel-format tag; decode error |
-| `-32014` | `VOLUME_LIMIT_EXCEEDED` | any §6 limit |
-| `-32015` | `VOLUME_FINGERPRINT_MISMATCH` | asset/series/FoR/content-digest/geometric-digest mismatch |
-| `-32016` | `VOLUME_TRANSPORT_INTEGRITY` | hash failure, short/long file, missing file |
-| `-32017` | `VOLUME_HANDLE_INVALID` | unknown, expired or already-released handle |
-| `-32018` | `VOLUME_CLEANUP_FAILED` | release/cleanup failure |
+| Code | Name | `reason` enum | Retryable? | Diagnostic fields |
+| --- | --- | --- | --- | --- |
+| `-32013` | `VOLUME_DECODE_FAILED` | `unsupported-pixel-representation`, `missing-pixel-format`, `decode-error` | **terminal** (same input) | `diagnostic`, `reason`, `seriesInstanceUID` |
+| `-32014` | `VOLUME_LIMIT_EXCEEDED` | `voxel-limit`, `payload-limit`, `tracked-payload-limit`, `working-set-limit` | **terminal** | `diagnostic`, `reason`, `seriesInstanceUID`, `expected?`, `observed?` |
+| `-32015` | `VOLUME_FINGERPRINT_MISMATCH` | `content-digest`, `geometric-digest`, `instance-count`, `series`, `frame-of-reference` | **terminal** | `diagnostic`, `reason`, `seriesInstanceUID`, `expectedDigest?`, `observedDigest?` |
+| `-32016` | `VOLUME_TRANSPORT_INTEGRITY` | `hash-mismatch`, `file-short`, `file-long`, `file-missing` | **retryable** (re-issue the request) | `diagnostic`, `reason`, `handle?` |
+| `-32017` | `VOLUME_HANDLE_INVALID` | `unknown-handle`, `expired-handle`, `already-released` | **retryable** (re-hydrate) | `diagnostic`, `reason`, `handle?` |
+| `-32018` | `VOLUME_CLEANUP_FAILED` | `release-failed`, `unlink-failed` | **retryable**; file **quarantined** (it may still exist) | `diagnostic`, `reason`, `handle?` |
 
-Minimal diagnostics (never a path, never a payload): `{ diagnostic, reason?,
-handle?, seriesInstanceUID?, expectedDigest?, observedDigest? }`. A failure never
-yields a partial or synthetic plane. `mode:"rigid"` keeps returning `-32011`
-until 2B.3b is implemented.
+- **Retryability** is a caller contract: `terminal` errors fail the same input
+  deterministically; `retryable` errors may be retried by re-issuing the request
+  or re-hydrating.
+- **`handle` is present only when an handle exists**; diagnostics **never**
+  contain a filesystem path, payload bytes, or sensitive content.
+- `cleanup-failed` **does not mask** the fact that the file may still exist — it
+  is reported as cleanup-failed and quarantined, never as success.
+- A failure never yields a partial or synthetic plane. `mode:"rigid"` keeps
+  returning `-32011` until 2B.3b is implemented.
 
 ### 9. Integration and boundaries
 
@@ -205,11 +245,14 @@ until 2B.3b is implemented.
 | ID | Decision | State |
 | --- | --- | --- |
 | OD-A | transport mechanism (worker-owned temp file) + security constraints | **RATIFIED** (with §2 constraints) |
-| OD-B | size/memory limits (§6) | **`[TO RATIFY]`** — concrete values proposed |
-| OD-C | lifecycle/TTL/cleanup/timeout (§7) | **`[TO RATIFY]`** — concrete values proposed |
-| OD-D | error taxonomy (§8) | **`[TO RATIFY]`** — concrete codes proposed |
+| OD-B | size/memory limits, **exact accounting** (§6) | **`[TO RATIFY]`** — `MAX_REQUEST_PEAK_BYTES` withdrawn; tracked-payload budget vs registration-working-set budget separated |
+| OD-C | lifecycle/TTL/cleanup/timeout (§7) | **approved with precision** — ratify with this §7 update |
+| OD-D | error taxonomy (§8) | **approved with precision** — ratify with this §8 update |
 | OD-E | contract home (bridge-local) | **RATIFIED** |
 | OD-F | scalar-domain/rescale ownership | **RATIFIED** |
+
+With OD-B/C/D ratified under §6/§7/§8, ADR-013 is ready to be promoted to
+**Accepted**; no further design change is required.
 
 ## Consequences
 

@@ -936,12 +936,18 @@ involved** — it keeps declaring only `ResourceDemand`.
 **OD-A** (worker-owned temp file + opaque handle, private root, atomic
 write-then-descriptor, idempotent single-owner release, little-endian only for
 v1), **OD-E** (bridge-local contract) and **OD-F** (worker declares
-`scalarDataDomain`/`rescale`) are **ratified**. **OD-B (limits), OD-C
-(lifecycle/TTL/cleanup/timeout), OD-D (error taxonomy)** remain **`[TO
-RATIFY]`**, now with concrete proposed values in ADR-013 §6/§7/§8 (limits
-`2^28` voxels / 1 GiB payload / 2 GiB peak / 4 GiB aggregate; `HANDLE_TTL_SECONDS
-= 300`; pre-descriptor-timeout ⇒ restart the worker; reserved codes
-`-32013..-32018`). Added the owner-required constraints: `samplesPerPixel = 1`,
+`scalarDataDomain`/`rescale`) are **ratified**. **OD-B (limits)** remains **`[TO RATIFY]`** with the ambiguity resolved:
+`MAX_REQUEST_PEAK_BYTES` is **withdrawn** and replaced by two distinct budgets —
+tracked temp-payload bytes (`MAX_TRACKED_PAYLOAD_BYTES = 4 GiB`, **not** RSS) and
+a **registration working-set** budget (`estimate = bytesPerVoxel × (V_fixed +
+V_moving) × 3 ≤ MAX_REGISTRATION_WORKING_SET_BYTES = 8 GiB`, pre-flight, with
+registration serialized so at most one working set exists). **OD-C and OD-D are
+approved with precision** and documented: TTL = 300 s **from descriptor
+publication**, checked on every read, restart invalidates all handles, failed
+cleanup is retryable/quarantined and never reported as success; taxonomy
+`-32013..-32018` with closed `reason` enums, retryability and per-code diagnostic
+fields. ADR-013 §10 now states that with OD-B/C/D ratified it is ready to be
+promoted to **Accepted**. Added the owner-required constraints: `samplesPerPixel = 1`,
 mandatory SHA-256, verified `byteLength = nx·ny·nz·bytesPerVoxel`, refuse
 short/long files, hash verified **before** `VolumeIngestionPlan`, no partial
 load, no file access outside the temp root, residency integrated only **after**
