@@ -26,6 +26,7 @@ import {
   MAX_VIEW_SLOTS,
   VIEW_SLOT_ROLES,
   ViewSlotRegistry,
+  WorkspaceError,
   asLayout,
   createDefaultViewSlotLayout,
   expectWorkspaceError,
@@ -292,6 +293,21 @@ describe('NuClear P4.1 — ImagingWorkspace core', () => {
     expectWorkspaceError(
       () => ViewSlotRegistry.fromLayout(asLayout(shortGroup)),
       'WORKSPACE_SLOT_LAYOUT_INVALID',
+    );
+
+    // C2: an empty workspace (zero groups) is refused; the lower bound is 1.
+    const emptyLayout = mutableDefaultLayout();
+    emptyLayout.groups = [];
+    emptyLayout.slots = [];
+    assert.throws(
+      () => ViewSlotRegistry.fromLayout(asLayout(emptyLayout)),
+      (error: unknown) => {
+        assert.ok(error instanceof WorkspaceError);
+        assert.equal(error.code, 'WORKSPACE_SLOT_LAYOUT_INVALID');
+        assert.match(error.message, /declares no view groups/);
+        assert.match(error.message, /between 1 and 4 groups/);
+        return true;
+      },
     );
 
     const valid = ViewSlotRegistry.fromLayout(asLayout(mutableDefaultLayout()));

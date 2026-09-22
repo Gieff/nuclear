@@ -1,9 +1,10 @@
 /**
  * @nuclear/view-engine — logical ViewGroup/ViewSlot registry (P4.1).
  *
- * Pure and Node-safe: four groups of four slots in the role order MIP, PET,
- * GENERIC, FUSION. A slot carries semantic binding state only; it never pins
- * RAM or VRAM (ADR-010 §2); illegal transitions fail closed.
+ * Pure and Node-safe: one to four groups of four slots in the role order MIP,
+ * PET, GENERIC, FUSION (zero groups is refused; the default factory allocates
+ * four). A slot carries semantic binding state only; it never pins RAM or VRAM
+ * (ADR-010 §2); illegal transitions fail closed.
  */
 import type {
   PreparedViewId,
@@ -50,7 +51,7 @@ function cloneSlot(slot: ViewSlot): ViewSlot {
 }
 
 function invalidLayout(message: string): WorkspaceError {
-  const remediation = `Remediation: declare at most ${MAX_VIEW_GROUPS} groups of exactly four slots whose roles cover ${VIEW_SLOT_ROLES.join('/')} once, with unique ids and a declared group for every slot.`;
+  const remediation = `Remediation: declare between 1 and ${MAX_VIEW_GROUPS} groups of exactly four slots whose roles cover ${VIEW_SLOT_ROLES.join('/')} once, with unique ids and a declared group for every slot.`;
   return new WorkspaceError('WORKSPACE_SLOT_LAYOUT_INVALID', `${message} ${remediation}`);
 }
 
@@ -105,6 +106,9 @@ function assertValidLayout(layout: ViewSlotLayout): void {
   const { groups, slots } = layout;
   if (!Array.isArray(groups) || !Array.isArray(slots)) {
     throw invalidLayout('The layout must declare both a group array and a slot array.');
+  }
+  if (groups.length === 0) {
+    throw invalidLayout('The layout declares no view groups; a workspace requires at least one group.');
   }
   if (groups.length > MAX_VIEW_GROUPS) {
     throw invalidLayout(`The layout declares ${groups.length} view groups; at most ${MAX_VIEW_GROUPS} are allowed.`);

@@ -9,3 +9,4 @@
 export * from './errors.js';
 export * from './assemble.js';
 export * from './registry.js';
+export * from './provenance-correlation.js';

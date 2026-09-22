@@ -3,9 +3,9 @@
 Status: **REOPENED** (2026-09-22). P4.0 (`72fbaee`), P4.1 (`8cdad35`) and
 P4.2 (`a70983c`) were accepted locally and then **reopened by an independent
 human review**; none of them is an approvable closed slice as committed.
-Corrective progress: **C8 complete** (`db4ba42`, corrected by `f71d609`) and
-**C1 complete**. Remaining ratified correctives before P4.3:
-`C5 → C4 → C3 → C2 → C6 → C7`. See
+Corrective progress: **C8 complete** (`db4ba42`, corrected by `f71d609`),
+**C1 complete** (`7680acc`) and **C2+C5+C6 complete** (bundled, one commit).
+Remaining ratified correctives before P4.3: `C4 → C3 → C7`. See
 `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` §“Reopened — Ratified Correction
 Slices”, `docs/decisions/ADR-010-…md` §7 and
 `docs/decisions/ADR-011-prepared-view-immutability-and-shared-state-mutation.md`.
@@ -765,6 +765,142 @@ caller’s mutable object), mutating nothing before every correlation check
 passes. Place its errors explicitly into the C1 precedence
 (integrity → duplicate/unknown → correlation) and record it. Do not add C4
 freezing or C2 slot-rule changes in C5.
+
+---
+
+# Handover Report — Bundle A (C2 + C5 + C6): Workspace/Slot Integrity & Binding
+
+## 1. What Was Implemented
+
+Three ratified corrective slices were implemented as one bundle (same
+workspace/slot integrity boundary; zero unrelated churn). The bundling is an
+explicit optimisation authorised by the user, **not** a reorder of the
+remaining ratified sequence (`C4 → C3 → C7` still follow).
+
+- **C5 — provenance ↔ registered-asset cross-validation.** `registerPreparedView`
+  now runs the existence check (`WORKSPACE_UNKNOWN_ASSET`), then a
+  `PREPARED_VIEW_DUPLICATE_ID` pre-check, then positional provenance
+  correlation against the **stored validated assets**: equal array lengths,
+  then per index `studyInstanceUID` → `seriesInstanceUID` → structurally
+  equal `SourceFingerprint`. Check order is fixed: length → study → series →
+  fingerprint. Correlation is read-only, so a refusal leaves workspace and
+  caller untouched. Extracted to `prepared-view/provenance-correlation.ts`
+  with four new `PREPARED_VIEW_PROVENANCE_*` codes.
+- **C6 — explicit fail-closed slot → PreparedView binding.**
+  `ImagingWorkspace.bindSlotToPreparedView(slotId, preparedViewId)` requires
+  the prepared view to be registered (`PREPARED_VIEW_UNKNOWN_ID`) before
+  delegating to `ViewSlotRegistry.bind` (`WORKSPACE_UNKNOWN_SLOT` /
+  `WORKSPACE_ILLEGAL_SLOT_TRANSITION`). A registered prepared view with zero
+  bound slots remains legal.
+- **C2 — slot/group rule.** `assertValidLayout` now refuses a zero-group
+  layout (`WORKSPACE_SLOT_LAYOUT_INVALID`); a workspace declares 1–4 groups
+  of exactly four slots and the default factory still allocates four.
+- **Helper**: dependency-free `internal/json-equality.ts` (`structurallyEqual`,
+  key-order independent, `Object.is` scalars, no cloning/mutation), imported
+  by the correlation module with no `prepared-view → workspace` cycle.
+
+## 2. Files Changed / Created
+
+Created:
+- `packages/view-engine/src/internal/json-equality.ts` (61 lines)
+- `packages/view-engine/src/prepared-view/provenance-correlation.ts` (132 lines)
+- `tests/view-engine/workspace-provenance-binding.test.ts` (264 lines, 13 tests)
+- `tests/view-engine/json-equality.test.ts` (9 tests, added during review hardening)
+
+Modified:
+- `packages/view-engine/src/prepared-view/errors.ts` (52 lines, +4 codes)
+- `packages/view-engine/src/prepared-view/index.ts` (12 lines)
+- `packages/view-engine/src/workspace/imaging-workspace.ts` (197 lines)
+- `packages/view-engine/src/workspace/view-slot-registry.ts` (277 lines)
+- `tests/view-engine/workspace-core.test.ts` (C2 zero-group negative + message pin)
+
+Unchanged: `packages/shared-types/**`, every other package, `python/**`,
+plans/ADRs, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- **Error precedence (recorded): integrity/existence → duplicate → correlation.**
+  The duplicate-id pre-check was added *before* correlation during review
+  hardening so a payload that is both a duplicate and incoherent reports the
+  duplicate, matching the C1 handover rule.
+- Correlation reads the **stored `structuredClone` assets**, never the
+  caller's mutable object.
+- C6 does **not** make slot binding a prerequisite for registration/assembly
+  (ADR-010 §7.3 / D3); slot binding is a separate explicit operation.
+- `structurallyEqual` uses `Object.is`, so `-0 ≠ 0` and `NaN = NaN`; object
+  key order is irrelevant.
+- The bundle order deviates from the ratified `C5 → ADR-011 → C4 → C3 → C2 →
+  C6 → C7` sequence by explicit user instruction to optimise; C4/C3/C7 keep
+  their order.
+
+## 4. Tests Added & Executed
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npx tsc -p tsconfig.test.json` | exit 0 |
+| `npm test` | **320 pass / 0 fail / 66 suites** (0 skipped/todo) = C1 baseline 298/63 + 22 tests / +3 suites |
+| `npm run build` | clean (exit 0) |
+| `node --test tests/view-engine/workspace-provenance-binding.test.ts` | 13/13 |
+| `node --test tests/view-engine/json-equality.test.ts` | 9/9 |
+| `node --test tests/view-engine/workspace-core.test.ts` | 11/11 |
+| `node --test tests/view-engine/workspace-integrity.test.ts` | 11/11 |
+| `node --test tests/view-engine/prepared-view.test.ts` | 14/14 |
+| `npm run test:python` | 189 passed (unchanged) |
+| `npm run typecheck:python` | 47 files clean (unchanged) |
+
+Coverage: coherent provenance accepted; PET/CT series and fingerprint
+mismatches; length and study mismatches; no mutation on refusal; slot binding
+success and all three refusal paths; unbound-view legality; zero-group layout
+refusal with a pinned message; and `structurallyEqual` scalar/key-order/array/
+missing-vs-undefined cases. No `skip`/`todo`/`|| true` and no vacuous
+assertions.
+
+Independent verdicts: `nuclear-reviewer` **PASS** (zero blocking; 7
+non-blocking, of which N1/N3/N4 were fixed during hardening) and `nuclear-qa`
+**PASS** for the executable scope.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- No ADR change needed: C2 implements ADR-010 §7.1; C5 implements §7.3; C6
+  implements D3. `ADR-011` is unchanged.
+- This report satisfies the AgentLog Gate for C2, C5 and C6.
+- `CHANGELOG.md` untouched; release notes are compiled later via
+  `/promote-changelog 4` only on explicit request.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema change; the workspace stays a plain-JSON value model.
+
+## 7. Known Limitations & Technical Debt
+
+- **Hand-built `PreparedView` bypass (carried to C4).** `registerPreparedView`
+  accepts any `PreparedView` object; a hand-built view with an all-empty
+  provenance would pass correlation vacuously (the empty-provenance refusal
+  lives at assembly). Pre-existing exposure, not worsened by C5; the
+  registration-validation story belongs to C4/ADR-011.
+- **Mutability window until C4.** `PreparedViewRegistry` stores the caller's
+  object by reference and `snapshot()` returns prepared views by reference, so
+  the correlation is only valid at the acceptance instant until C4 deep-freezes
+  published DTOs (see §8).
+- `view-slot-registry.ts` is 277/300 and `workspace-core.test.ts` is now 329
+  lines (tests are outside the Rule 02 source gate). Further edits to the
+  registry should extract validation into its own module.
+- No hardware-GPU/Python work was touched; those gates remain as previously
+  reported.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **C4 (P4.2.1) — published-DTO immutability + private controlled
+shared-state holder** per the already-accepted **ADR-011**. The reviewer’s
+most important carry-over: deep-freeze `provenance`/`state`/`links`/`locks` at
+assembly/registration time and **atomically**, not lazily at snapshot, and add
+a regression test proving that mutating the caller’s object *after*
+registration cannot change what was validated or what a read returns. The
+holder’s controlled replacement must preserve the identity guarantees the C6
+tests now pin (`getPreparedView(view.id) === view`). Do not add linking (C3)
+or the fixture-hygiene change (C7) in C4.
+
 
 
 

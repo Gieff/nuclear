@@ -6,8 +6,10 @@
  * Cornerstone `RenderingEngine`, and it never pins RAM or VRAM (ADR-010 §1).
  * Registration validates the caller's original value fail-closed before any
  * state changes (C1); reads and `snapshot()` return JSON-serializable deep
- * copies, while unknown or duplicate ids fail closed with a typed
- * `WorkspaceError`.
+ * copies, while unknown or duplicate workspace ids fail closed with a typed
+ * `WorkspaceError`. Prepared-view provenance is cross-validated positionally
+ * (C5) and slot binding is an explicit fail-closed operation (C6), both
+ * raising a typed `PreparedViewError`.
  */
 import type {
   AssetId,
@@ -19,10 +21,13 @@ import type {
   StudyReference,
   ViewGroup,
   ViewSlot,
+  ViewSlotId,
 } from '@nuclear/shared-types';
 import { WorkspaceError } from './errors.js';
 import { ViewSlotRegistry } from './view-slot-registry.js';
 import { PreparedViewRegistry } from '../prepared-view/registry.js';
+import { PreparedViewError } from '../prepared-view/errors.js';
+import { assertProvenanceCorrelation } from '../prepared-view/provenance-correlation.js';
 import { cloneSerializableValue } from './value-integrity.js';
 
 export interface ImagingWorkspaceSnapshot {
@@ -92,7 +97,47 @@ export class ImagingWorkspace {
         );
       }
     }
+    // Recorded error precedence (C1 handover §3): integrity/existence →
+    // duplicate → correlation. The duplicate id is checked here, before the
+    // correlation, so a payload that is both a duplicate and incoherent
+    // reports the duplicate, not a correlation mismatch.
+    if (this.preparedViews.has(view.id)) {
+      throw new PreparedViewError(
+        'PREPARED_VIEW_DUPLICATE_ID',
+        `Prepared view id '${view.id}' is already registered. Remediation: reuse the registered prepared view or assemble it under a distinct PreparedViewId.`,
+      );
+    }
+    // C5: positional provenance correlation runs against the **stored
+    // validated** assets (never the caller's mutable object). Registration is
+    // read-only until every check passes, so a refusal leaves the workspace
+    // and the caller's view untouched.
+    assertProvenanceCorrelation({
+      preparedViewId: view.id,
+      provenance: view.provenance,
+      lookupAsset: (assetId) => this.assetById.get(assetId),
+    });
     return this.preparedViews.register(view);
+  }
+
+  /**
+   * Explicit, fail-closed slot → prepared-view binding (C6).
+   *
+   * Precedence (documented): the prepared view must exist first
+   * (`PREPARED_VIEW_UNKNOWN_ID`), then the slot transition is delegated to
+   * `ViewSlotRegistry.bind`, which enforces `empty`/`unavailable` → `bound`
+   * and throws `WORKSPACE_UNKNOWN_SLOT` or
+   * `WORKSPACE_ILLEGAL_SLOT_TRANSITION`. Slot binding is deliberately **not**
+   * a prerequisite for registration or assembly: a registered prepared view
+   * with zero bound slots is legal.
+   */
+  bindSlotToPreparedView(slotId: ViewSlotId, preparedViewId: PreparedViewId): ViewSlot {
+    if (!this.preparedViews.has(preparedViewId)) {
+      throw new PreparedViewError(
+        'PREPARED_VIEW_UNKNOWN_ID',
+        `Unknown prepared view id '${preparedViewId}' cannot be bound to view slot '${slotId}'. Remediation: assemble and register the prepared view before binding a slot to it.`,
+      );
+    }
+    return this.slots.bind(slotId, preparedViewId);
   }
 
   getPreparedView(preparedViewId: PreparedViewId): PreparedView {
