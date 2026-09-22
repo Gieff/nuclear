@@ -1,10 +1,11 @@
-"""Phase 2B.1 evidence for the schema-only ``nuclear.registration`` operation.
+"""Schema and dispatch evidence for ``nuclear.registration`` (P2B.1/P2B.2).
 
-2B.1 registers the operation and freezes the request/evidence schema; it does
-not implement any registration algorithm. A schema-valid request must fail
-closed with the reserved ``OPERATION_NOT_IMPLEMENTED`` (-32011) error and must
-never fabricate a ``transform``/``matrix4x4``. Schema violations must fail
-closed with ``INVALID_PARAMS`` (-32602) and a non-empty ``violations`` list.
+Schema violations fail closed with ``INVALID_PARAMS`` (-32602) and a non-empty
+``violations`` list. The unimplemented ``rigid`` mode still fails closed with
+the reserved ``OPERATION_NOT_IMPLEMENTED`` (-32011) error and must never
+fabricate a ``transform``/``matrix4x4``. The ``landmarks`` mode now returns the
+2B.2 Procrustes evidence (its dedicated suite is
+``test_registration_procrustes.py``).
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ LANDMARK_REQUEST: dict[str, Any] = {
 
 def _expect_not_implemented(params: dict[str, Any]) -> ProtocolError:
     with pytest.raises(ProtocolError) as excinfo:
-        registration_operation(params)
+        registration_operation(params, clock=lambda: FROZEN_NOW)
     error = excinfo.value
     assert error.code == OPERATION_NOT_IMPLEMENTED
     assert error.message == "Operation not implemented"
@@ -74,7 +75,7 @@ def _expect_not_implemented(params: dict[str, Any]) -> ProtocolError:
 
 def _expect_invalid(params: dict[str, Any]) -> ProtocolError:
     with pytest.raises(ProtocolError) as excinfo:
-        registration_operation(params)
+        registration_operation(params, clock=lambda: FROZEN_NOW)
     error = excinfo.value
     assert error.code == INVALID_PARAMS
     violations = error.data["violations"]
@@ -88,9 +89,17 @@ def test_valid_rigid_request_fails_closed_as_not_implemented() -> None:
     assert error.data["mode"] == "rigid"
 
 
-def test_valid_landmark_request_fails_closed_without_fabricated_evidence() -> None:
-    error = _expect_not_implemented(LANDMARK_REQUEST)
-    assert error.data["mode"] == "landmarks"
+def test_valid_landmark_request_returns_rigid_evidence() -> None:
+    result = registration_operation(LANDMARK_REQUEST, clock=lambda: FROZEN_NOW)
+    transform = result["transform"]
+    assert transform["transformType"] == "rigid"
+    assert transform["units"] == "mm"
+    assert transform["id"] == "xform-landmark-1"
+    assert transform["sourceFrameOfReferenceUID"] == "1.2.3.4.5"
+    assert transform["targetFrameOfReferenceUID"] == "1.2.3.4.6"
+    assert len(transform["matrix4x4"]) == 16
+    assert transform["validity"]["isValid"] is True
+    assert result["workerMetadata"]["operation"] == REGISTRATION_METHOD
 
 
 def test_parser_returns_the_validated_caller_declared_fields_verbatim() -> None:

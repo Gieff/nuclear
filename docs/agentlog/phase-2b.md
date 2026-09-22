@@ -239,3 +239,137 @@ degeneracy sensitivity test, post-2B.2 review/QA.
 _Status: architectural decisions R1/R2/R7/R8/R9 and the fixture criteria R3/R5
 are ratified; R4 (MI determinism) and the R6 numeric degeneracy bound remain
 `[TO RATIFY]`._
+
+# Handover Report — Phase 2B.2: Manual Landmark Registration (Procrustes)
+
+## 1. What Was Implemented
+
+The `landmarks` path of `nuclear.registration` now performs real, deterministic
+scientific computation; the `rigid` path is unchanged.
+
+- **Orthogonal Procrustes / Kabsch** (`python/dicom/registration_math.py`): given
+  `n ≥ 3` ordered correspondences in LPS mm, centre both sets,
+  `H = Sᵀ T = U Σ Vᵀ`, recover the **proper rigid** transform
+  `R = V·diag(1,1,det(V Uᵀ))·Uᵀ`, `t = t̄ − R s̄`, and compute the residual
+  `e_i = ||R s_i + t − t_i||` (RMS and maximum). Pure math: no I/O, no clock, no
+  DICOM types.
+- **Strict convention**: `P_target = M · P_source`, points column vectors in
+  patient LPS mm, homogeneous 4×4 stored **row-major** with last row
+  `[0 0 0 1]`, flattened to 16 finite numbers.
+- **Handler dispatch** (`registration_operations.py`): `landmarks` → scientific
+  validation + evidence; `rigid` → unchanged reserved `-32011` stub (MI is 2B.3;
+  no SimpleITK added).
+- **R7 same-Frame-of-Reference** refused in scientific validation (not the IPC
+  schema) with a typed `-32012`.
+- **R6 structural refusals**: fewer than 3 correspondences (schema), coincident
+  points and collinear points (centred rank < 2). The numeric near-degeneracy
+  bound remains a single unwired `[TO RATIFY]` candidate.
+- **Reflection fail-closed**: an improper best-fit orthogonal map
+  (`det(V Uᵀ) < 0`) is refused as `reflection-required`, never silently mirrored.
+- **Reserved code `-32012 REGISTRATION_INVALID`** (Python `NUCLEAR_RESERVED_CODES`
+  + `ERROR_MESSAGES`; TS `NUCLEAR_REGISTRATION_INVALID`), data keys exactly
+  `{diagnostic, mode, reason}`; reasons `same-frame-of-reference`,
+  `degenerate-landmarks`, `reflection-required`.
+
+## 2. Files Changed / Created
+
+Created:
+- `python/dicom/registration_math.py` (186) — Procrustes + residual + structural degeneracy + reflection guard.
+- `python/tests/synthetic_registration.py` (128) — deterministic curated landmarks + documented ground truth.
+- `python/tests/registration_procrustes_support.py` (134) — pure-Python independent recomputation + request builders.
+- `python/tests/test_registration_procrustes.py` (218) — R3/R5, convention, residual, determinism, refusals, sensitivity.
+- `tests/medical/fixtures/worker-registration-requests.ts` (115) — TS request builders + inline wire-shape evidence.
+
+Modified:
+- `python/dicom/registration_operations.py` — mode dispatch, clock, evidence, `-32012`.
+- `python/worker/dispatch.py` — pass `dispatcher.clock`.
+- `python/worker/protocol.py` — `-32012`.
+- `python/tests/test_registration_operations.py` — landmarks now succeeds; `rigid` `-32011` and all schema negatives kept.
+- `packages/medical-engine/src/worker/protocol.ts` — `-32012` mirror.
+- `tests/medical/worker-registration.test.ts` — real-worker success round-trip + `-32012` refusals + `rigid` stub.
+- `docs/agentlog/phase-2b.md` — this handover.
+
+Not modified: `@nuclear/shared-types`, `view-engine`, `ui`, `figure-engine`,
+`project-model`, Fase 4 code, `tests/view-engine/**`, `tests/fixtures/manifest.json`,
+`python/pyproject.toml`, ADR-012.
+
+## 3. Architectural Assumptions Made
+
+- ADR-002 remains the transport authority. The Procrustes formula lives **only**
+  in Python; TypeScript mirrors only the error constant and maps the evidence. No
+  formula is duplicated.
+- The evidence reuses the accepted `SpatialTransform` contract; `errorMarginMm`
+  carries the **RMS**; the **maximum** residual is carried in
+  `workerMetadata.parameters` (`rmsPointErrorMm`, `maxPointErrorMm`) so the wire
+  `transform` shape is unchanged. Any consumer may only treat it as advisory.
+- Degeneracy is enforced with **structural** criteria only (`σ₂ ≤ 0` exactly,
+  `det(V Uᵀ) < 0`). The numeric condition-number candidate is deliberately not
+  wired, pending R6 ratification.
+- NumPy (2.5.3, already declared) is typed `NDArray[np.float64]`; mypy strict is
+  clean with zero `type: ignore`.
+
+## 4. Tests Added & Executed
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Python tests | `npm run test:python` | **219 passed** (207 → +12) |
+| Python typecheck | `npm run typecheck:python` | **Success, 54 source files** (50 → +4) |
+| TS typecheck | `npm run typecheck` | **0 errors** |
+| TS suite | `npm test` | **431 pass / 0 fail / 79 suites** (shared with committed P4.6; 2B.2 TS delta **0** — the file grew in place, still 4 tests) |
+| Build | `npm run build` | **clean** |
+| Registration suite | `node --test tests/medical/worker-registration.test.ts` | **4/4** (real Python worker) |
+| File length | `wc -l` | max **218** (≤ 250/300) |
+
+Observed fixture values (non-vacuous): R5 exact → RMS `1.39e-14` mm, max
+`2.16e-14` mm, rotation `0.0°`; R3 noisy → RMS `0.141733` mm, max `0.181903` mm,
+rotation `0.081651°`; R6 sensitivity → centred ratio `s0/s1 = 1.504e8` (candidate
+`1e6` **not** asserted).
+
+- **Independent review (`nuclear-reviewer`): PASS**, including an independent
+  re-derivation of the Kabsch formula (agreement ~3e-16) and a check that the
+  `1e6` candidate is unreferenced by any decision path.
+- **Independent QA (`nuclear-qa`): PASS**, with raw worker-stdio JSON for the
+  success path (`M·P_source` verified to 2.1e-14 mm, `det(R)=+1`) and all four
+  refusals; all 7 gates green.
+
+**QA finding (for the R6 decision).** A *non-axis-aligned* exactly-collinear set is
+refused fail-closed (`-32012`) but classified `reflection-required` rather than
+`degenerate-landmarks`, because its centred second singular value is `≈1.4e-16`
+(not exactly `0.0`). The committed axis-aligned fixture is exact
+(`σ₂ = 0.0`), so the suite is deterministic; still, the refusal **reason** for
+arbitrary collinear sets is numerically dependent and must be settled with the
+R6 numeric rule.
+
+## 5. Documentation, Agentlog & ADR Status
+
+- This eight-point report satisfies the AgentLog Gate for 2B.2. `CHANGELOG.md`
+  untouched (ADR-001); promotion remains a release-time action.
+- No ADR created/modified. ADR-012 stays **Proposed** (not a dependency of 2B.2).
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema, `SpatialTransform`/`TransformProvenance` contract,
+  manifest or serialized state changed.
+
+## 7. Known Limitations & Technical Debt
+
+- **Pending ratification:** `-32012 REGISTRATION_INVALID`; the R6 numeric
+  degeneracy bound; and the collinear **reason** rule noted above.
+- **R4 / 2B-T2 (MI determinism)** remains `[TO RATIFY]` and is 2B.3 scope; the
+  `rigid` path is still the `-32011` stub.
+- Nearly-collinear sets pass by design until R6's numeric bound is ratified; the
+  sensitivity fixture records a ratio `1.5e8` **above** the `1e6` candidate, so it
+  must be revisited when R6 is ratified.
+- The TS landmark request builders use `as unknown as WorkerRegistrationRequest`
+  for branded-id literals (test-only; pre-existing pattern).
+- `estimate_rigid_transform`'s `ValueError` paths are unreachable through the
+  handler while the schema guarantees ≥3 finite 3-tuples.
+
+## 8. Exact Next Recommended Task
+
+Ratify `-32012` and the R6 numeric degeneracy rule (including the collinear
+`reason` classification), then implement **slice 2B.3 — automatic rigid
+Mutual-Information registration** with the ratified deterministic MI protocol
+(R4). Do not start 2B.3 before R4 is fixed, and do not consume this evidence in
+P4.4b until 2B.4 (validity/`errorMarginMm`/fail-closed) is complete and
+ADR-012 is **Accepted**.

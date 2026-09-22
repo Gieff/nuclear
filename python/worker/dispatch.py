@@ -152,10 +152,13 @@ def build_dispatcher(now: Clock | None = None) -> Dispatcher:
     def quantitation(params: Mapping[str, Any]) -> dict[str, Any]:
         return suvbw_operation(params, clock=dispatcher.clock)
 
+    def registration(params: Mapping[str, Any]) -> dict[str, Any]:
+        return registration_operation(params, clock=dispatcher.clock)
+
     dispatcher.register(HANDSHAKE_METHOD, dispatcher._handshake)
     dispatcher.register(DICOM_INSPECT_METHOD, inspect)
     dispatcher.register(DICOM_GEOMETRY_METHOD, geometry)
     dispatcher.register(DICOM_COMPATIBILITY_METHOD, compatibility)
     dispatcher.register(QUANTITATION_SUVBW_METHOD, quantitation)
-    dispatcher.register(REGISTRATION_METHOD, registration_operation)
+    dispatcher.register(REGISTRATION_METHOD, registration)
     return dispatcher

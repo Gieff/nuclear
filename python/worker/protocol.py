@@ -34,12 +34,21 @@ INTERNAL_ERROR = -32603
 PROTOCOL_VERSION_MISMATCH = -32001
 SOURCE_UNAVAILABLE = -32010
 OPERATION_NOT_IMPLEMENTED = -32011
+#: Refused registration: a scientific validation (same Frame of Reference,
+#: degenerate landmarks, improper/reflection fit) failed fail-closed. The
+#: reserved code is pending phase-owner ratification (Phase 2B.2).
+REGISTRATION_INVALID = -32012
 
 STANDARD_ERROR_CODES = frozenset(
     {PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR}
 )
 NUCLEAR_RESERVED_CODES = frozenset(
-    {PROTOCOL_VERSION_MISMATCH, SOURCE_UNAVAILABLE, OPERATION_NOT_IMPLEMENTED}
+    {
+        PROTOCOL_VERSION_MISMATCH,
+        SOURCE_UNAVAILABLE,
+        OPERATION_NOT_IMPLEMENTED,
+        REGISTRATION_INVALID,
+    }
 )
 
 ERROR_MESSAGES: dict[int, str] = {
@@ -51,6 +60,7 @@ ERROR_MESSAGES: dict[int, str] = {
     PROTOCOL_VERSION_MISMATCH: "Protocol version mismatch",
     SOURCE_UNAVAILABLE: "Source unavailable",
     OPERATION_NOT_IMPLEMENTED: "Operation not implemented",
+    REGISTRATION_INVALID: "Registration invalid",
 }
 
 

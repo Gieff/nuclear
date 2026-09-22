@@ -42,6 +42,12 @@ export const JSON_RPC_INTERNAL_ERROR = -32603;
 export const NUCLEAR_PROTOCOL_VERSION_MISMATCH = -32001;
 export const NUCLEAR_SOURCE_UNAVAILABLE = -32010;
 export const NUCLEAR_OPERATION_NOT_IMPLEMENTED = -32011;
+/**
+ * Reserved scientific-refusal code for `nuclear.registration` (Phase 2B.2):
+ * same Frame of Reference, degenerate landmarks or an improper/reflection fit.
+ * Pending phase-owner ratification.
+ */
+export const NUCLEAR_REGISTRATION_INVALID = -32012;
 
 export interface WorkerJsonRpcRequest {
   readonly jsonrpc: '2.0';
