@@ -932,7 +932,20 @@ integration **before** `buildVolumeIngestionPlan` so the plan and
 headless **worker → bridge → engine** evidence chain. **`view-engine` is not
 involved** — it keeps declaring only `ResourceDemand`.
 
-**No code was written.** ADR-013 awaits ratification (open decisions **OD-A
-…OD-F**). ADR-012 stays **Proposed** and **P4.4b remains blocked**. After
-ratification the order is: implement **2B.3b** → integrate in `medical-engine` →
-complete the ADR-012 **R-1/OD-6** admission policy → only then reassess P4.4b.
+**No code was written.** Partial ratification (phase owner, 2026-09-22):
+**OD-A** (worker-owned temp file + opaque handle, private root, atomic
+write-then-descriptor, idempotent single-owner release, little-endian only for
+v1), **OD-E** (bridge-local contract) and **OD-F** (worker declares
+`scalarDataDomain`/`rescale`) are **ratified**. **OD-B (limits), OD-C
+(lifecycle/TTL/cleanup/timeout), OD-D (error taxonomy)** remain **`[TO
+RATIFY]`**, now with concrete proposed values in ADR-013 §6/§7/§8 (limits
+`2^28` voxels / 1 GiB payload / 2 GiB peak / 4 GiB aggregate; `HANDLE_TTL_SECONDS
+= 300`; pre-descriptor-timeout ⇒ restart the worker; reserved codes
+`-32013..-32018`). Added the owner-required constraints: `samplesPerPixel = 1`,
+mandatory SHA-256, verified `byteLength = nx·ny·nz·bytesPerVoxel`, refuse
+short/long files, hash verified **before** `VolumeIngestionPlan`, no partial
+load, no file access outside the temp root, residency integrated only **after**
+hydration. **ADR-013 stays `Proposed`** until OD-B/C/D are ratified. ADR-012
+stays **Proposed** and **P4.4b remains blocked**. After ratification the order
+is: implement **2B.3b** → integrate in `medical-engine` → complete the ADR-012
+**R-1/OD-6** admission policy → only then reassess P4.4b.
