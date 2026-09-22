@@ -416,3 +416,56 @@ Owner-reported independent evidence: focused Python **30/30**; TS real-worker
 ### Standing constraints
 - P4.4b stays blocked until **2B.4** is complete and **ADR-012 is Accepted**.
 - No push without explicit instruction.
+
+## Addendum — R4-finalization (2026-09-22)
+
+The phase owner reviewed `a2d1fc9`: `-32012` **ratified**; R6 **correctly amended**
+without a hidden numeric threshold; the R4 *direction* approved but **not
+ratified as a definitive protocol** (missing parameters, the install pin not yet
+real, cross-platform caveat). This addendum delivers the requested
+**R4-finalization**; **2B.3 is not started**.
+
+### What was fixed
+
+- **Real dependency pin.** `python/pyproject.toml` now declares
+  `SimpleITK==2.5.6` and `numpy==2.5.3` (the MI numerical stack), replacing the
+  `>=` floors, so a fresh install is reproducible. A bump of either re-runs the
+  determinism fixture and requires a re-ratification. (`pydicom` stays a floor.)
+- **Full protocol in the plan** (`PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md`
+  §2B.0, R4). Every previously candidate value is now concrete: Mattes MI
+  `numberOfHistogramBins=50`; `MetricSamplingStrategy = NONE` (no RNG);
+  `sitk.sitkLinear`; `Euler3DTransform` with
+  `CenteredTransformInitializerFilter.GEOMETRY`; three levels
+  `shrinkFactors=[4,2,1]`, `smoothingSigmas=[2.0,1.0,0.0]` in physical units;
+  `RegularStepGradientDescent(learningRate=2.0, minStep=1e-4,
+  numberOfIterations=500, relaxationFactor=0.5, gradientMagnitudeTolerance=1e-8)`
+  with `OptimizerScalesFromPhysicalShift`; `Float32` casting; no explicit
+  `sitk.Resample`; output converted to the 2B.2 `P_target = M · P_source` LPS mm
+  row-major convention; provenance field list; amendment rule.
+- **API grounding.** Verified by introspection in the installed 2.5.6. Notably
+  **absent** in that API: `SetNumberOfLevels` (levels come from the shrink/sigma
+  arrays), `SetMetricSamplingSeed` (a seed is passed via
+  `SetMetricSamplingPercentage(percentage, seed)`), and
+  `SetOptimizerConvergenceWindowSize` (the stopping parameters are `minStep`,
+  `numberOfIterations` and `gradientMagnitudeTolerance`). The protocol was
+  written against the real API, not assumed names.
+- **Reproducibility criterion.** Bitwise-identical on the **same locked
+  environment** (OS/arch, Python, SimpleITK, numpy, thread count); explicitly
+  **not** a cross-platform guarantee — cross-platform needs a separately defined
+  numeric tolerance (left out of R4).
+- **Threading.** Save/restore `sitk.ProcessObject` global default threads around
+  the operation, forcing 1.
+
+### Worktree note
+
+A parallel **P4.7** change set (`packages/view-engine/src/residency/**`,
+`tests/view-engine/residency-projection.test.ts` + fixtures, and
+`packages/view-engine/src/index.ts`) is present **uncommitted** in the worktree.
+It was **not** touched and is excluded from this documentation-only change; all
+staging is by explicit path.
+
+### Status
+
+- **R4: finalized, awaiting final phase-owner ratification.** 2B.3 must not start
+  until it is ratified. P4.4b remains blocked until 2B.4 + ADR-012 Accepted.
+- No push.

@@ -13,8 +13,8 @@ authors = [
 ]
 dependencies = [
     "pydicom>=2.4.0",
-    "numpy>=1.24.0",
-    "SimpleITK>=2.3.0",
+    "numpy==2.5.3",
+    "SimpleITK==2.5.6",
 ]
 
 [project.scripts]

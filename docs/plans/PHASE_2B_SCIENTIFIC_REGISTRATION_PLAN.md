@@ -3,9 +3,11 @@
 Status: **In progress.** Slice **2B.1 (worker operation registration + evidence
 schema + TypeScript bridge types)** is **complete** — commit `1dbe540`; the
 worker raises `-32011 OPERATION_NOT_IMPLEMENTED` for a schema-valid request and
-fabricates no transform. **2B.0 is partially ratified** (R1, R2, R3, R5, R7, R8,
-R9); the MI determinism protocol (R4) and the numeric degeneracy bound (R6)
-remain `[TO RATIFY]`. Addendum to
+fabricates no transform. Slice **2B.2 (manual-landmark Procrustes)** is also
+**complete** — commit `335926e`. **2B.0 is partially ratified** (R1, R2, R3, R5,
+R7, R8, R9, R10); the numeric degeneracy bound (R6) remains `[TO RATIFY]`, and
+the MI determinism protocol (R4) is **finalized but awaits final ratification**
+before 2B.3. Addendum to
 `docs/plans/PHASE_2_SCIENTIFIC_INGESTION_PLAN.md` (ADR-002 worker bridge) and a
 prerequisite for view-engine slice **P4.4b** (`docs/decisions/ADR-012-inter-study-link-propagation.md`).
 
@@ -182,34 +184,62 @@ protocol and the numeric degeneracy bound remain open.
     asserting the stable `degenerate-landmarks` classification.
   - The algorithm must **not** be silently changed to force the reason before
     this is ratified.
-- **2B-T2 / R4 — deterministic MI protocol (proposed; must be ratified before
-  2B.3).** The resolved environment is **SimpleITK 2.5.6** (declared floor
-  `>=2.3.0`); the plan is to pin the effective version and freeze the protocol so
-  repeated runs are bitwise deterministic. Candidate protocol (all values are
-  **proposals**, not yet fixed):
-  - **Version** — pin exactly `2.5.6`; any bump re-runs the determinism fixture.
-  - **Transform** — `sitk.Euler3DTransform` (rigid, 6 DOF).
-  - **Initialisation** — `sitk.CenteredTransformInitializer` from image
-    **geometry** (origin/spacing/direction), never intensity moments, so it is
-    deterministic and intensity-independent.
-  - **Metric** — Mattes Mutual Information, candidate `numberOfHistogramBins = 50`.
-  - **Sampling** — for the curated phantom, `MetricSamplingStrategy = NONE`
-    (all voxels) so there is **no RNG at all** and determinism is structural. A
-    production `RANDOM` strategy (fixed `SetMetricSamplingSeed` +
-    `SetMetricSamplingPercentage`) is a **separate** decision to ratify; until
-    then the phantom uses NONE.
-  - **Interpolator** — `sitk.sitkLinear`.
-  - **Optimiser** — `sitk.RegularStepGradientDescent` with candidate
-    `learningRate`, `numberOfIterations = 200`, `minimalStepLength` and
-    `convergenceWindowSize` values.
-  - **Stopping criterion** — a fixed iteration budget plus the optimiser
-    convergence window; the effective iteration count is recorded in provenance.
-  - **Multi-thread** — force `sitk.ProcessObject.SetGlobalDefaultNumberOfThreads(1)`
-    before optimisation, so thread scheduling cannot affect the result.
-  - **Determinism acceptance** — two runs on the same fixture must be
-    **bitwise-identical**; provenance records the SimpleITK version and the
-    effective parameters. A looser `≤ 1e-9` float comparison is **not** used until
-    this protocol is ratified.
+- **2B-T2 / R4 — deterministic MI protocol (R4-finalization 2026-09-22; FINAL
+  ratification pending).** The environment and every parameter are now fixed
+  concretely against the installed SimpleITK **2.5.6** API (verified by
+  introspection in that environment); nothing below is left as an undefined
+  placeholder.
+  - **Reproducibility / pin.** `python/pyproject.toml` pins `SimpleITK==2.5.6`
+    and `numpy==2.5.3` (the numerical stack the MI result depends on). A bump of
+    either re-runs the determinism fixture and requires a re-ratification.
+  - **Reproducibility criterion.** Repeated runs on the **same locked
+    environment** (same OS/arch, Python patch, SimpleITK, numpy and thread count)
+    must yield a **bitwise-identical** transform and effective parameters. This is
+    **not** a cross-platform guarantee; cross-platform comparison requires a
+    separately defined explicit numeric tolerance (out of scope for R4).
+  - **Threading.** Save and restore `sitk.ProcessObject`'s global default thread
+    count around the operation, forcing `SetGlobalDefaultNumberOfThreads(1)`.
+  - **Image type / resampling order.** Cast both volumes to `sitk.sitkFloat32`
+    before registration; the registration path performs **no** explicit
+    `sitk.Resample` of the moving image — the framework interpolates internally
+    during metric evaluation and the operation returns the **transform**, never a
+    resampled volume.
+  - **Transform.** `sitk.Euler3DTransform` (rigid, 6 DOF).
+  - **Initialisation.** `sitk.CenteredTransformInitializer(fixed, moving,
+    sitk.Euler3DTransform(), sitk.CenteredTransformInitializerFilter.GEOMETRY)` —
+    the `GEOMETRY` filter explicitly (never `MOMENTS`).
+  - **Metric.** `SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)`.
+  - **Sampling.** `SetMetricSamplingStrategy(sitk.ImageRegistrationMethod.NONE)`
+    — all voxels, **no RNG**, so determinism is structural. `RANDOM` is excluded
+    (its determinism would depend on the RNG; `SetMetricSamplingPercentage(pct,
+    seed)` does accept a fixed seed, but that is a **separate future decision**),
+    and `REGULAR` is a separate performance/quality decision.
+  - **Interpolator.** `SetInterpolator(sitk.sitkLinear)`.
+  - **Multi-resolution.** Three levels via the arrays (there is no
+    `SetNumberOfLevels` in 2.5.6): `SetShrinkFactorsPerLevel([4, 2, 1])`,
+    `SetSmoothingSigmasPerLevel([2.0, 1.0, 0.0])`,
+    `SetSmoothingSigmasAreSpecifiedInPhysicalUnits(True)`.
+  - **Optimiser.** `SetOptimizerAsRegularStepGradientDescent(learningRate=2.0,
+    minStep=1e-4, numberOfIterations=500, relaxationFactor=0.5,
+    gradientMagnitudeTolerance=1e-8)` with
+    `SetOptimizerScalesFromPhysicalShift(centralRegionRadius=5,
+    smallParameterVariation=0.01)`. **No optimizer weights.**
+  - **Stopping criterion.** Terminate on `minStep` (1e-4), `numberOfIterations`
+    (500) or gradient magnitude `< 1e-8`; record `GetOptimizerIteration()`,
+    `GetMetricValue()` and `GetOptimizerStopConditionDescription()`.
+  - **Output convention.** SimpleITK's registration transform maps fixed→moving;
+    the returned `M` MUST satisfy `P_target = M · P_source` in LPS mm, row-major
+    with last row `[0, 0, 0, 1]`, exactly as 2B.2. The conversion from the
+    SimpleITK transform (center + Euler angles) is explicit and verified by a
+    synthetic known-rotation unit test.
+  - **Provenance.** `workerMetadata.parameters` records the SimpleITK and numpy
+    versions, metric + bins, sampling strategy, interpolator, optimiser name and
+    all its parameters, shrink factors, smoothing sigmas + units flag, pixel type,
+    initialiser filter, final metric value, executed iterations and the stop
+    condition; `transform.provenance.method = 'rigid-coregistration'`.
+  - **Amendment rule.** These values **are** the protocol; if 2B.3's phantom test
+    cannot meet R3 within them, the change is a documented **re-ratification**,
+    never a silent edit.
 
 ### Tolerance candidates (historical — superseded by the record above)
 
