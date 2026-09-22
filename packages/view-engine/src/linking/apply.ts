@@ -89,6 +89,29 @@ function recordLink(
 }
 
 /**
+ * The P4.3 `SharedStateGroup` models one indivisible `{ spatial, camera }`
+ * pair. A co-referenced application may therefore synchronize exactly that set
+ * (any order, no duplicates); an empty, partial or presentation-only
+ * `synchronizedState` would silently mutate state the link did not declare, so
+ * it fails closed before any registry access.
+ */
+function assertSynchronizablePair(link: IntraStudyLink): void {
+  const states = link.synchronizedState;
+  const unique = new Set(states);
+  const isPair =
+    states.length === 2 && unique.size === 2 && unique.has('spatial') && unique.has('camera');
+  if (isPair) {
+    return;
+  }
+  throw new LinkError(
+    'LINK_APPLICATION_UNSUPPORTED_SYNCHRONIZED_STATE',
+    `Cannot apply co-referenced link '${link.sourceViewId}' -> '${link.targetViewId}' with synchronizedState [${states
+      .map((state) => String(state))
+      .join(', ')}]: a shared-state group models the indivisible {spatial, camera} pair only. Remediation: declare synchronizedState as exactly {spatial, camera} (any order, no duplicates), or do not apply a link that must keep other states view-local.`,
+  );
+}
+
+/**
  * Applies `input.link` between two registered prepared views and returns the
  * final registered projections plus the resolved shared-state group id.
  *
@@ -129,6 +152,10 @@ export function applyCoReferencedLink(input: ApplyCoReferencedLinkInput): Applie
   // Full eligibility (structural + semantic + co-reference) BEFORE any registry
   // read or write, so a refused link leaves the workspace untouched.
   assertViewLinkEligible({ link, lookupAsset });
+
+  // The shared-state group can only carry the indivisible {spatial, camera}
+  // pair, so refuse any other synchronizedState before touching the registry.
+  assertSynchronizablePair(link);
 
   const source = preparedViews.get(sourcePreparedViewId);
   const target = preparedViews.get(targetPreparedViewId);

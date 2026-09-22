@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { PreparedViewId, ViewId } from '../../packages/shared-types/src/index.js';
+import type { LinkableState, PreparedViewId, ViewId } from '../../packages/shared-types/src/index.js';
 import type { SharedStateGroupId } from '../../packages/view-engine/src/shared-state/types.ts';
 import { mockViewProvenance } from '../fixtures/clinical-contracts.fixture.ts';
 import {
@@ -269,5 +269,48 @@ describe('NuClear P4.4 — co-referenced link application', () => {
 
     assert.equal(workspace.getPreparedView(CT_PREPARED), ctBefore, 'a refused link mutates no view');
     assert.equal(workspace.sharedStateGroups.listGroups().length, 0, 'a refused link creates no group');
+  });
+
+  it('10. applies only the exact {spatial, camera} synchronizedState pair', () => {
+    // Order-agnostic acceptance: the shared-state group carries the pair.
+    const reordered = buildWorkspace();
+    const applied = reordered.applyCoReferencedLink({
+      ...request,
+      link: { ...mockIntraStudyLink, synchronizedState: ['camera', 'spatial'] },
+    });
+    assert.equal(applied.source.state.spatial, applied.target.state.spatial);
+    assert.equal(applied.source.state.camera, applied.target.state.camera);
+    assert.equal(reordered.sharedStateGroups.hasGroup(LINK_GROUP), true);
+
+    // Any other set would mutate state the link did not declare: fail closed
+    // before any group is created or any view is regenerated.
+    const unsupportedSets: ReadonlyArray<readonly LinkableState[]> = [
+      [],
+      ['spatial'],
+      ['camera'],
+      ['presentation'],
+      ['spatial', 'spatial'],
+      ['spatial', 'camera', 'camera'],
+    ];
+    for (const synchronizedState of unsupportedSets) {
+      const workspace = buildWorkspace();
+      const ctBefore = workspace.getPreparedView(CT_PREPARED);
+      const petBefore = workspace.getPreparedView(PET_PREPARED);
+      const label = `[${synchronizedState.join(', ')}]`;
+
+      expectLinkError(
+        () =>
+          workspace.applyCoReferencedLink({
+            ...request,
+            link: { ...mockIntraStudyLink, synchronizedState },
+          }),
+        'LINK_APPLICATION_UNSUPPORTED_SYNCHRONIZED_STATE',
+      );
+
+      assert.equal(workspace.getPreparedView(CT_PREPARED), ctBefore, `${label} mutates no source view`);
+      assert.equal(workspace.getPreparedView(PET_PREPARED), petBefore, `${label} mutates no target view`);
+      assert.equal(workspace.sharedStateGroups.listGroups().length, 0, `${label} creates no group`);
+      assert.equal(workspace.sharedStateGroups.groupOf(CT_PREPARED), undefined);
+    }
   });
 });

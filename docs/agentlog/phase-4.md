@@ -6,8 +6,9 @@ independent review reopened them and the ratified corrective chain landed
 clean, pytest 189, mypy 47). **P4.3 (shared-state groups)** closed under the
 binding ADR-011 addendum contract (`private holder → atomic replacement → new
 projection → frozen published DTO`); its test file was split by `8ab08f5`
-(361/361, 70 suites). **P4.4 (link semantics) is closed** under ADR-010 §3/§7.2:
-`npm test` **383/383 (72 suites)**, typecheck/build clean. **P4.5–P4.8 pending**;
+(361/361, 70 suites). **P4.4 (link semantics) is closed** under ADR-010 §3/§7.2 (co-referenced
+application restricted to the exact `{spatial, camera}` synchronized set):
+`npm test` **384/384 (72 suites)**, typecheck/build clean. **P4.5–P4.8 pending**;
 the next slice is P4.5 (lock and override). Reopened slices closed: P4.0
 (co-reference contract honesty),
 P4.1 (workspace input integrity, slot rule), P4.2 (`PreparedView` assembly,
@@ -1551,9 +1552,14 @@ mutates published/frozen state.
   creates a `SharedStateGroup`, attaches both views through the P4.3 atomic
   path, and records the link on each view by regenerating a frozen projection
   via the internal `replaceRegisteredPreparedView` (documented as intra-package
-  composition, not a validation bypass). It is idempotent and returns a
-  deep-frozen `AppliedCoReferencedLink` whose `link` is the canonical stored
-  instance.
+  composition, not a validation bypass). It accepts **only** the exact
+  synchronized set `{spatial, camera}` (any order, no duplicates) — the
+  indivisible pair the P4.3 `SharedStateGroup` models — and every other
+  `synchronizedState` (`[]`, partial, `presentation`-only, duplicates) fails
+  closed with `LINK_APPLICATION_UNSUPPORTED_SYNCHRONIZED_STATE` **before any
+  registry access**, so it never applies an undeclared mutation. It is
+  idempotent and returns a deep-frozen `AppliedCoReferencedLink` whose `link`
+  is the canonical stored instance.
 - **Workspace delegate**: `ImagingWorkspace.applyCoReferencedLink` wires the
   workspace's prepared-view/shared-state registries and asset lookup.
 - **Registry read**: `SharedStateGroupRegistry.groupOf` exposes the attached
@@ -1564,13 +1570,14 @@ mutates published/frozen state.
 Created:
 - `packages/view-engine/src/linking/guards.ts` (177 lines)
 - `packages/view-engine/src/linking/eligibility.ts` (214 lines)
-- `packages/view-engine/src/linking/apply.ts` (196 lines)
+- `packages/view-engine/src/linking/apply.ts` (223 lines)
 - `tests/view-engine/link-eligibility.test.ts` (263 lines; 13 tests)
-- `tests/view-engine/link-application.test.ts` (273 lines; 9 tests)
+- `tests/view-engine/link-application.test.ts` (316 lines; 10 tests)
 
 Modified:
-- `packages/view-engine/src/linking/errors.ts` (86 lines; +`LinkError` /
-  `LinkErrorCode`; `CoReferenceError` unchanged)
+- `packages/view-engine/src/linking/errors.ts` (87 lines; +`LinkError` /
+  `LinkErrorCode`, incl. `LINK_APPLICATION_UNSUPPORTED_SYNCHRONIZED_STATE`;
+  `CoReferenceError` unchanged)
 - `packages/view-engine/src/linking/index.ts` (14 lines; barrel)
 - `packages/view-engine/src/shared-state/registry.ts` (188 lines; +`groupOf`)
 - `packages/view-engine/src/workspace/imaging-workspace.ts` (241 lines;
@@ -1594,6 +1601,11 @@ suites 69→70), as the phase owner requested before P4.4–P4.5 add cases.
   frozen pair** (existing data, not new geometry). Existing groups win over the
   caller's proposed id; a view already in a different group is a conflict, not
   a silent move.
+- `SharedStateGroup` models the indivisible `{spatial, camera}` pair, so
+  co-referenced application accepts exactly that `synchronizedState` set (any
+  order, no duplicates). Eligibility may validate every `LinkableState`, but
+  application must never pretend to apply states the group does not model:
+  `[]`, partial, `presentation`-only and duplicate sets fail closed.
 - Link recording reuses `assemblePreparedView` (re-validate + freeze) and the
   internal P4.3 projection swap. The guards are shape-only by design so every
   semantic refusal keeps its own typed code.
@@ -1604,14 +1616,14 @@ suites 69→70), as the phase owner requested before P4.4–P4.5 add cases.
 ## 4. Tests Added & Executed
 
 Added `tests/view-engine/link-eligibility.test.ts` (13 tests) and
-`tests/view-engine/link-application.test.ts` (9 tests).
+`tests/view-engine/link-application.test.ts` (10 tests).
 
 | Command | Observed result |
 | --- | --- |
 | `npm run typecheck` | exit 0 |
 | `node --test tests/view-engine/link-eligibility.test.ts` | **13 pass / 0 fail** |
-| `node --test tests/view-engine/link-application.test.ts` | **9 pass / 0 fail** |
-| `npm test` | **383 pass / 0 fail / 72 suites** (0 skipped/todo) = P4.3 361/70 + 22 tests / +2 suites |
+| `node --test tests/view-engine/link-application.test.ts` | **10 pass / 0 fail** |
+| `npm test` | **384 pass / 0 fail / 72 suites** (0 skipped/todo) = P4.3 361/70 + 23 tests / +2 suites |
 | `npm run build` | clean (exit 0, `tsc -b`) |
 
 Coverage: two distinct digests in one verified FoR accepted; transformed and
@@ -1622,7 +1634,11 @@ unverified link surfaces `CoReferenceError CO_REFERENCE_NOT_VERIFIED`; every
 shape/validity/frames/out-of-domain, mode inconsistency); **fail-closed
 robustness** that malformed runtime payloads (non-record transform, missing
 `validity`, non-array/wrong-length differential, null/primitive link) raise
-typed `LinkError`, never `TypeError`. Application: shared frozen pair identity,
+typed `LinkError`, never `TypeError`, **and** that a co-referenced application
+accepts only the exact `{spatial, camera}` set (order-agnostic) while `[]`,
+partial, `presentation`-only and duplicate sets are refused with
+`LINK_APPLICATION_UNSUPPORTED_SYNCHRONIZED_STATE`, leaving no group or view
+mutation. Application: shared frozen pair identity,
 link recorded once, wrapper frozen, registry matches returned views,
 pre-application frozen views unchanged, idempotency incl. a structurally equal
 clone, and negatives (`LINK_APPLICATION_REQUIRES_CO_REFERENCE`,
@@ -1631,9 +1647,11 @@ clone, and negatives (`LINK_APPLICATION_REQUIRES_CO_REFERENCE`,
 `|| true`; no vacuous assertions.
 
 Independent verdicts: `nuclear-reviewer` **PASS** (two `TypeError`-leak defects
-found pre-review and fixed; N1–N3 closed; one cosmetic ordering nit fixed) and
-`nuclear-qa` **PASS** for all executable gates (13/13 · 9/9 · 383/383 ·
-typecheck/build clean), with image tolerance declared **NOT YET APPLICABLE**
+found pre-review and fixed; N1–N3 closed; one cosmetic ordering nit fixed;
+the phase owner's blocking `synchronizedState` finding closed by the exact-set
+guard) and `nuclear-qa` **PASS** for all executable gates (13/13 · 10/10 ·
+384/384 · typecheck/build clean), with image tolerance declared **NOT YET
+APPLICABLE**
 (no image comparison). One full `npm test` run hit the known renderer-harness
 flake (`adapter-teardown.test.ts` timeout); the file passed 3/3 alone and the
 re-run was green — reported truthfully, not as a P4.4 failure.
@@ -1654,8 +1672,9 @@ re-run was green — reported truthfully, not as a P4.4 failure.
 
 ## 7. Known Limitations & Technical Debt
 
-- The three new source files are 177/214/196 lines; the test files 263/273
-  (tests are outside the Rule 02 source-length gate).
+- The three new source files are 177/214/223 lines; the test files 263/316
+  (tests are outside the Rule 02 source-length gate; `link-application` is the
+  largest P4.4 test file and a candidate for a future split).
 - `replaceRegisteredPreparedView` remains reachable by deep-importing the
   internal module (same accepted trust tier as P4.3); a package `exports` map or
   lint rule would make the boundary runtime-verifiable.
