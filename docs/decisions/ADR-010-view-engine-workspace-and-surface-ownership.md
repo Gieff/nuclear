@@ -190,3 +190,36 @@ corrections are ratified and supersede contradicted wording above.
   immutable; shared `SpatialState`/`CameraState` are owned by a private
   holder with atomic replacement, never exposed as freely mutable objects.
 
+## 8. Addendum — P4.6 Surface Capacity, Disposal and Binding Scope (2026-09-22)
+
+**Status:** Accepted (clarifies §5; no change to the `ViewportSurface`
+contract).
+
+- **Capacity is a lifetime-total logical identity budget.** A workspace
+  session allocates at most **16** distinct `ViewportSurface` identities.
+  The limit counts logical records only; it is never equated with WebGL
+  contexts, canvases or DOM nodes. This restates §5 for the registry API.
+- **Disposal is terminal and never reclaims an identity.** `dispose` clears
+  the binding (the `isViewportSurface` disposed rule), sets `disposed` and
+  is final; there is deliberately **no** purge/remove API in P4.6. A disposed
+  surface therefore still occupies the identity budget, and the
+  capacity-exceeded remediation is to reuse an already-allocated identity,
+  never to dispose-and-retry.
+- **Composer binding is not representable in the frozen contract.** §8.1 /
+  §29.1 describe a surface bound to a `ComposerViewInstance`, but
+  `ViewportSurface` exposes only `boundSlotId` and `boundViewId`. P4.6
+  therefore does not implement or invent a Composer binding; representing it
+  requires a `shared-types` extension with its own ADR, validator and
+  fixture.
+- **The registry does not cross-validate references or binding uniqueness.**
+  It validates identity, lifecycle and structure only; whether a
+  `boundSlotId`/`boundViewId` exists elsewhere, and whether one slot/view is
+  bound by more than one surface, are caller-owned in P4.6 (mirroring the low
+  level `ViewSlotRegistry`, while `ImagingWorkspace` performs the
+  cross-checks).
+- **Host placement geometry is view-engine-local and unit-agnostic.**
+  `SurfaceHostRect`/`SurfacePlacement` are ephemeral host-placement DTOs in
+  caller-supplied units, not physical mm and not persisted. Per §1 they must
+  be promoted to `shared-types` (with a validator and fixture) at their first
+  cross-package consumption (e.g. Fase 6 UI or `figure-engine`), not before.
+

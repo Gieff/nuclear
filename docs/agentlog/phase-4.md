@@ -2102,6 +2102,191 @@ ADR-012 Status remains **Proposed**; its "Ratification Checklist" records that
 none of R-1..R-4 is yet met, and the Phase 4 plan's P4.4b slice now states it
 depends on R-1..R-4 being resolved.
 
+---
+
+# Handover Report — P4.6: ViewportSurfaceRegistry + SurfaceLayoutManager
+
+## 1. What Was Implemented
+
+P4.6 delivered the persistent-surface half of `@nuclear/view-engine`: a
+WebGL-agnostic identity/lifecycle registry and a pure host-placement geometry
+manager, both Node-safe and DOM-free.
+
+- **`ViewportSurfaceRegistry`** (`surfaces/registry.ts`): stable
+  `surfaceId`/`viewportId` identity over the frozen `ViewportSurface` contract.
+  `createSurface` registers an `available`, deep-frozen surface with **absent**
+  (never `undefined`) binding keys, enforcing malformed-id → duplicate
+  `surfaceId` → duplicate `viewportId` → **logical capacity**. `bind` sets
+  `boundSlotId`/`boundViewId` (at least one required) while preserving identity
+  and lifecycle; `unbind` clears both; `mount`/`hide` implement
+  `available|hidden → mounted → hidden`; `dispose` clears the binding, sets
+  `disposed` and is terminal. Reads return the stored frozen value by identity.
+- **Capacity/disposal semantics (ratified, ADR-010 §8):** the 16-surface cap is
+  a **lifetime-total logical identity budget**, not a WebGL-context count;
+  disposal is terminal and never reclaims an identity, so the capacity error's
+  remediation is "reuse an already-allocated identity" (no unreachable
+  dispose-to-free advice).
+- **Composer-binding disclosure:** architecture §8.1/§29.1 mention a
+  `ComposerViewInstance` binding, but the frozen contract carries only
+  `boundSlotId`/`boundViewId`; P4.6 deliberately does **not** invent it and
+  documents that representing it needs a `shared-types` extension (own ADR +
+  validator + fixture).
+- **`SurfaceLayoutManager`** (`surfaces/layout.ts`): pure, deterministic
+  row-major viewer-grid geometry (`x = host.x + col·(cell+gap)`,
+  `cell = (host − gap·(n−1))/n`) and exact composer-panel placement. Host units
+  are **caller-supplied** (never assigned mm/px meaning by view-engine); output
+  is frozen and preserves the requested `surfaceId`s (identity) across
+  re-layout.
+- **Fail-closed hardening:** typed `SurfaceError` for every refusal; untyped
+  runtime input (`createSurface` input, `bind` binding, layout request/`kind`/
+  `host`/`surfaceIds`, non-string/blank binding fields) raises a typed error,
+  never a bare `TypeError`; every refusal precedes any map mutation. The grid
+  gap bound is `gap·(columns−1) < host.width` **and**
+  `gap·(rows−1) < host.height`, with a post-condition refusing a subnormal host
+  whose cells would underflow to zero.
+- **Standalone by decision:** P4.6 does not wire surfaces into
+  `ImagingWorkspace`; that keeps the accepted workspace snapshot untouched and
+  the slice bounded (the registry is self-contained, like `ViewSlotRegistry`).
+
+## 2. Files Changed / Created
+
+Created (source):
+- `packages/view-engine/src/surfaces/types.ts` (67 lines)
+- `packages/view-engine/src/surfaces/errors.ts` (41 lines)
+- `packages/view-engine/src/surfaces/registry.ts` (264 lines)
+- `packages/view-engine/src/surfaces/layout.ts` (156 lines)
+- `packages/view-engine/src/surfaces/index.ts` (12 lines)
+
+Created (tests):
+- `tests/view-engine/fixtures/surface-fixtures.ts` (61 lines)
+- `tests/view-engine/surface-registry.test.ts` (274 lines; 13 tests a–m)
+- `tests/view-engine/surface-layout.test.ts` (209 lines; 8 tests a–h)
+
+Modified:
+- `packages/view-engine/src/index.ts` (8 lines; +`export * from './surfaces/index.js';`)
+
+Documentation:
+- `docs/decisions/ADR-010-view-engine-workspace-and-surface-ownership.md`
+  (+§8 addendum: capacity/disposal semantics, Composer-binding deferral,
+  cross-validation boundary, local host-geometry promotion trigger).
+
+Unchanged: `packages/shared-types/**`, every other package,
+`tests/contracts/view-validators.ts`, plans, `CHANGELOG.md`, the version.
+
+## 3. Architectural Assumptions Made
+
+- `ViewportSurface` is the contract (shared-types) and `ViewportSurfaceRegistry`
+  is the engine's identity/lifecycle owner (ADR-010 §5); the architecture's
+  "16 persistent surfaces" is a logical identity count, never a context count
+  (§2.3, §29.1).
+- **Capacity is lifetime-total** (ADR-010 §8): a surface identity, once
+  allocated, is never reclaimed; disposal is terminal. This avoids identity
+  reuse and keeps the literal "at most 16 records" guarantee.
+- The registry validates identity/lifecycle/structure only; it does **not**
+  cross-validate that a `boundSlotId`/`boundViewId` exists elsewhere and does
+  not enforce one-surface-per-slot/view. There is no `ViewId` registry, and the
+  low-level `ViewSlotRegistry.bind` draws the same boundary; cross-checking
+  belongs to a future workspace facade.
+- Host rectangles are ephemeral and unit-agnostic; `view-engine` assigns no
+  physical meaning and performs no viewport→panel framing (that stays
+  `figure-engine`). §1 therefore permits view-engine-local DTOs now, with
+  mandatory promotion to `shared-types` at first cross-package consumption.
+- The registry is deliberately standalone (not a field of `ImagingWorkspace`)
+  to keep P4.6 bounded and the accepted workspace/`snapshot()` shape unchanged.
+
+## 4. Tests Added & Executed
+
+P4.6 suites: `surface-registry.test.ts` **13/13**, `surface-layout.test.ts`
+**8/8** (21 P4.6 tests, 2 suites; 0 skipped/todo; no `skip`/`todo`/`|| true`).
+
+| Command | Observed result |
+| --- | --- |
+| `node --test tests/view-engine/surface-registry.test.ts` | **13 pass / 0 fail** |
+| `node --test tests/view-engine/surface-layout.test.ts` | **8 pass / 0 fail** |
+| `npm run typecheck` | exit 0 |
+| `npm test` | **429 pass / 0 fail / 79 suites** (0 skipped/todo) |
+| `npm run build` | clean (exit 0; forced `tsc -b --force` also clean) |
+| `npm run test:python` | 207 passed |
+| `npm run typecheck:python` | clean over 50 source files |
+
+Delta attribution: committed baseline at `178ba87` was **404/75**; P4.6 adds
+**+21 tests / +2 suites**; a concurrent Phase-2B writer (medical-engine/worker +
+Python registration) landed **+4 tests / +2 suites** (`1dbe540`, committed
+during this slice and untouched by P4.6) = **429/79** exactly.
+
+Coverage: create/freeze and absent binding keys; identity-stable reads;
+capacity 16 accepted / 17th refused; duplicate `surfaceId` and `viewportId`
+refused; bind slot and/or view with identity preserved and the prior object
+untouched; rebind/unbind; lifecycle `available→mounted→hidden→mounted` with all
+illegal transitions refused; `dispose` clears binding, is terminal, blocks
+bind/mount/hide/unbind and satisfies the `isViewportSurface` disposed rule;
+exact 4×4 and gapped-grid rects; composer-panel equals the host rect without
+freezing the caller's host; identity preserved across 2×2→4×1 re-layout;
+gap bound (`gap·(n−1)` negative/positive boundary); fail-closed on non-finite
+host/dims, bad grid dims, id count/duplicates/blanks, bad gap, subnormal host,
+untyped request/kind/host/surfaceIds/input/binding and non-string binding
+fields; every refusal leaves the registry byte-for-byte unchanged.
+
+Independent verdicts: `nuclear-reviewer` initially **CONCERNS** (two real
+defects: n≥3 gap bound producing negative cells; dishonest capacity
+remediation) plus disclosure/hardening items — all resolved (R1/R2/R3/R5), then
+two MINOR residuals (subnormal-cell underflow N1; untyped binding field values
+N2) fixed, and a final confirmation **PASS** with adversarial falsification
+sweeps. `nuclear-qa` **PASS** on all ten executable gates (two runs, including
+the frozen final tree); image tolerance declared **NOT YET APPLICABLE** (pure
+identity/lifecycle/layout arithmetic asserted with exact equality).
+
+## 5. Documentation, Agentlog & ADR Status
+
+- ADR-010 §8 addendum records the capacity/disposal decision, the
+  Composer-binding deferral, the cross-validation boundary and the local
+  host-geometry promotion trigger. ADR-010 §5 is implemented as written.
+- This report satisfies the AgentLog Gate for P4.6.
+- `CHANGELOG.md` untouched; release notes are compiled via `/promote-changelog 4`
+  only on explicit request.
+
+## 6. Project Model Impact
+
+- None. No `.ncp` schema change. `SurfaceHostRect`/`SurfacePlacement`/
+  `SurfaceLayoutRequest`/`SurfaceLayoutResult` are view-engine-local ephemeral
+  DTOs (like `SharedStateGroupSnapshot`, `ResolvedLocalView`), not persisted
+  contracts. The `ViewportSurface` contract itself is unchanged shared-types.
+
+## 7. Known Limitations & Technical Debt
+
+- Surface capacity is lifetime-total: there is no removal/purge API, so a
+  session that exhausts 16 identities must reuse existing surfaces (ratified in
+  ADR-010 §8; revisit only if a real workspace needs churn).
+- `boundSlotId`/`boundViewId` existence and one-surface-per-slot/view uniqueness
+  are caller-owned and not enforced in P4.6.
+- A `ComposerViewInstance` surface binding is not representable until a
+  shared-types extension lands (own ADR + validator + fixture).
+- `assertIdentifier`'s remediation clause is generic and reads slightly
+  misaligned when reused by `bind` for `boundSlotId`/`boundViewId` (cosmetic;
+  the field + operation are named in the message).
+- The last grid cell's right/bottom edge can exceed the host by ≤1 ulp from
+  float accumulation in the documented formula; the formula was **not**
+  simplified (non-simplification law).
+- Layout output types stay view-engine-local pending first cross-package
+  consumption (Fase 6 UI / `figure-engine`), at which point ADR-010 §1 requires
+  promotion with validator + fixture.
+- `surface-registry.test.ts` (274) and `surface-layout.test.ts` (209) are
+  outside the Rule 02 source gate but are split candidates.
+- Carried Phase 3 debt unchanged (renderer size headroom; hardware-GPU and a
+  true production bundle remain `NOT YET APPLICABLE`).
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P4.7 — `ResourceDemand` projection into `ResourceManager`**: project
+slot/view visibility into declarative `ResourceDemand[]` and reconcile it against
+the real Phase 3 `ResourceManager` with stable, caller-owned lease ids; assert a
+shared asset is retained once per lease and released exactly once, and that
+eviction preserves semantic view identity while reload restores residency. Do not
+reimplement residency policy in `view-engine`. **P4.4b** (inter-study
+application/propagation) remains blocked until ADR-012 is **Accepted**
+(R-1..R-4) and Phase 2B can produce a verifiable `SpatialTransform`; **P4.8**
+is the final independent phase review/QA and closure.
+
 Next: ratify R-1..R-4 (or revise R-2/R-3 into a superseding decision), then
 proceed to **P4.6**.
 
