@@ -1026,3 +1026,29 @@ editorial layers. Do not add any encoder dependency before that ADR is Accepted.
   mypy 77, file-length (`render-orchestrator.ts` 235 ≤ 250), and the browser
   assertions (1890×1890, byte length, live invariance, fail-closed `missing`).
   No unexpected deltas. Image/pixel tolerance gate **NOT YET APPLICABLE**.
+
+---
+
+# Planning Entry — ADR-015 (export encoder pipeline) proposed
+
+Not an implementation slice. **`docs/decisions/ADR-015-export-encoder-pipeline.md`
+is Proposed** to unblock P5.6/P5.7, per ADR-014 D5. It adds no dependency and no
+code.
+
+- Requirements: Node-safe/isomorphic/DOM-free; behind an encoder port;
+  deterministic bytes; physical fidelity (no upscale); explicit sRGB; hybrid PDF
+  (raster medical panel + native vectors); provenance; curated-fixture evidence.
+- Candidates evaluated: PNG/TIFF via minimal writers over `node:zlib`
+  (recommended) vs `upng-js`/`utif` vs native `sharp`; PDF via `pdf-lib`
+  (recommended) vs `pdfkit` vs hand-rolled vs Chromium/`node-canvas` (rejected).
+- Recommendation: **Track 1** — minimal PNG/TIFF writers + `node:zlib` and
+  `pdf-lib`, no native binaries; **Track 2** (`upng-js` + `utif` + `pdf-lib`) as
+  fallback; `sharp` deferred for v1.
+- Open Decisions awaiting owner ratification: OD-6a (raster track), OD-6b (TIFF
+  form), OD-6c (colour management), OD-6d (encoder location), OD-6e (PDF fonts),
+  OD-6f (determinism policy), OD-6g (P5.7 scope).
+- P5.6/P5.7 are marked **GATED on ADR-015** in the plan and runbook. No encoder
+  dependency has been added and no composition code exists yet.
+- Exact next step: owner ratifies ADR-015 (track + OD-6a…OD-6g), then implement
+  P5.6 (raster flatten) behind the encoder port with byte-determinism and
+  round-trip evidence.

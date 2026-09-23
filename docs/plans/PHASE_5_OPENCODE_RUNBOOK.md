@@ -152,14 +152,21 @@ Every delegation brief must include:
 - If the renderer harness is unavailable in an environment (e.g. `listen EPERM`
   sandbox), report P5.5b `BLOCKED` there rather than PASS.
 
-### P5.6 / P5.7 — Raster and PDF Encoders
+### P5.6 / P5.7 — Raster and PDF Encoders (GATED on ADR-015)
 
-- Do not add an encoder dependency before its ADR is ratified with user
-  sign-off. Compose from already-produced layers; never rasterize the whole
-  page for the hybrid PDF.
+- Do not add any PDF/TIFF/PNG dependency before **ADR-015**
+  (`docs/decisions/ADR-015-export-encoder-pipeline.md`) is **Accepted** with user
+  sign-off. The proposed direction is a pure, Node-safe, DOM-free pipeline: the
+  minimal-writer + `node:zlib` track (with `pdf-lib` for the hybrid PDF) or the
+  `upng-js` + `utif` + `pdf-lib` fallback; native `sharp` is deferred.
+- Compose from already-produced layers; never rasterize the whole page for the
+  hybrid PDF. The medical panel is the P5.5 high-resolution raster; typography and
+  annotations are native vectors in sheet mm.
 - An annotation whose resolved opacity is `0` — e.g. the OD-4 fade endpoint at
   exactly `2 × planeToleranceMm` — must be emitted as nothing, never as a
   zero-opacity primitive.
+- Determinism is a gate: encoding the same plan twice must produce identical
+  bytes, and the encoder name/version must be recorded in provenance.
 
 ## Required Gate Commands
 
