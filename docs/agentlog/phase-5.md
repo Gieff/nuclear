@@ -299,12 +299,19 @@ Not modified by Phase 5: `shared-types`, `rendering-presets`, `medical-engine`,
   - Boundary: deep `PreparedView.state` is passed through and rejected only by
     the oracle, pinning the upstream trust boundary by evidence.
 - `npm run typecheck` → **PASS**; `npm run build` → **PASS**.
-- `npm test` → **586 tests / 107 suites, 586 pass / 0 fail**. Phase 5 contributes
-  34 figure-engine tests; the remainder includes the parallel P4.4b suite, which
-  grew during the session. No failure, no sandbox artifact on this run.
+- `npm test` → **586 tests / 107 suites, 586 pass / 0 fail in this environment**.
+  Phase 5 contributes 34 figure-engine tests; the remainder includes the
+  parallel P4.4b suite, which grew during the session.
+- **Environment caveat (recorded from the phase-owner's environment).** The full
+  suite is **not universally green**: the phase owner observed **522/586 pass
+  with 64 `listen EPERM` errors on `127.0.0.1` listeners**, all in the
+  pre-existing rendering suites. Those failures are sandbox/listener-permission
+  artifacts outside Phase 5; the Phase-5 figure-engine suite stays **34/34
+  green** in both environments. The full-suite gate is therefore *environment-
+  dependent* and must be read with this caveat; it is not evidence about Phase 5.
 - `npm run test:python` → **411 passed**; `npm run typecheck:python` → **clean,
   77 files**.
-- File-length: largest Phase-5 source `request-validation.ts` = **262 lines**;
+- File-length: largest Phase-5 source `request-validation.ts` = **268 lines**;
   all Phase-5 source files ≤ 300. `git diff --check` → clean.
 
 ## 5. Documentation, AgentLog & ADR Status
