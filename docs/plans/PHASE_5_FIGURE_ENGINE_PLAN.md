@@ -126,8 +126,8 @@ baseline when:
 | P5.4 | engine engineer | Annotation visibility policy (OD-4) + patient projection (OD-5 ratified 2026-09-23, A/A/A). **COMPLETE.** | OD-4 policy cases; OD-5 plane/distance cases; full LPS→sheet chain; fail-closed refusals (non-unit normal, non-affine matrix, invalid viewport, malformed anchor) |
 | P5.5a | engine engineer | Publication renderer **port contract** + live render orchestration (consume the medical `RenderTarget` capability through a caller-supplied port; no Cornerstone import). **COMPLETE.** | Port-contract tests with a fake port: per-panel physical target (aperture × DPI), request order, fail-closed on non-live/unavailable/malformed/short raster |
 | P5.5b | engine engineer | **Real-harness adapter evidence** for a live panel: a `PublicationRendererPort` implementation over `captureTemporaryRenderTarget` in the controlled browser harness. **COMPLETE.** | Browser capture at the panel aperture (80 mm @ 600 DPI → 1890×1890, native byte length), live-canvas invariance, temporary-target disposal, and fail-closed on an unavailable source |
-| P5.6 | engine engineer | TIFF/PNG raster flatten composition via an encoder port. **GATED on ADR-015 ratification** (`docs/decisions/ADR-015-export-encoder-pipeline.md`, Proposed). | Byte-determinism (encode twice → identical bytes) + decoder round-trip on a curated fixture; encoder provenance |
-| P5.7 | engine engineer | Hybrid vector PDF emission via an encoder port. **GATED on ADR-015 ratification** (same record). | Vector-preservation assertions (text/annotations native, medical panel raster); deterministic PDF metadata/ID |
+| P5.6 | engine engineer | TIFF/PNG raster flatten composition via an encoder port (ADR-015 **Accepted**, Track 1). **READY.** Delivers the pure sheet compositor + `EncoderPort` + reference `node:zlib` writers. Two follow-up sub-slices are explicitly pending: (a) the figure-sheet **plan builder** (framing/layout + P5.5 rasters → compositor plan) and (b) editorial **text/vector rasterization** into the flattened raster (needs a font/vector-rasterizer decision). | Byte-determinism (encode twice → identical bytes) + decoder round-trip on a curated fixture; bounds/resampling refusal; encoder provenance |
+| P5.7 | engine engineer | Hybrid vector PDF emission via an encoder port (ADR-015 Accepted; fonts = embedded permissive open-source subset). **READY after P5.6.** | Vector-preservation assertions (text/annotations native, medical panel raster); deterministic PDF metadata/ID |
 | P5.8 | reviewer + QA | Independent phase review, gates and final handover | Reviewer/QA verdicts, configured gates and the eight-point phase report recorded |
 
 Dependency order: P5.2 → P5.1; P5.3 → P5.1; P5.4 → P5.3; P5.5a → P5.2;
@@ -197,14 +197,17 @@ Stop the active slice as `BLOCKED` rather than guessing when:
 
 ## Exact Next Step
 
-P5.0–P5.4 and P5.5a/P5.5b are delivered and accepted. **The P5.5 renderer cycle
-is closed.** The next slice is **P5.6** (TIFF/PNG raster flatten composition),
-which must not start before an **encoder ADR** is ratified (ADR-014 D5): no PDF/
-TIFF/PNG library may be added without an explicit ADR and user sign-off. The
-raster composition takes the `PublicationRenderResult` panels from P5.5a and the
-editorial layers from the figure sheet.
+P5.0–P5.5 are delivered and accepted; **ADR-015 is Accepted** (Track 1:
+minimal `node:zlib` writers + `pdf-lib`; OD-6a…OD-6g ratified). **Implement
+P5.6**:
 
 ```text
-P5.6 (BLOCKED on encoder ADR; READY after P5.5a) — TIFF/PNG raster flatten
-P5.7 (after P5.6)                               — hybrid vector PDF
+packages/figure-engine/src/publication/{encode-port,compose-sheet}.ts  — port + pure compositor
+tests/export/fixtures/{png-writer,tiff-writer,reference-encoder}.ts    — reference node:zlib adapter
+tests/export/*.test.ts                                                 — determinism + round-trip
 ```
+
+`figure-engine` stays pure (no `node:zlib`, no DOM); the concrete encoder is a
+composition-root-shaped adapter (OD-6d) and, until `apps/desktop` exists, lives
+in test infrastructure. Editorial text/vector rasterization into the flattened
+raster is a follow-up sub-slice that requires a font/vector-rasterizer decision.

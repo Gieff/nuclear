@@ -2,9 +2,9 @@
 
 ## Status
 
-**Proposed** — awaiting phase-owner ratification. This ADR adds **no
-dependency** and implements **no code**: it evaluates candidates and records the
-open decisions that P5.6/P5.7 must not start without (ADR-014 D5).
+**Accepted** (phase owner, 2026-09-23): **Track 1** with all proposed defaults
+**OD-6a … OD-6g** ratified. See “Ratification Record”. No code or dependency is
+added by this record itself; P5.6/P5.7 implement behind the encoder port.
 
 ## Date
 
@@ -138,29 +138,40 @@ that preference.
 - Determinism is proven by encoding the same plan twice and asserting identical
   bytes, plus a decoder round-trip on a curated fixture.
 
-## Open Decisions (owner ratification required)
+## Ratification Record (2026-09-23, phase owner)
 
-- **OD-6a — Raster track.** Track 1 (minimal writers + `node:zlib`) vs Track 2
-  (`upng-js` + `utif`). Default recommendation: **Track 1**.
-- **OD-6b — TIFF form.** Baseline TIFF with Deflate (recommended) vs LZW vs
-  uncompressed; single IFD, 8-bit RGB, no tiling/strips preference.
-- **OD-6c — Colour management.** Declare sRGB via standard mechanisms
-  (PNG `sRGB`/`gAMA`; TIFF `PhotometricInterpretation=RGB`; PDF `/DeviceRGB`)
-  with no embedded ICC in v1, versus embedding an sRGB ICC profile now. Default
-  recommendation: **declare sRGB, defer ICC embedding**.
-- **OD-6d — Encoder location.** Where the concrete encoder implementation lives
-  given ADR-014 D5: a dedicated adapter module in the composition root versus a
-  new package. Default recommendation: **composition-root adapter** (no new
-  package) until a second consumer exists.
-- **OD-6e — PDF fonts.** Standard-14 base fonts (no embedding; lower fidelity,
-  viewer-dependent metrics) vs embedding a licensed design-system font subset
-  (higher fidelity; font file licensing + deterministic subsetting). Default
-  recommendation: **embed one licensed font subset**, pending licensing.
-- **OD-6f — Determinism policy.** Confirm the determinism contract above,
-  including the fixed-metadata policy for PDF.
-- **OD-6g — P5.7 scope.** Confirm that P5.7 emits the medical raster plus native
-  vectors only, and that an offline `CachedPreview` panel is out of scope until a
-  separate policy is ratified (ADR-014 D4/D5).
+The owner ratified **Track 1** and every proposed default:
+
+- **OD-6a — Raster track: Track 1 (ratified).** Minimal writers over
+  `node:zlib` for the RGBA8 subset; microscopic control of chunk/tag order for
+  byte-determinism, with the built-in C `zlib` deflate and no native binaries.
+- **OD-6b — TIFF form: baseline TIFF 6.0 + Deflate (ratified).**
+- **OD-6c — Colour: declare sRGB, no embedded ICC in v1 (ratified).** ICC/PDF-X
+  embedding is deferred to an editorial need.
+- **OD-6d — Encoder location: composition-root adapter, no new package
+  (ratified).** `figure-engine` keeps the port and the pure composition; the
+  concrete encoder implementation is a caller-supplied adapter. Until
+  `apps/desktop` exists, the reference adapter lives in test infrastructure.
+- **OD-6e — PDF fonts: embed a subset of a permissive open-source font
+  (ratified).** For v1 the owner designated a permissive open-source family
+  (Inter — with Roboto/Open Sans as acceptable alternatives) rather than
+  Standard-14, so layout metrics are stable across viewers without licensing
+  blockers. Applies to P5.7.
+- **OD-6f — Determinism policy: ratified as written.** No `Date.now()`, no
+  random identifiers; fixed compression parameters and ordering; byte-stability
+  is non-negotiable.
+- **OD-6g — P5.7 scope: ratified.** Medical raster plus native vectors only;
+  offline `CachedPreview` panels remain out of scope pending a separate policy.
+
+## Open Decisions (resolved by the ratification above)
+
+- **OD-6a — Raster track.** → Track 1.
+- **OD-6b — TIFF form.** → baseline TIFF 6.0 + Deflate.
+- **OD-6c — Colour management.** → declare sRGB; defer ICC embedding.
+- **OD-6d — Encoder location.** → composition-root adapter; no new package.
+- **OD-6e — PDF fonts.** → embed a permissive open-source font subset (Inter).
+- **OD-6f — Determinism policy.** → ratified as written.
+- **OD-6g — P5.7 scope.** → raster + native vectors; cached preview excluded.
 
 ## Consequences
 

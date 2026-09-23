@@ -152,21 +152,33 @@ Every delegation brief must include:
 - If the renderer harness is unavailable in an environment (e.g. `listen EPERM`
   sandbox), report P5.5b `BLOCKED` there rather than PASS.
 
-### P5.6 / P5.7 — Raster and PDF Encoders (GATED on ADR-015)
+### P5.6 / P5.7 — Raster and PDF Encoders (ADR-015 Accepted — Track 1)
 
-- Do not add any PDF/TIFF/PNG dependency before **ADR-015**
-  (`docs/decisions/ADR-015-export-encoder-pipeline.md`) is **Accepted** with user
-  sign-off. The proposed direction is a pure, Node-safe, DOM-free pipeline: the
-  minimal-writer + `node:zlib` track (with `pdf-lib` for the hybrid PDF) or the
-  `upng-js` + `utif` + `pdf-lib` fallback; native `sharp` is deferred.
+- **ADR-015** (`docs/decisions/ADR-015-export-encoder-pipeline.md`) is
+  **Accepted**: Track 1 (minimal PNG/TIFF writers over `node:zlib` + `pdf-lib`),
+  OD-6a…OD-6g ratified (sRGB declared, no ICC; composition-root adapter; PDF
+  fonts = embedded permissive open-source subset, Inter).
+- `figure-engine` owns the `EncoderPort` contract and the **pure** sheet
+  compositor; the concrete encoder is a composition-root-shaped adapter (OD-6d)
+  and, until `apps/desktop` exists, lives in test infrastructure. The
+  `figure-engine` barrel must stay free of `node:zlib`/DOM so it remains
+  browser-safe.
 - Compose from already-produced layers; never rasterize the whole page for the
-  hybrid PDF. The medical panel is the P5.5 high-resolution raster; typography and
-  annotations are native vectors in sheet mm.
+  hybrid PDF. The medical panel is the P5.5 high-resolution raster.
+- **No resampling**: a layer whose raster dimensions differ from its physical
+  destination at the plan DPI is refused, never upscaled/downscaled.
 - An annotation whose resolved opacity is `0` — e.g. the OD-4 fade endpoint at
   exactly `2 × planeToleranceMm` — must be emitted as nothing, never as a
   zero-opacity primitive.
 - Determinism is a gate: encoding the same plan twice must produce identical
-  bytes, and the encoder name/version must be recorded in provenance.
+  bytes (same environment), and the encoder name/version must be recorded in
+  provenance.
+- Editorial **text/vector rasterization into the flattened PNG/TIFF is a
+  follow-up sub-slice** requiring a font/vector-rasterizer decision; P5.6
+  delivers the compositor, the port and the raster writers.
+- The **figure-sheet plan builder** (framing/layout + P5.5 rasters → compositor
+  plan) is also a follow-up sub-slice: P5.6's compositor consumes an
+  already-resolved plan and does not yet build one from a `FigureSheet`.
 
 ## Required Gate Commands
 
