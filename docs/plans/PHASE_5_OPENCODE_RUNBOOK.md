@@ -122,13 +122,26 @@ Every delegation brief must include:
   editorial objects never participate in the medical transform. Screen pixels
   are never persisted.
 
-### P5.5 — Publication Renderer Port
+### P5.5a — Publication Renderer Port (COMPLETE)
 
-- `figure-engine` defines a port; the composition root supplies an
+- `figure-engine` defines the port; the composition root supplies an
   implementation that consumes the medical `MedicalViewState` and the ADR-009
   temporary `RenderTarget` capability. `figure-engine` must not import
   `@cornerstonejs/*` or `medical-engine`.
-- A below-required-density raster is refused, never upscaled.
+- `renderLivePublication` derives the per-panel temporary target from the panel
+  content aperture × request DPI, renders sequentially through the port, and
+  fails closed on a non-live request, a non-online source, a panel/instance
+  mismatch, a port failure or a malformed/short raster. A below-required-density
+  raster is refused, never upscaled.
+
+### P5.5b — Real-Harness Adapter (NOT YET IMPLEMENTED)
+
+- Add a `PublicationRendererPort` implementation backed by
+  `captureTemporaryRenderTarget` to the controlled browser harness and assert a
+  panel-aperture capture (`FIGURE_PUBLICATION_RASTER_INVALID` on a short raster),
+  live-canvas invariance and fail-closed on an unavailable source.
+- If the renderer harness is unavailable in the environment, report P5.5b
+  `BLOCKED`, never PASS.
 
 ### P5.6 / P5.7 — Raster and PDF Encoders
 
