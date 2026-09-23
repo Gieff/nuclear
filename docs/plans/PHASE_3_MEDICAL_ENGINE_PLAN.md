@@ -205,6 +205,7 @@ malformed or inconsistent metadata, and volumes over its ratified resource
 limits. The Phase 2B handover records the tested cases and remaining limits.
 No Phase 3 code or acceptance gate is reopened by this integration update.
 
-P4.4b remains separate and blocked until ADR-012 is Accepted and an admissible
-`SpatialTransform` is available; MI evidence without `errorMarginMm` remains
+P4.4b remains separate: ADR-012 is now **Accepted** (2026-09-23) and admissible
+landmark/Procrustes `SpatialTransform` evidence exists, so the slice is ready
+but **not yet implemented**; MI evidence without `errorMarginMm` remains
 non-admissible under R11-B.

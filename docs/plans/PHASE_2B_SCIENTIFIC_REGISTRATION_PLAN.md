@@ -208,7 +208,8 @@ protocol and the numeric degeneracy bound remain open.
   **non-admissible to P4.4b `transformed`** until a mm-denominated MI residual
   with ratified semantics exists; the **landmarks** path **is** admissible because
   it carries a measured geometric RMS. This is the local half of ADR-012
-  **R-1 / OD-6**, to be carried into ADR-012's final ratification.
+  **R-1 / OD-6**, carried into ADR-012's ratification (**Accepted**,
+  2026-09-23).
 - **2B-T2 / R4 — deterministic MI protocol (RATIFIED 2026-09-22; scope = same
   locked environment).** The environment and every parameter are now fixed
   concretely against the installed SimpleITK **2.5.6** API (verified by
@@ -287,8 +288,13 @@ values, retained for traceability:
 link: it reports `errorMarginMm` as advisory evidence. The consumer
 (`view-engine`) compares `errorMarginMm` to the caller's `toleranceMm` at the
 **link-admission gate** (ADR-012 §5, OD-6); tolerance does **not** gate each
-propagation step. Until **ADR-012 R-1 / OD-6** are ratified, the admission policy
-— including the handling of a transform with no `errorMarginMm` — is provisional.
+propagation step. The Phase 2B owner has already ratified **R11-B** for a
+transform with no `errorMarginMm`: it is not admissible to a `transformed` link,
+is not comparable to `toleranceMm`, receives no default and is never accepted
+with a warning. **ADR-012 R-1 / OD-6 are ratified (ADR-012 Accepted,
+2026-09-23)** and carry R11-B forward; the missing-residual policy is settled
+(refuse admission). The comparison semantics for present residuals are now
+operative: admit iff present and `<= toleranceMm`, else refuse.
 
 **[Contract gap — ADR-012 R-2 / OD-4]** The `relative` mode's
 `navigationDifferentialMm` has **no defined differential domain** in the accepted
@@ -333,7 +339,8 @@ MI core, no IPC) and **2B.3b ✅** (real-volume IPC under Accepted ADR-013);
 **2B.4 ✅** `9c75386`; **2B.5 ✅** independent review and QA PASS, with all
 applicable local gates green. Fixture corrective `c2c2556`.
 Still deferred: **R6** (numeric degeneracy bound; no decision path references it).
-**P4.4b** remains blocked until ADR-012 is **Accepted**.
+**P4.4b** is unblocked (ADR-012 **Accepted**, 2026-09-23) and awaits its own
+implementation slice.
 
 Do not begin a later slice before its predecessor’s review/QA evidence is
 recorded.
@@ -358,6 +365,7 @@ Stop as `BLOCKED` (do not guess) when:
 ## Exact Next Step
 
 2B.3b/2B.5 is closed. Do not consume MI evidence in `view-engine`: 2B.4's R11-B
-policy keeps absent `errorMarginMm` non-admissible, and P4.4b remains blocked
-until ADR-012 is Accepted. Any next implementation objective requires its own
-phase-aware scope and acceptance plan.
+policy keeps absent `errorMarginMm` non-admissible; ADR-012 is now Accepted
+(2026-09-23) so P4.4b may be implemented, but only with admissible landmark/
+Procrustes evidence (MI excluded). Any next implementation objective requires
+its own phase-aware scope and acceptance plan.

@@ -360,8 +360,10 @@ is required for 2B.3b; any deviation requires an ADR revision.
 - **2B.3b** (real-IPC MI registration) is implemented under this **Accepted** ADR;
   `mode:"rigid"` produces evidence on real volumes through the verified worker →
   bridge → engine path.
-- P4.4b **remains blocked** independently: it still needs ADR-012 **Accepted**
-  (R-1..R-4) and the R11-B admission policy.
+- P4.4b **was blocked** independently of this ADR: ADR-012 is now **Accepted**
+  (2026-09-23, R-1..R-4), so P4.4b is ready but **not yet implemented**; the
+  R11-B admission policy still applies (MI without `errorMarginMm`
+  non-admissible).
 
 ## Evidence Required for Acceptance (2B.3b)
 
@@ -387,5 +389,5 @@ is required for 2B.3b; any deviation requires an ADR revision.
 ## Related
 
 - ADR-002 (worker transport), ADR-004 (fixture-only ingestion), ADR-012
-  (inter-study propagation, still Proposed), `PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md`
+  (inter-study propagation, Accepted 2026-09-23), `PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md`
   (2B.3b).

@@ -2790,9 +2790,11 @@ image/pixel-tolerance gate exists in Phase 4).
 
 ## 7. Known Limitations & Remaining Risks (carried into Phase 5)
 
-- **P4.4b is blocked**: inter-study link application/propagation requires ADR-012
-  **Accepted** (R-1..R-4) and Phase 2B producing a verifiable
-  `SpatialTransform`. No such code exists.
+- **P4.4b was blocked at P4.8 closure**: inter-study link
+  application/propagation required ADR-012 **Accepted** (R-1..R-4) and Phase 2B
+  producing a verifiable `SpatialTransform`. No such code exists. *(Update
+  2026-09-23: ADR-012 is now Accepted — P4.4b is READY, still NOT YET
+  IMPLEMENTED; see the ratification handover below.)*
 - The demand projection is **not wired into `ImagingWorkspace`**; composition
   demand must be facaded explicitly rather than assumed.
 - `ViewportSurfaceRegistry` does **not** bind a `ComposerViewInstance` (the
@@ -2827,4 +2829,142 @@ closed baseline with:
    successor) must respect the existing renderer residency constraints and never
    resize a live interactive canvas.
 5. `P4.4b` stays out of Phase-5 planning until ADR-012 is **Accepted** and Phase
-   2B yields `SpatialTransform` evidence.
+   2B yields `SpatialTransform` evidence. *(Condition met 2026-09-23: ADR-012
+   Accepted; admissible landmark/Procrustes evidence exists — P4.4b READY, NOT
+   YET IMPLEMENTED; it still requires its own slice entry before any code.)*
+
+---
+
+# Handover Report — ADR-012 Ratification (pre-P4.4b, docs + comment-only)
+
+## 1. What Was Delivered
+
+- **ADR-012 promoted from Proposed to Accepted** with an explicit phase-owner
+  ratification record (owner: phase owner; date: 2026-09-23) resolving every
+  checklist item:
+  - **R-1 — MET:** one-time admission gate requires a present
+    `errorMarginMm <= toleranceMm`; missing residual →
+    `LINK_TRANSFORM_ERROR_MARGIN_MISSING`; over-tolerance →
+    `LINK_REGISTRATION_ERROR_EXCEEDS_TOLERANCE`; no default, no
+    accept-with-warning; Procrustes/landmark RMS eligible, MI excluded
+    (folds already-ratified R11-B).
+  - **R-2 — MET (Candidate A):** `relative` deferred; P4.4b is
+    `transformed`-only and `relative` application fails closed.
+  - **R-3 — MET (Candidate A):** mandatory DAG; cycle-closing edges, self-edges
+    and convergent-path conflicts refused (`LINK_PROPAGATION_CYCLE`,
+    `LINK_SELF_REFERENCE`, new `LINK_PROPAGATION_CONFLICT`) with canonical state
+    unchanged; bidirectional A ↔ B inexpressible.
+  - **R-4 — MET (OD-2 Candidate A):** `applySpatialTransform` owned by
+    `@nuclear/medical-engine`, consumed by `view-engine`.
+- **OD-1..OD-6 resolved in the ADR:** workspace-level complete staging with
+  atomic publication (Candidate A; two-step alternative rejected); math
+  ownership; worker-verified oriented geometry as domain evidence (AABB never
+  exact, never viewport-inferred); relative deferred; finalized `LinkError`
+  taxonomy (10 codes incl. `LINK_PROPAGATION_CONFLICT`) with `clamp` = typed
+  success diagnostic and `hide`/`warn` = typed non-mutating result outcomes that
+  never touch published DTOs; missing-residual refusal.
+- Consistency sweep: PHASE_2B plan "pending" wording, PHASE_4 plan P4.4b slice
+  (BLOCKED → READY, NOT YET IMPLEMENTED), AGENTS.md Fase 4 row, PHASE_3 plan
+  and ADR-013 status pointers, and the two stale OD-6 policy notes
+  (`registration_validation.py`, `registration-evidence.ts` — comments/docstrings
+  only; policy-neutral validation behaviour unchanged).
+- This eight-point handover and two dated annotations on the closed P4.8
+  limitations/entry-conditions sections.
+
+## 2. Files Changed
+
+- `docs/decisions/ADR-012-inter-study-link-propagation.md` — Status
+  **Accepted**; ratified §1–§8; OD-1..OD-6 resolved; Ratification Record (all
+  items MET, phase owner, 2026-09-23).
+- `docs/plans/PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md` — R-1/OD-6 marked
+  ratified; P4.4b unblocked note; exact-next-step updated (landmarks only, MI
+  excluded).
+- `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` — P4.4b table row and section
+  rewritten to ratified constraints (READY, NOT YET IMPLEMENTED); eligibility
+  table and fixture-policy pointer updated.
+- `docs/agentlog/phase-4.md` — two dated annotations on the P4.8 record plus
+  this handover.
+- `AGENTS.md` — Fase 4 row: P4.4b READY, NOT YET IMPLEMENTED (residency fixture
+  split noted as closed in P4.8; demand facade remains the non-blocking debt).
+- `docs/plans/PHASE_3_MEDICAL_ENGINE_PLAN.md`,
+  `docs/decisions/ADR-013-pixel-volume-transport.md` — status pointers only.
+- `python/dicom/registration_validation.py`,
+  `packages/medical-engine/src/worker/registration-evidence.ts` — stale "OD-6
+  open" wording refreshed to ratified; **no behaviour change**.
+- `CHANGELOG.md` untouched (no behaviour, contract or user-facing change).
+
+## 3. Ratification and Architecture Boundaries
+
+- The ratification content is the **phase owner's explicit decisions**; no
+  decision was invented by an agent. Owner and date are recorded in the ADR.
+- P4.4b remains **NOT YET IMPLEMENTED**: source search confirms no
+  `applyInterStudyLink` or `LINK_PROPAGATION_CONFLICT` exists under
+  `packages/**` or `python/**`. No propagation code, API or clinical behaviour
+  was added.
+- `view-engine` remains the consumer; transform math is owned by
+  `medical-engine` (now ratified); UI remains presentation-only; worker evidence
+  remains advisory (presence-tolerant validator, admission at the link gate).
+- ADR-011, ADR-013 and P4.4 validation semantics are unchanged.
+
+## 4. Verification Evidence
+
+- Baseline: clean `main` at local release `e9e2410` (tag `v0.4.0`).
+- `git diff --check`: **PASS**; `git status` shows exactly the nine intended
+  files (7 documentation files + 2 source files with comment-only edits; the
+  two sets are disjoint).
+- `npm run typecheck`: **PASS**; `npm run build`: **PASS**.
+- `npm test`: **510/510**, 96 suites, 0 fail.
+- `npm run typecheck:python` (mypy): **PASS**, 77 source files.
+- `npm run test:python` (pytest): **411 passed**.
+- `npm run docs` (TypeDoc + pdoc): **PASS**.
+- Source-file length gate: `registration_validation.py` 210 lines,
+  `registration-evidence.ts` 163 lines — both ≤ 300: **PASS**.
+- `nuclear-reviewer`: **PASS**, no blocking findings; three nits (temporal
+  wording in §5, handover file-count decomposition, full-suite re-run scope) —
+  the first two fixed in the same task; verdict independent and read-only.
+- `nuclear-qa`: **PASS**; independently re-ran `git status`/`diff --check`,
+  `npm run typecheck`, `npm test` (510/510), `npm run typecheck:python` (77
+  files) and `npm run test:python` (411); confirmed 9-file scope, comment-only
+  source diffs (Python `ast.parse` OK), zero P4.4b symbols, complete ADR
+  record, and no stale current-state hits outside append-only agentlog history.
+
+## 5. Applicable Gates
+
+- Typecheck, unit tests (TS + Python), mypy, production build and docs:
+  **PASS** (numbers in §4) — required because two source files were touched,
+  even though only comments changed.
+- File-length and `git diff --check`: **PASS**.
+- Changelog gate: `CHANGELOG.md` intentionally untouched (docs/comment-only).
+- Windows `msvcrt` runtime and hardware-GPU evidence: **NOT YET APPLICABLE**
+  (unchanged environment fact).
+
+## 6. Project Model Impact
+
+None. No contract, validator logic, fixture, serialized state or `.ncp` schema
+changed. The Python/TS validators remain policy-neutral by design; the admission
+policy lives at the (future) view-engine link gate per ratified ADR-012 §5.
+
+## 7. Open Decisions and Non-Blocking Follow-ups
+
+- **No open R/OD items remain in ADR-012**; revision only via the ADR's
+  "Conditions That Might Warrant a Revision" section.
+- Phase 2B R6 (numeric degeneracy bound) remains deferred, as recorded; the old
+  superseded tolerance-candidate section retains its historical MI-T2
+  parenthetical (non-blocking cleanup, unrelated to R11-B).
+- Non-blocking Phase 2B follow-ups (fingerprint-MI assert, handshake capability
+  fixture, unreadable-file diagnosis, missing `ImagePositionPatient` refusal)
+  remain as recorded in its closeout.
+- Workspace-level demand facade remains the Phase 4 non-blocking debt.
+- No new clinical rule, UI behaviour, renderer or scientific formula was added.
+
+## 8. Exact Next Step
+
+Schedule the separate **P4.4b implementation slice** (owner: engine engineer)
+strictly within the ratified ADR-012 record: `transformed` only; one-time
+`errorMarginMm <= toleranceMm` admission with missing/over-tolerance refusals;
+mandatory DAG with cycle/convergence refusals; workspace-level staged atomic
+propagation with causality token; locks-win; typed out-of-domain outcomes
+(`clamp`/`hide`/`warn` per OD-5); domain from worker-verified geometry via the
+`medical-engine` primitive; Procrustes/landmark fixtures only (MI excluded
+under R11-B); acceptance evidence exactly as listed in the PHASE_4 plan
+P4.4b section. Do not start that slice within this documentation task.
