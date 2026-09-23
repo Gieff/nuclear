@@ -155,8 +155,10 @@ invalid viewport size, a non-unit normal or malformed framing/layout.
 ## Fixture and Test Policy
 
 - All figure-engine tests are **pure Node tests** under `tests/figure-engine/`
-  (no browser, no DOM). Composition/encoding slices may later use the controlled
-  renderer harness under `tests/rendering/`.
+  (no browser, no DOM). The publication composition/encoding tests live under
+  `tests/export/` (pure Node), and the controlled renderer harness tests under
+  `tests/rendering/` (browser). `tests/export/` is the declared test root for the
+  P5.6/P5.7 compositor, encoder and editorial-mapping suites.
 - The curated editorial fixture is the Fase-1
   `tests/fixtures/figure-contracts.fixture.ts` (`FigureSheet` `180 x 120 mm`,
   `PanelFramingState.contentSizeMm` `80 x 80 mm`, panel position `(20, 20) mm`,
@@ -197,13 +199,23 @@ Stop the active slice as `BLOCKED` rather than guessing when:
 
 ## Exact Next Step
 
-P5.7 and its follow-up **(c)** are **COMPLETE** under the ratified ADR-016 A-set.
-P5.8 (independent phase review, gates and final handover) remains. The remaining
-tracked follow-ups are explicitly **not** delivered and must not be assumed:
+**Phase 5 is CLOSED (P5.0–P5.8).** P5.8 recorded the final independent phase
+review and QA and the phase handover (`docs/agentlog/phase-5.md`). The phase may
+be **reopened additively** for the tracked, non-blocking follow-ups below; none
+of them invalidates the delivered export infrastructure, and none is silently
+done:
 
 ```text
 (a) aperture-inside-panel placement   — needs ratification before contentSizeMm != sizeMm
 (b) text/vector rasterization (PNG/TIFF) — needs a font/vector-rasterizer decision
 (c) COMPLETE per ADR-016 (Accepted). Residual OD-7k: patient-space ROI/text shapes
     are refused until the ROI plane / text-box orientation is ratified.
+(d) flattened PNG/TIFF physical-resolution metadata (pHYs / XResolution) and a DPI
+    field on EncodedArtifact — recorded P5.6 debt, tracked here for Phase 6.
 ```
+
+Also carried into the Phase 6 entry conditions: `request-validation.ts` (268) and
+`request.ts` (251) sit above the 250-line decomposition target (within the Rule 02
+≤300 band, accepted at P5.2 and untouched since), and the production composition
+root adapters (renderer + PNG/TIFF/PDF encoders) must move from `tests/` into
+`apps/desktop` when it exists.

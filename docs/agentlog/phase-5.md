@@ -1703,3 +1703,201 @@ if the phase owner wishes, ratify OD-7k to enable patient-space ROI/text shapes.
   80×80 image XObject and no `DCTDecode`/`JPXDecode`, the OD-7a paint order, and
   zero forbidden imports under `packages/figure-engine/src`. Zero flakes.
   Real-dataset image/pixel-tolerance gate **NOT YET APPLICABLE**.
+
+---
+
+# PHASE 5 — FINAL PHASE REVIEW AND HANDOVER (P5.8)
+
+> Phase-level eight-point handover. Phase 5 is **officially CLOSED** for its
+> ratified scope; it may be reopened additively for the tracked follow-ups in
+> point 7. Human release notes remain deferred to `/promote-changelog 5`
+> (ADR-001) and no tag/release was created.
+
+## 1. What Was Delivered
+
+`@nuclear/figure-engine` — the headless editorial composition and publication
+export layer — delivered across P5.0–P5.7 plus follow-up (c):
+
+- **P5.1** publication physical units (`pixels = round-half-up(mm/25.4·dpi)`),
+  panel-aperture and sheet dimensioning, axis-aligned containment and
+  deterministic z-ordering, with a cross-package three-way equivalence test.
+- **P5.2** fail-closed `PublicationRenderRequest` assembly: availability policy,
+  offline-preview provenance/hash/fingerprint verification, accepted by the
+  Fase-1 oracle.
+- **P5.3** the OD-1 framing and OD-2 sheet-placement transforms (pure, invertible
+  where required; medical rotation still refused).
+- **P5.4** the OD-4 annotation visibility/fade policy and the OD-5 patient
+  projection (physical LPS plane + consumed authored transforms).
+- **P5.5a/b** the `PublicationRendererPort` contract and live orchestration
+  (fake-port matrix) plus a real-harness adapter over `captureTemporaryRenderTarget`
+  (80 mm @ 600 DPI → native 1890×1890, live-canvas invariance, disposal,
+  fail-closed unavailable source).
+- **P5.6** the pure flattened-sheet compositor (no resampling), the `EncoderPort`,
+  the figure-sheet plan builder and reference deterministic PNG/TIFF writers over
+  `node:zlib` with decoder round-trips.
+- **P5.7** the hybrid vector PDF: pure `pdf-units`/`pdf-document` contracts,
+  `EncoderPort.encodePdf`, a `pdf-lib` + embedded Inter (SIL OFL) adapter,
+  deterministic metadata and content-hash `/ID`.
+- **P5.7 follow-up (c)** the ratified ADR-016 `buildEditorialVectorLayers` mapping
+  (panel backgrounds/borders, labels/captions, text/panel-letter boxes, `line`
+  annotations, sheet/panel-content ROI ellipses/polygons), new native
+  `ellipse`/`polygon` primitives, the OD-7a paint order and OD-7j typed refusals.
+
+## 2. Packages, Files and Runtime Facts
+
+- **Owner package:** `@nuclear/figure-engine` (0.4.0), 34 TypeScript source files
+  under `src/publication/`. Dependencies remain exactly
+  `shared-types`, `rendering-presets`, `project-model`, `view-engine` — **no**
+  `medical-engine`, no `@cornerstonejs/*`, no UI/React/DOM, no `node:*`/`pdf-lib`
+  in package source.
+- **Adapters (composition-root shape, OD-6d):** the renderer adapter
+  (`tests/rendering/fixtures/`), the reference PNG/TIFF writers and the
+  `pdf-lib`/Inter writer (`tests/export/fixtures/`). `pdf-lib@1.17.1` and
+  `@pdf-lib/fontkit@1.1.1` are exact-pinned root devDependencies (ADR-015 Track 1);
+  the Inter Regular TTF is vendored with its OFL license.
+- **Runtime (verified):** Node 24.3.0; TypeScript 5.6 (`tsc -b`); Python 3.14.6
+  venv (pytest + mypy); Playwright Chromium with software WebGL 2
+  (ANGLE/SwiftShader). `apps/desktop` does not exist yet (Fase 6/7).
+- **Test roots:** `tests/figure-engine/` (pure), `tests/export/` (pure
+  composition/encoding), `tests/rendering/` (browser harness).
+
+## 3. Architectural Boundary and Invariants Conformance
+
+- **Acyclic graph / Rule 02:** `figure-engine` imports only type-only
+  `@nuclear/shared-types` and relative modules; package source is free of
+  `pdf-lib`/`@pdf-lib`/`node:*`/DOM/Cornerstone/`medical-engine`. Verified by
+  independent review and QA grep.
+- **No second renderer / same path:** medical rasters arrive only through the
+  caller-supplied renderer port; the figure engine owns no WebGL context/canvas
+  (`never-resize-live-canvas`).
+- **Physical mm primary, no upscale:** enforced at four layers (plan builder,
+  shared `composition-validation`, render orchestration, medical `RenderTarget`
+  spec); screen pixels are never persisted.
+- **No invented geometry:** the three under-specified areas were refused and then
+  ratified via ADR-014 amendments (OD-1…OD-5), ADR-015 (OD-6a…OD-6g) and ADR-016
+  (OD-7a…OD-7j); every implemented transform traces to an ADR clause.
+- **Determinism:** no wall-clock/randomness in composition or encoding; PNG/TIFF
+  fixed filters/IFD order; PDF `updateMetadata:false`, payload-only dates, explicit
+  `/Producer`, content-hash `/ID`; byte-identity asserted for all three formats.
+- **Frozen contracts untouched:** `shared-types`, `view-engine`, `medical-engine`
+  and `python/` were not modified by Phase 5.
+
+## 4. Final Quality Metrics (all gates re-run at closure)
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | **PASS** (`tsc -b` + test project, 0 errors) |
+| `npm test` | **674 tests / 123 suites, 0 fail** |
+| `tests/figure-engine/` | **67 tests / 12 suites, 0 fail** |
+| `tests/export/` | **47 tests / 9 suites, 0 fail** |
+| `npm run build` | **PASS** |
+| `npm run test:python` | **411 passed** |
+| `npm run typecheck:python` | **clean, 77 files** |
+| `npm run docs` | **PASS** (`docs/api/ts`, `docs/api/python`, portal) |
+| `git diff --check` | **clean** |
+| Real-dataset image/pixel tolerance | **NOT YET APPLICABLE** |
+| Hardware-GPU / production bundle | **NOT YET APPLICABLE** |
+
+*Environment note (honest):* one phase-closure full-suite run exhibited five
+`tests/rendering/adapter-lifecycle.test.ts` startup timeouts (120 s) that reran
+green immediately and were green in two subsequent full runs (674/123/0). This is
+the documented renderer-harness startup-flake class, not a Phase 5 regression; the
+claim of "zero flakes" holds only for the focused P5.7(c) runs, not for every
+full-suite run.
+
+## 5. Documentation, AgentLog and ADR Status
+
+- **ADRs:** ADR-014 (D1–D5 + OD-1…OD-5 ratified), ADR-015 (Track 1, OD-6a…OD-6g
+  ratified), ADR-016 (A-set ratified; OD-7k residual recorded) — all **Accepted**.
+- **AgentLog:** eight-point handovers for every slice (P5.0–P5.7 incl. follow-up
+  c) plus independent reviewer/QA verdicts, in this file.
+- **Plan/runbook:** Phase 5 marked closed; tracked follow-ups (a)–(d) recorded.
+- `AGENTS.md` baseline updated to Phase 5 complete; `CHANGELOG.md` intentionally
+  **not** touched (release notes via `/promote-changelog 5`).
+
+## 6. Project Model Impact
+
+None across the phase. No `.ncp` schema change and no `shared-types` contract
+change. The only contract-oracle edit was additive (exporting `expectedPixels`).
+
+## 7. Remaining Risks, Open Items and Accepted Debt
+
+Tracked, non-blocking — none invalidates the delivered infrastructure. Phase 5 may
+be **reopened additively** for these:
+
+- **(a) aperture-inside-panel placement** — the plan builder refuses
+  `contentSizeMm !== sizeMm` until the placement is ratified.
+- **(b) text/vector rasterization into flattened PNG/TIFF** — needs a
+  font/vector-rasterizer decision (no DOM/native path in v1).
+- **(c) residual OD-7k** — patient-anchored ROI shapes and text boxes are refused
+  (plane/box orientation unratified); patient `line` endpoints are projected.
+- **(d) flattened PNG/TIFF physical-resolution metadata** (`pHYs`/`XResolution`)
+  and a DPI field on `EncodedArtifact`.
+- Still-refused editorial geometry (each needs a small additive ADR amendment):
+  arrowheads, scalebar/measurement ticks, dashed/dotted borders, bold face,
+  multi-line text.
+- **Accepted file-length maxima:** `request-validation.ts` 268 and `request.ts`
+  251 exceed the 250-line target (within the Rule 02 ≤300 band; accepted at P5.2).
+- **Production adapters** still live in `tests/`; `apps/desktop` must own the real
+  composition-root adapters.
+- `renderStateHash` for live requests is caller-supplied provenance (offline path
+  is hash-verified).
+- Harness readiness flake (`adapter-lifecycle`) — harden the probe or pin test
+  concurrency.
+- `figure-engine`'s declared-but-unused `@nuclear/rendering-presets` dependency
+  (matrix-permitted): wire or prune.
+- OD-2 contract gap: no editorial-vs-medical rotation distinction; rotated medical
+  panels remain refused.
+
+## 8. Phase 6 Entry Conditions and Exact Next Recommended Task
+
+**Phase 6 (UI mockup with fake surfaces) may start when:**
+
+1. this phase report and the phase-level reviewer/QA verdicts are recorded (done
+   by P5.8);
+2. the Phase 5 gates are green on the closure commit (`0d9f17c`): typecheck, 674
+   Node tests, build, pytest 411, mypy 77, docs;
+3. `figure-engine` provides the headless composition/export surface and the
+   caller-supplied renderer/encoder ports (done);
+4. the follow-ups (a)/(b)/OD-7k/(d) are carried as conscious debt and are **not**
+   assumed by the UI;
+5. `ui` remains presentation-only (render state, emit intent) and imports no
+   clinical/composition domain rules.
+
+**Exact next recommended task:** begin **Fase 6** with a presentation-only UI
+mockup over fake surfaces that consumes the frozen Phase 1 contracts and the
+Phase 4 `ImagingWorkspace`/`PreparedView` shapes, emitting intent only. Do not
+implement (a)/(b)/OD-7k/(d) unless the phase owner reopens Phase 5 for them.
+
+---
+
+## Phase-Level Independent Verdicts — P5.8
+
+- **`nuclear-reviewer` — PASS (phase-level).** Re-ran the gates independently and
+  audited the Completion Gates table: every P5.0–P5.7 deliverable present and
+  tested; physical geometry, publication assembly, no-upscale, vector PDF,
+  boundary and quality gates all PASS; slices delivered in the declared dependency
+  order; ADR-009/D2 equivalence and OD-1…OD-5 fidelity intact after P5.7(c). No
+  overclaim found in plan/runbook/agentlog. Findings were LOW/INFO only: (LOW-1)
+  flattened-raster physical-resolution metadata untracked in the plan — now
+  tracked as follow-up (d); (LOW-2) accepted file-length maxima — now recorded;
+  (LOW-3) `tests/export/` not named in the fixture policy — now declared.
+- **`nuclear-qa` — PASS (phase-level).** All nine configured gates pass at
+  `0d9f17c`: typecheck, `npm test` (674/123/0; one flaky first run that reran green
+  twice), build, pytest 411, mypy 77, docs, `git diff --check`, and the focused
+  figure-engine (67/12) and export (47/9) suites; the real Playwright/SwiftShader
+  harness ran here (1890×1890, live-canvas invariance, disposal, fail-closed
+  unavailable source). No BLOCKED gates; real-dataset image/pixel tolerance and
+  the production bundle are **NOT YET APPLICABLE**. Boundary grep found zero real
+  forbidden imports in package source; the two `>250` source maxima are within the
+  Rule 02 band.
+
+## Closure Statement
+
+**Fase 5 — Figure Engine & Publication Export is officially CLOSED** on
+`0d9f17c` for its ratified scope (P5.0–P5.8), with phase-level reviewer and QA
+verdicts PASS and all configured gates green. The phase is **reopenable
+additively** for follow-ups (a), (b), the OD-7k residual, and (d), and for the
+still-refused editorial geometry listed in point 7; reopening does not require
+revising the delivered export infrastructure. No tag or release was created and
+`CHANGELOG.md` is untouched (release notes deferred to `/promote-changelog 5`).
