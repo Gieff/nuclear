@@ -2968,3 +2968,175 @@ propagation with causality token; locks-win; typed out-of-domain outcomes
 `medical-engine` primitive; Procrustes/landmark fixtures only (MI excluded
 under R11-B); acceptance evidence exactly as listed in the PHASE_4 plan
 P4.4b section. Do not start that slice within this documentation task.
+
+---
+
+# Handover Report — P4.4b: Inter-Study Link Application & Propagation
+
+Date: 2026-09-23. Owner: engine engineer (Task A + Task B), verified by
+orchestrator, `nuclear-reviewer` and `nuclear-qa`.
+
+## 1. What Was Implemented
+
+Slice **P4.4b** within the ratified ADR-012 record (Accepted 2026-09-23,
+R-1..R-4 + OD-1..OD-6), `transformed` mode only:
+
+- **Task A — `@nuclear/medical-engine` spatial module (OD-2/OD-3):**
+  - `applySpatialTransform(matrix4x4, spatial)` — pure rigid application
+    (row-major `Matrix4x4`, orthonormal 3×3 with det ≈ +1, homogeneous last
+    row); maps `referenceLocation`/`orientation`/`viewPlaneNormal`/`viewUp`;
+    **carries** `sliceOffsetMm`, `patientPosition` and input
+    `frameOfReferenceUID` (view-engine composes the target FoR from the link).
+    Typed refusals: `SpatialTransformError` `MATRIX_MALFORMED` /
+    `MATRIX_NOT_RIGID` (affine scale, reflection).
+  - `isPointInNativeGridDomain` / `clampPointToNativeGridDomain` — index-space
+    membership over worker-verified `AssetGeometry` (`dimensions`, `spacing`,
+    `origin`, `direction`); half-voxel border `[-0.5, dim-0.5]`; AABB `bounds`
+    is never membership evidence; malformed geometry →
+    `NativeGridDomainError` `GRID_EVIDENCE_INVALID`.
+- **Task B — `@nuclear/view-engine` admission, registration, propagation:**
+  - `LinkErrorCode` extended with **exactly** the 10 ratified OD-5 codes
+    (`LINK_ORIGIN_UNKNOWN`, `LINK_PROPAGATION_CYCLE`,
+    `LINK_PROPAGATION_CONFLICT`, `LINK_TARGET_SPATIAL_LOCKED`,
+    `LINK_TRANSFORM_INVALID`, `LINK_TRANSFORM_ERROR_MARGIN_MISSING`,
+    `LINK_REGISTRATION_ERROR_EXCEEDS_TOLERANCE`,
+    `LINK_RELATIVE_MODE_UNSUPPORTED`, `LINK_TARGET_DOMAIN_UNAVAILABLE`,
+    `LINK_TARGET_OUT_OF_DOMAIN`).
+  - `assertInterStudyLinkAdmissible` — one-shot admission: `relative` →
+    `LINK_RELATIVE_MODE_UNSUPPORTED`; method whitelist `manual-alignment` only
+    (MI/`identity`/`dicom-registration` → `LINK_TRANSFORM_INVALID`);
+    `transformType` `rigid`|`identity` only; present `errorMarginMm` required
+    (`LINK_TRANSFORM_ERROR_MARGIN_MISSING`); `errorMarginMm > toleranceMm` →
+    `LINK_REGISTRATION_ERROR_EXCEEDS_TOLERANCE`; `<=` admitted (boundary
+    inclusive). **Only** place `toleranceMm` is compared; propagation never
+    re-reads it.
+  - `registerInterStudyLink` — eligibility (P4.4, unchanged) → admission →
+    self-edge / view-mismatch / shared-group / view↔link FoR gates →
+    mandatory-DAG cycle DFS (`LINK_PROPAGATION_CYCLE`) → stage both endpoint
+    projections then publish via `replaceRegisteredPreparedView`. Never
+    creates or attaches a `SharedStateGroup`; idempotent on structural
+    re-registration.
+  - `applySpatialIntent({ originViewId, nextSpatialState, causalityToken })` —
+    token validation before registry access; origin guards (unknown /
+    shared-group / spatial lock); deterministic BFS staging of origin + all
+    reachable `transformed` targets (outgoing edges with `'spatial'` in
+    `synchronizedState` only); convergent second arrival →
+    `LINK_PROPAGATION_CONFLICT` before any publication; target lock →
+    `LINK_TARGET_SPATIAL_LOCKED`; domain from registered target
+    `ImagingAsset.geometry` via medical-engine primitives; target FoR composed
+    from the link; `clamp` publishes a clamped `referenceLocation` with typed
+    `LINK_TARGET_OUT_OF_DOMAIN` outcome metadata, `hide`/`warn` are
+    non-mutating outcomes that stop the branch; **one synchronous publish loop
+    after complete staging** (no observer/notify). Result is deep-frozen and
+    serializable and echoes the causality token.
+  - `ImagingWorkspace.registerInterStudyLink` / `.applySpatialIntent` wrappers
+    inject the workspace registries and `lookupAsset`.
+- Procrustes/landmark fixtures with a hand-chosen translation-only rigid
+  matrix; MI (`mockRigidFollowupTransform`) remains valid for P4.4 eligibility
+  tests and is refused at P4.4b admission.
+
+## 2. Files Changed
+
+**medical-engine (Task A):**
+- NEW `packages/medical-engine/src/spatial/apply-spatial-transform.ts` (171)
+- NEW `packages/medical-engine/src/spatial/native-grid-domain.ts` (191)
+- NEW `packages/medical-engine/src/spatial/index.ts` (9)
+- EDIT `packages/medical-engine/src/index.ts` (+1 barrel line)
+- NEW `tests/medical/spatial-transform.test.ts` (191, 9 tests)
+- NEW `tests/medical/native-grid-domain.test.ts` (188, 12 tests)
+
+**view-engine (Task B):**
+- EDIT `packages/view-engine/src/linking/errors.ts` (+10 codes, additive)
+- NEW `packages/view-engine/src/linking/admission.ts` (81)
+- NEW `packages/view-engine/src/linking/inter-study.ts` (231)
+- NEW `packages/view-engine/src/linking/propagate.ts` (141)
+- NEW `packages/view-engine/src/linking/propagate-traverse.ts` (271)
+- EDIT `packages/view-engine/src/linking/index.ts` (+3 barrel exports)
+- EDIT `packages/view-engine/src/workspace/imaging-workspace.ts` (+2 wrappers,
+  296 lines total ≤ 300)
+- NEW `tests/view-engine/fixtures/inter-study-fixtures.ts` (277)
+- NEW `tests/view-engine/fixtures/inter-study-chain-fixtures.ts` (146)
+- NEW `tests/view-engine/inter-study-admission.test.ts` (219, 10 tests)
+- NEW `tests/view-engine/inter-study-propagation.test.ts` (249, 11 tests)
+
+**docs (closure):**
+- EDIT `docs/agentlog/phase-4.md` — this handover.
+- EDIT `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` — P4.4b marked implemented.
+- EDIT `AGENTS.md` — Fase 4 baseline updated.
+
+Unchanged: `eligibility.ts`, `guards.ts`, `apply.ts`, `co-reference.ts`,
+`assemble.ts`, locks, shared-state, `shared-types/**`, `python/**`,
+`CHANGELOG.md` (slice not released).
+
+## 3. Ratification and Architecture Boundaries
+
+- Behaviour is strictly ADR-012 §1–§8 + OD-1..OD-6; no code assumes beyond
+  the ratified record (relative deferred; no MI admission; no AABB domain; no
+  DTO visibility field; closed 10-code taxonomy).
+- R-4/OD-2: all matrix/rotation/cross-product math lives in medical-engine;
+  view-engine only composes (`applySpatialTransform`, domain predicates) and
+  overrides `frameOfReferenceUID` from the link (contract composition).
+- Inter-study paths never touch `SharedStateGroup`; P4.4 co-referenced path
+  and eligibility semantics unchanged (diff on those files empty except
+  barrels/workspace wrappers).
+- UI not involved; no new shared-types contract, validator or Python change.
+
+## 4. Verification Evidence
+
+- `npm run typecheck`: **PASS**.
+- `npm test`: **586/586**, 107 suites, 0 fail at slice completion (42 new
+  P4.4b tests: 9 + 12 + 10 + 11). Concurrent Phase-5 figure-engine work later
+  grew the suite to 599/599 with 0 fail; P4.4b suites stable 42/42
+  standalone.
+- `npm run build`: **PASS**; `npm run typecheck:python`: 77 files clean;
+  `npm run test:python`: **411 passed**; `npm run docs`: **PASS**.
+- `git diff --check`: **PASS**; every new/edited file ≤ 300 lines (max 296).
+- `nuclear-reviewer`: **PASS**, 0 blocking findings; nits (unnecessary
+  geometry cast fixed in the same closure; length-guarded `as` casts and
+  fixture `Map.get` casts left as safe; theoretical mid-loop publication
+  window documented as unreachable for staged output).
+- `nuclear-qa`: **PASS**; independently re-ran all 8 gates; mapped every
+  ADR-012 R/OD/§7/§8 item to concrete test cases; confirmed exact 10-code
+  taxonomy, 28/28 `Remediation:` throw sites, zero `createGroup`/`attach` on
+  inter-study paths, empty diffs on P4.4 regression files, and hand-computed
+  clamp `z = −1.25`.
+
+## 5. Applicable Gates
+
+- Typecheck, unit tests (TS + Python), mypy, production build, docs,
+  file-length, `git diff --check`: **PASS** (numbers in §4).
+- Changelog gate: `CHANGELOG.md` untouched (no user-facing release in this
+  slice; version bump is a separate release step).
+- Windows `msvcrt` runtime and hardware-GPU evidence: **NOT YET APPLICABLE**
+  (unchanged environment fact).
+
+## 6. Project Model Impact
+
+None. No Phase 1 contract, validator or `.ncp` schema changed. The
+`InterStudyLink`/`SpatialTransform` contracts are consumed as ratified;
+`CausalityToken` is a view-engine-internal operation input (not a persisted
+contract), deliberately outside shared-types to avoid an unratified contract
+extension.
+
+## 7. Open Decisions and Non-Blocking Follow-ups
+
+- ADR-012 revision conditions only (affine/deformable, incremental latency,
+  non-Procrustes evidence) — none triggered.
+- Optional: explicit `JSON.stringify`/`parse` round-trip assertion on the
+  propagation result (implied by frozen plain DTOs + determinism; QA nit).
+- Optional: asymmetric note that `relative` is structurally eligible under
+  P4.4 yet unregistrable under P4.4b admission (strictly more conservative;
+  reviewer nit for changelog wording).
+- Workspace-level demand facade remains the Phase 4 non-blocking debt.
+- Concurrent Phase-5 figure-engine edits in the same worktree are **out of
+  scope** for this slice; staging for this commit is strictly selective.
+
+## 8. Exact Next Step
+
+P4.4b is implemented and independently verified. Stage **only** the files
+listed in §2 (never `git add .` while Phase-5 edits are live), run the full
+gate once more, commit atomically with a `feat(view-engine)` /
+`feat(medical-engine)` subject, and **do not push** (user owns push of
+`v0.4.0`/`main`). Then either close Phase 4 with a P4.8-style final note or
+continue Phase 5 under its own plan; Phase 6 UI remains blocked on later
+slices.

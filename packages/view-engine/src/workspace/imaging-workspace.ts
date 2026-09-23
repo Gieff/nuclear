@@ -37,6 +37,8 @@ import { SharedStateGroupRegistry } from '../shared-state/registry.js';
 import type { SharedStateGroupSnapshot } from '../shared-state/types.js';
 import { applyCoReferencedLink } from '../linking/apply.js';
 import type { AppliedCoReferencedLink, ApplyCoReferencedLinkInput } from '../linking/apply.js';
+import { registerInterStudyLink, type RegisterInterStudyLinkInput, type RegisteredInterStudyLink } from '../linking/inter-study.js';
+import { applySpatialIntent, type ApplySpatialIntentInput, type SpatialIntentResult } from '../linking/propagate.js';
 import { resolveLocalViewOverride as resolveOverrideForSource } from '../overrides/apply.js';
 import type { ResolvedLocalView } from '../overrides/apply.js';
 
@@ -169,6 +171,42 @@ export class ImagingWorkspace {
     request: Omit<ApplyCoReferencedLinkInput, 'preparedViews' | 'sharedStateGroups' | 'lookupAsset'>,
   ): AppliedCoReferencedLink {
     return applyCoReferencedLink({
+      ...request,
+      preparedViews: this.preparedViews,
+      sharedStateGroups: this.sharedStateGroups,
+      lookupAsset: (assetId) => this.assetById.get(assetId),
+    });
+  }
+
+  /**
+   * Registers an admissible inter-study link between two registered prepared
+   * views (P4.4b, ADR-012): one-shot admission, mandatory-DAG cycle check and
+   * link recording on both frozen projections. It never attaches a shared-state
+   * group. Delegates to `registerInterStudyLink` with this workspace's
+   * registries and asset lookup.
+   */
+  registerInterStudyLink(
+    request: Omit<RegisterInterStudyLinkInput, 'preparedViews' | 'sharedStateGroups' | 'lookupAsset'>,
+  ): RegisteredInterStudyLink {
+    return registerInterStudyLink({
+      ...request,
+      preparedViews: this.preparedViews,
+      sharedStateGroups: this.sharedStateGroups,
+      lookupAsset: (assetId) => this.assetById.get(assetId),
+    });
+  }
+
+  /**
+   * Applies one explicit workspace-level spatial intent (P4.4b, ADR-012 OD-1):
+   * stages origin plus every reachable target, validates the whole update, then
+   * publishes all replacements atomically. There is no observer/notify chain.
+   * Delegates to `applySpatialIntent` with this workspace's registries and
+   * asset lookup.
+   */
+  applySpatialIntent(
+    request: Omit<ApplySpatialIntentInput, 'preparedViews' | 'sharedStateGroups' | 'lookupAsset'>,
+  ): SpatialIntentResult {
+    return applySpatialIntent({
       ...request,
       preparedViews: this.preparedViews,
       sharedStateGroups: this.sharedStateGroups,

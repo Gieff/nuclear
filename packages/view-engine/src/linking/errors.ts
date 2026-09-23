@@ -61,7 +61,19 @@ export type LinkErrorCode =
   | 'LINK_APPLICATION_UNSUPPORTED_SYNCHRONIZED_STATE'
   | 'LINK_VIEW_MISMATCH'
   | 'LINK_SELF_REFERENCE'
-  | 'LINK_SHARED_STATE_CONFLICT';
+  | 'LINK_SHARED_STATE_CONFLICT'
+  // P4.4b inter-study application / propagation codes (ADR-012 OD-5, ratified
+  // 2026-09-23). Closed taxonomy: no other code is introduced by P4.4b.
+  | 'LINK_ORIGIN_UNKNOWN'
+  | 'LINK_PROPAGATION_CYCLE'
+  | 'LINK_PROPAGATION_CONFLICT'
+  | 'LINK_TARGET_SPATIAL_LOCKED'
+  | 'LINK_TRANSFORM_INVALID'
+  | 'LINK_TRANSFORM_ERROR_MARGIN_MISSING'
+  | 'LINK_REGISTRATION_ERROR_EXCEEDS_TOLERANCE'
+  | 'LINK_RELATIVE_MODE_UNSUPPORTED'
+  | 'LINK_TARGET_DOMAIN_UNAVAILABLE'
+  | 'LINK_TARGET_OUT_OF_DOMAIN';
 
 /** Optional underlying failure preserved for diagnostics. */
 export interface LinkErrorOptions {
