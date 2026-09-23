@@ -12,9 +12,11 @@ import { inflateSync } from 'node:zlib';
 import type {
   EncodedArtifact,
   EncoderPort,
+  PublicationPdfRequest,
   PublicationRasterRequest,
 } from '../../../packages/figure-engine/src/publication/index.ts';
 import { encodePng } from './png-writer.ts';
+import { encodePdf } from './pdf-writer.ts';
 import { encodeTiff } from './tiff-writer.ts';
 
 /** The reference composition-root encoder: minimal writers behind the port. */
@@ -25,6 +27,9 @@ export function createReferenceEncoder(): EncoderPort {
     },
     async encodeTiff(request: PublicationRasterRequest): Promise<EncodedArtifact> {
       return encodeTiff(request);
+    },
+    async encodePdf(request: PublicationPdfRequest): Promise<EncodedArtifact> {
+      return encodePdf(request);
     },
   };
 }

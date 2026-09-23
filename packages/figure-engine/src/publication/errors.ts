@@ -25,6 +25,7 @@ export const FIGURE_PUBLICATION_ERROR_CODES = {
   availabilityRefused: 'FIGURE_PUBLICATION_AVAILABILITY_REFUSED',
   mixedAvailability: 'FIGURE_PUBLICATION_MIXED_AVAILABILITY',
   offlineProvenanceInvalid: 'FIGURE_PUBLICATION_OFFLINE_PROVENANCE_INVALID',
+  pdfDocumentInvalid: 'FIGURE_PDF_DOCUMENT_INVALID',
 } as const;
 
 export type FigurePublicationErrorCode =
