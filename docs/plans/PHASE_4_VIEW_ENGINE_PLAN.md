@@ -132,7 +132,7 @@ context.
 | P4.2 | engine engineer | `PreparedView` assembly + `ViewProvenance` (a prepared view may exist without a slot); published DTOs immutable per ADR-011 | Assembly produces a valid **frozen** `PreparedView`; assembly alone issues no residency retain; missing/empty provenance or provenance↔asset↔series↔fingerprint mismatch fails closed; slot binding is a separate explicit, fail-closed operation (not an assembly prerequisite) |
 | P4.3 | engine engineer | Shared-state groups (`SharedStateGroup`) via a private holder with **atomic replacement → new projection → frozen published DTO** (ADR-011 §3 + addendum) | Multiple views reference one shared `SpatialState`/`CameraState`; identity is observable; no notify chains; the test specifies which identity stays stable (holder / `PreparedViewId` / `ViewSlot`) and which value is regenerated after an update; every replacement payload passes assert→freeze |
 | P4.4 | engine engineer | Link semantics (intra-study + inter-study) | Co-referenced link requires matching verified FoR/geometry; inter-study requires transform or differential + tolerance + out-of-domain; mismatches fail closed |
-| P4.4b | engine engineer | Inter-study link application & propagation (`applyInterStudyLink`), per ADR-012 | Link registered over an accepted `SpatialTransform`/differential; propagation is an explicit, atomic, DAG-directed replacement; cycles, locked targets, tolerance overflow and `outOfDomainBehavior` fail closed; 3–4 chained views terminate; inter-study never joins a `SharedStateGroup` |
+| P4.4b | engine engineer | Inter-study link application & propagation (ADR-012 Accepted 2026-09-23) | Scoped by the ratified ADR-012 record: `transformed` only; admission iff present `errorMarginMm <= toleranceMm` (missing/over-tolerance refused); mandatory DAG with cycle/convergence/lock refusals; workspace-level staged atomic propagation; typed out-of-domain outcomes per ratified OD-3/OD-5. NOT YET IMPLEMENTED. |
 | P4.5 | engine engineer | `LOCK` + `LocalViewOverride` | Lock blocks mutation of named state; override diverges, round-trips and leaves the source view unchanged |
 | P4.6 | engine engineer | `ViewportSurfaceRegistry` + `SurfaceLayoutManager` | Stable identity across bind/rebind/re-layout; `disposed` carries no binding; capacity 16 logical ≠ WebGL contexts; placement geometry is pure |
 | P4.7 | engine engineer | `ResourceDemand` projection into `ResourceManager` | Demand→lease reconciliation; shared asset retained once; eviction preserves semantic view identity and reload restores residency |
@@ -142,44 +142,58 @@ P4.4 depends on P4.1 and P4.3; P4.7 depends on the accepted P4.1 slot model.
 Do not begin a later slice before the predecessor’s review and QA evidence
 is recorded.
 
-### P4.4b — Inter-Study Link Application & Propagation (planned, NOT YET IMPLEMENTED)
+### P4.4b — Inter-Study Link Application & Propagation (READY — ADR-012 Accepted; NOT YET IMPLEMENTED)
 
 P4.4 validates an inter-study link but deliberately refuses to apply it, because
 the two views live in different `FrameOfReferenceUID`s and must not share
-`SpatialState`. P4.4b adds the relative application:
+`SpatialState`. ADR-012 is **Accepted** (phase owner, 2026-09-23; R-1..R-4 met,
+OD-1..OD-6 resolved). The following are the **ratified constraints** — binding
+implementation instructions within that record only:
 
-- `applyInterStudyLink` registers a `kind: 'inter-study'` link after P4.4
-  eligibility, and refuses a link that would close a directed cycle (DAG
-  topology). **Both are contingent on ADR-012 ratification: R-3** (a mandatory
-  DAG forbids bidirectional links) **and R-2** (relative mode has no defined
-  differential domain — P4.4b ships `transformed` first and defers `relative`).
-- Propagation is an **explicit** engine operation (no observer/notify chain):
-  given an origin view’s new `SpatialState`, it walks the DAG forward and
-  regenerates each target’s frozen projection through the ADR-011 §3 atomic
-  replacement path. Inter-study targets are never attached to a
-  `SharedStateGroup`.
-- Causality: each propagation carries an origin token and visits each view at
-  most once, so chains of 3–4 views terminate (ADR-012 §3).
-- Locks: a `StateLock` on a target’s `spatial` refuses propagation (P4.5).
-- `errorMarginMm` (worker evidence) is compared to the caller’s `toleranceMm`
-  once at the **link-admission gate**; propagation is deterministic and does not
-  re-check tolerance (ADR-012 §5, OD-6, R-1). `outOfDomainBehavior`
-  (`clamp`/`hide`/`warn`) applies to `transformed` only until R-2 is decided.
-  The matrix application is a single owned pure function consumed (not
-  re-implemented) by `view-engine` (ADR-012 §4, OD-2, R-4).
+- **R-1/OD-6 (ratified, folding R11-B):** admission compares a present worker
+  `errorMarginMm` with the caller's `toleranceMm` once at registration and
+  accepts iff `errorMarginMm <= toleranceMm`; missing or larger residuals refuse
+  admission (`LINK_TRANSFORM_ERROR_MARGIN_MISSING` /
+  `LINK_REGISTRATION_ERROR_EXCEEDS_TOLERANCE`). R11-B forbids both a default and
+  accept-with-warning. Measured Procrustes/landmark RMS is eligible; MI evidence
+  without a ratified mm-denominated residual is not.
+- **R-2/OD-4 (ratified):** P4.4b applies `transformed` links only. `relative`
+  application fails closed until a separate ADR, contract extension, validator
+  and curated fixture ratify its differential frame/domain.
+- **R-3 (ratified):** mandatory DAG — refuses cycle-closing edges
+  (`LINK_PROPAGATION_CYCLE`), self-edges, and convergent-path conflicts within
+  one propagation (`LINK_PROPAGATION_CONFLICT`) with canonical state unchanged.
+  Bidirectional A ↔ B is inexpressible.
+- **OD-1 (ratified):** one explicit workspace-level intent stages origin and all
+  affected projections completely, then publishes replacements atomically
+  through ADR-011 §3; no observer/notify chain. Any refusal leaves canonical
+  views unchanged.
+- **R-4/OD-2 (ratified):** one pure transform-application primitive belongs to
+  `@nuclear/medical-engine` and is consumed by `view-engine`; no local duplicate
+  geometry math and no runtime in zero-runtime `shared-types`.
+- **OD-3/OD-5 (ratified):** use correlated target `ImagingAsset.geometry`
+  worker-verified orientation as evidence, not viewport extent; an AABB alone is
+  not exact membership for an oblique/resliced domain. `clamp` updates with a
+  typed diagnostic; `hide`/`warn` are typed non-mutating result outcomes (never
+  published view status); `LinkError` codes are fixed in ADR-012 OD-5,
+  including `LINK_PROPAGATION_CONFLICT`.
+- **Locks:** a target `StateLock` on `spatial` wins
+  (`LINK_TARGET_SPATIAL_LOCKED`). Causality, topology, out-of-domain behavior
+  and refusal semantics follow the Accepted ADR-012; inter-study targets never
+  join a `SharedStateGroup`.
 
-Acceptance evidence: positive `transformed` propagation over curated fixtures
-(`relative` deferred pending ADR-012 R-2); cycle/self-loop refusal;
-locked-target refusal; out-of-domain `clamp`/`hide`/`warn`; 3–4 view chains
-terminate and are deterministic and idempotent; a transform whose
-`errorMarginMm` exceeds `toleranceMm` is refused at admission; every refusal
-leaves all views and groups unchanged; no `SharedStateGroup` for an inter-study
-link.
+Acceptance evidence (for the future P4.4b slice): curated positive `transformed`
+propagation; explicit admission cases for missing/equal/over-tolerance residuals;
+eligible Procrustes and excluded MI evidence; cycle and convergent-path
+refusals; locked-target refusal; target-domain and `clamp`/`hide`/`warn` cases;
+3–4 view termination, determinism and idempotency; and proof that every atomic
+refusal leaves canonical views/groups unchanged. ADR-012 is Accepted; no P4.4b
+code exists yet (NOT YET IMPLEMENTED).
 
-P4.4b depends on P4.4, an **Accepted** ADR-012 (i.e. R-1..R-4 resolved) and the
-Phase 2B `SpatialTransform` evidence
-(`docs/plans/PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md`). It is planned only; no
-P4.4b code exists as of the P4.5/C5a close.
+P4.4b depends on P4.4 (done), the **Accepted** ADR-012 with R-1..R-4 and
+OD-1..OD-6 ratified (done, 2026-09-23), and admissible Phase 2B
+`SpatialTransform` evidence (landmarks/Procrustes path implemented; MI excluded
+under R11-B). The slice is **ready to schedule but NOT YET IMPLEMENTED**.
 
 ## Fixture and Test Policy
 
@@ -193,9 +207,10 @@ P4.4b code exists as of the P4.5/C5a close.
 - No numeric image tolerance applies in Phase 4. Co-reference eligibility is:
   same worker-verified `FrameOfReferenceUID` + one-to-one snapshot ↔ asset ↔
   series ↔ fingerprint correlation; **identical `geometricDigest` is not
-  required** and must not be enforced. Inter-study relative navigation
-  carries an explicit `toleranceMm` and out-of-domain behavior; no implicit
-  default is invented.
+  required** and must not be enforced. P4.4 link eligibility carries explicit
+  inter-study `toleranceMm` and out-of-domain declarations; eligibility does not
+  imply application. P4.4b application is scoped by ADR-012 (Accepted
+  2026-09-23) and is NOT YET IMPLEMENTED.
 - Every slice must include negative/fail-closed cases; a missing fixture or
   runner is `BLOCKED` or `NOT YET APPLICABLE`, never PASS.
 
@@ -205,7 +220,7 @@ P4.4b code exists as of the P4.5/C5a close.
 | --- | --- |
 | AgentLog | Eight-point handover for every P4 slice in `docs/agentlog/phase-4.md` |
 | Workspace model | Slot/group capacity, role and status invariants tested fail-closed |
-| Link semantics | Intra-study co-referenced and inter-study relative/transformed tested, including FoR mismatch refusal |
+| Link semantics | P4.4 eligibility for intra-study co-reference and inter-study relative/transformed declarations, including FoR mismatch refusal; propagation is P4.4b (ADR-012 Accepted 2026-09-23, NOT YET IMPLEMENTED) |
 | Lock/Override | Lock protection, override divergence, serialization and source immutability tested |
 | Surfaces | Stable identity across rebind/re-layout, lifecycle and capacity tested without any WebGL/DOM dependency |
 | Residency | Demand projection and reconciliation against the real `ResourceManager`; eviction preserves semantics |
