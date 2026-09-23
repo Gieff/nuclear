@@ -126,7 +126,7 @@ baseline when:
 | P5.4 | engine engineer | Annotation visibility policy (OD-4) + patient projection (OD-5 ratified 2026-09-23, A/A/A). **COMPLETE.** | OD-4 policy cases; OD-5 plane/distance cases; full LPS→sheet chain; fail-closed refusals (non-unit normal, non-affine matrix, invalid viewport, malformed anchor) |
 | P5.5a | engine engineer | Publication renderer **port contract** + live render orchestration (consume the medical `RenderTarget` capability through a caller-supplied port; no Cornerstone import). **COMPLETE.** | Port-contract tests with a fake port: per-panel physical target (aperture × DPI), request order, fail-closed on non-live/unavailable/malformed/short raster |
 | P5.5b | engine engineer | **Real-harness adapter evidence** for a live panel: a `PublicationRendererPort` implementation over `captureTemporaryRenderTarget` in the controlled browser harness. **COMPLETE.** | Browser capture at the panel aperture (80 mm @ 600 DPI → 1890×1890, native byte length), live-canvas invariance, temporary-target disposal, and fail-closed on an unavailable source |
-| P5.6 | engine engineer | TIFF/PNG raster flatten composition via an encoder port (ADR-015 **Accepted**, Track 1). **READY.** Delivers the pure sheet compositor + `EncoderPort` + reference `node:zlib` writers. Two follow-up sub-slices are explicitly pending: (a) the figure-sheet **plan builder** (framing/layout + P5.5 rasters → compositor plan) and (b) editorial **text/vector rasterization** into the flattened raster (needs a font/vector-rasterizer decision). | Byte-determinism (encode twice → identical bytes) + decoder round-trip on a curated fixture; bounds/resampling refusal; encoder provenance |
+| P5.6 | engine engineer | TIFF/PNG raster flatten composition via an encoder port (ADR-015 **Accepted**, Track 1). **COMPLETE** — pure sheet compositor + `EncoderPort` + plan builder + reference `node:zlib` writers. Open follow-ups: (a) **aperture-inside-panel placement** is not yet ratified (the builder requires `framing.contentSizeMm === layout.sizeMm` and refuses otherwise); (b) editorial **text/vector rasterization** into the flattened raster (needs a font/vector-rasterizer decision). | Byte-determinism + decoder round-trip; bounds/resampling refusal; plan-builder mapping/z-order/refusals; encoder provenance |
 | P5.7 | engine engineer | Hybrid vector PDF emission via an encoder port (ADR-015 Accepted; fonts = embedded permissive open-source subset). **READY after P5.6.** | Vector-preservation assertions (text/annotations native, medical panel raster); deterministic PDF metadata/ID |
 | P5.8 | reviewer + QA | Independent phase review, gates and final handover | Reviewer/QA verdicts, configured gates and the eight-point phase report recorded |
 
@@ -197,17 +197,13 @@ Stop the active slice as `BLOCKED` rather than guessing when:
 
 ## Exact Next Step
 
-P5.0–P5.5 are delivered and accepted; **ADR-015 is Accepted** (Track 1:
-minimal `node:zlib` writers + `pdf-lib`; OD-6a…OD-6g ratified). **Implement
-P5.6**:
+P5.6 is **COMPLETE** (compositor + `EncoderPort` + plan builder + reference
+`node:zlib` writers). **Implement P5.7** (hybrid vector PDF behind the
+`EncoderPort`, `pdf-lib`, embedded permissive open-source font subset per
+OD-6e). Two P5.6 follow-ups remain and must be tracked, not silently assumed:
 
 ```text
-packages/figure-engine/src/publication/{encode-port,compose-sheet}.ts  — port + pure compositor
-tests/export/fixtures/{png-writer,tiff-writer,reference-encoder}.ts    — reference node:zlib adapter
-tests/export/*.test.ts                                                 — determinism + round-trip
+(a) aperture-inside-panel placement  — needs ratification before contentSizeMm != sizeMm
+(b) text/vector rasterization (PNG/TIFF) — needs a font/vector-rasterizer decision
+P5.7 (READY after P5.6) — hybrid vector PDF
 ```
-
-`figure-engine` stays pure (no `node:zlib`, no DOM); the concrete encoder is a
-composition-root-shaped adapter (OD-6d) and, until `apps/desktop` exists, lives
-in test infrastructure. Editorial text/vector rasterization into the flattened
-raster is a follow-up sub-slice that requires a font/vector-rasterizer decision.

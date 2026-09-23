@@ -176,9 +176,19 @@ Every delegation brief must include:
 - Editorial **text/vector rasterization into the flattened PNG/TIFF is a
   follow-up sub-slice** requiring a font/vector-rasterizer decision; P5.6
   delivers the compositor, the port and the raster writers.
-- The **figure-sheet plan builder** (framing/layout + P5.5 rasters → compositor
-  plan) is also a follow-up sub-slice: P5.6's compositor consumes an
-  already-resolved plan and does not yet build one from a `FigureSheet`.
+- The **figure-sheet plan builder** is delivered
+  (`buildPublicationCompositionPlan`): it maps `FigureSheet` +
+  `LayoutState`/`FramingState` + the P5.5 rasters into a
+  `PublicationCompositionPlan`. It is fail-closed where a semantic is not yet
+  ratified: the panel **content aperture** must equal the panel size
+  (`framing.contentSizeMm === layout.sizeMm`), non-zero rotation is refused, and
+  a raster whose dimensions differ from its physical aperture is refused.
+- The `contentSizeMm === sizeMm` requirement is a **tracked open decision**, not
+  a permanent contract: aperture-inside-panel placement is not yet ratified, so
+  the builder refuses rather than inventing an offset. Revisit when panels need
+  an opening smaller than their sheet rectangle (with pixel-exact `pHYs`/`XResolution` provenance).
+- Still a follow-up sub-slice: editorial **text/vector rasterization** into the
+  flattened PNG/TIFF (needs a font/vector-rasterizer decision).
 
 ## Required Gate Commands
 
