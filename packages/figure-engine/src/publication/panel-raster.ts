@@ -3,10 +3,10 @@
  * (P5.1, ADR-014 D2/D3 and OD-3).
  *
  * A medical panel's publication raster covers the **content aperture**, i.e.
- * `PanelFramingState.contentSizeMm`. `contentScale` scales the medical content
- * *inside* the aperture (ADR-014 OD-3, still open) and therefore must not
- * silently change the aperture pixel requirement. The whole-sheet dimensions
- * are used for the flattened TIFF/PNG composition.
+ * `PanelFramingState.contentSizeMm`. `contentScale` modifies framing/camera and
+ * crop but never changes the physical target density (ADR-014 OD-3, ratified
+ * 2026-09-23), so it must not alter the aperture pixel requirement. The
+ * whole-sheet dimensions are used for the flattened TIFF/PNG composition.
  *
  * Pure and Node-safe: no DOM, no WebGL, no Cornerstone.
  */

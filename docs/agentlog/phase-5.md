@@ -368,3 +368,152 @@ resolutions; otherwise proceed to resolve the ADR amendment first.
   `npm test` 563/103/0, `npm run build`, pytest 411, mypy 77, file-length,
   oracle usage and the malformed/no-`TypeError` coverage. No unexpected deltas;
   image/pixel-tolerance gate **NOT YET APPLICABLE**.
+
+---
+
+# Slice Record — ADR-014 Amendment (OD-1–OD-4) and P5.3 (framing/layout transforms)
+
+## 1. What Was Implemented
+
+- **ADR-014 amendment ratified (phase owner, 2026-09-23): OD-1–OD-4 Accepted.**
+  The previously deferred Open Decisions are replaced by the
+  “Ratified Amendment” section with the owner’s exact terms:
+  - **OD-1 (A refined):** normalized crop with validation, `scaledSize =
+    contentSizeMm × contentScale`, the five `alignment` offsets, `contentOffsetMm`,
+    invertible; `overflow` is a compositor clip policy, not part of the map.
+  - **OD-2 (A):** rotation origin = panel centre, positive clockwise in `y-down`;
+    `rotationDeg !== 0` **remains refused for medical panel placement** (the
+    contract cannot distinguish editorial vs medical rotation).
+  - **OD-3 (A):** the publication target stays the physical aperture
+    `contentSizeMm × DPI`; `contentScale` never changes export density.
+  - **OD-4 (A refined):** `LPS → view plane → viewport → panel content → sheet
+    mm`; `planeToleranceMm = 0` ⇒ no fade band; `fadeBandMm =
+    planeToleranceMm`, linear 1→0 over `(tol, 2·tol]`; `loading` behaves like
+    `offline-cached`/`missing`/`mismatch` (patient annotation hidden fail-closed).
+- **P5.3 — OD-1 and OD-2 transforms** in `@nuclear/figure-engine`, pure and
+  Node-safe:
+  - `framing.ts`: `assertPanelFraming`, `scaledContentSizeMm`,
+    `alignmentOffsetMm`, `viewportToPanelContent`, `panelContentToViewport`
+    (OD-1, invertible, typed `FIGURE_FRAMING_INVALID` refusals, no clamping).
+  - `sheet-placement.ts`: `panelLocalCenterMm`, `panelContentToSheet`,
+    `sheetToPanelContent` (OD-2, centre-origin clockwise, invertible) with
+    shape guards so malformed JS input is a typed `FIGURE_LAYOUT_INVALID`, not a
+    `TypeError`.
+  - `layout.ts` reduced to axis-aligned placement/containment/z-order; the
+    medical rotation refusal now states the ratified medical policy (no stale
+    “no ratified origin” text).
+  - `errors.ts` adds `FIGURE_FRAMING_INVALID` and `FIGURE_LAYOUT_INVALID`;
+    `panel-raster.ts` comment cites ratified OD-3; barrel exports `framing` and
+    `sheet-placement`.
+- **OD-4 is NOT implemented** (deferred to P5.4, which must follow the P5.3
+  transform tests).
+
+## 2. Files Changed
+
+Created:
+- `packages/figure-engine/src/publication/framing.ts`
+- `packages/figure-engine/src/publication/sheet-placement.ts`
+- `tests/figure-engine/framing-transform.test.ts`
+- `tests/figure-engine/layout-transform.test.ts`
+
+Modified:
+- `docs/decisions/ADR-014-figure-engine-publication-composition.md` — Status +
+  “Ratified Amendment — OD-1–OD-4 (2026-09-23)”.
+- `packages/figure-engine/src/publication/{errors,index,layout,panel-raster}.ts`
+- `docs/plans/PHASE_5_FIGURE_ENGINE_PLAN.md`,
+  `docs/plans/PHASE_5_OPENCODE_RUNBOOK.md` — P5.3/P5.4 unblocked with the
+  ratified terms.
+- `docs/agentlog/phase-5.md` — this handover.
+
+Not modified by Phase 5: `shared-types`, `rendering-presets`, `medical-engine`,
+`view-engine`, `project-model`, `ui`, `apps/*`, `python/`, `AGENTS.md`,
+`CHANGELOG.md`.
+
+## 3. Architectural Assumptions Made (boundary adherence)
+
+- OD-1/OD-2 are implemented literally from the ratified amendment; nothing
+  beyond it (no clipping implementation, no P5.4 reprojection).
+- The OD-2 rotation primitive is exposed for editorial content while the
+  **medical** placement path stays fail-closed; this distinction is documented
+  in both `layout.ts` and `sheet-placement.ts` and asserted by tests.
+- `figure-engine` imports remain type-only `@nuclear/shared-types` or local; no
+  React/DOM/Cornerstone/`medical-engine` runtime import.
+- Typed refusals throughout; no coercion, clamping or defaulting.
+
+## 4. Tests Added & Executed
+
+- `node --test "tests/figure-engine/*.test.ts"` → **47 tests / 9 suites, 47 pass
+  / 0 fail** (18 P5.1 + 16 P5.2 + 7 OD-1 framing + 6 OD-2 layout).
+  - OD-1: identity/non-unit crop, `contentScale` centering, all five alignment
+    origins/far corners, `contentOffsetMm`, crop-external no-clamp, inverse
+    round-trips, 12 malformed framings + non-finite point.
+  - OD-2: translation, 90° clockwise with invariant origin, −90°, round-trips
+    over `[0, 90, −90, 37.5, 180]`, medical refusal vs accepted primitive,
+    malformed layout refusals.
+- `npm run typecheck` → **PASS**; `npm run build` → **PASS**.
+- `npm test` → **599 tests / 109 suites, 599 pass / 0 fail** (Phase 5 adds the
+  13 P5.3 tests; remainder includes the parallel P4.4b suite). The earlier
+  environment caveat (64 `listen EPERM` in rendering tests in the phase owner’s
+  environment) still applies to the full suite and is not a Phase 5 failure.
+- `npm run test:python` → **411 passed**; `npm run typecheck:python` → **clean,
+  77 files**.
+- File-length: largest Phase-5 source `request-validation.ts` = **268**;
+  `layout.ts` now 156, `sheet-placement.ts` 116; all ≤ 300. `git diff --check` →
+  clean.
+
+## 5. Documentation, AgentLog & ADR Status
+
+- ADR-014 amendment **Accepted** (OD-1–OD-4 ratified). Plan and runbook
+  unblocked. This is the P5.3 AgentLog entry.
+- `AGENTS.md` and `CHANGELOG.md` intentionally untouched.
+
+## 6. Project Model Impact
+
+None. No `.ncp` schema change and no `shared-types` contract change.
+
+## 7. Known Limitations & Technical Debt
+
+- **OD-4 / P5.4 pending:** patient-anchored annotation reprojection is not
+  implemented; P5.4 must follow the P5.3 tests and the ratified OD-4 terms.
+- **OD-2 future contract gap:** there is still no explicit editorial-vs-medical
+  rotation distinction; rotated medical panels remain refused until a contract
+  extension ratifies it.
+- Minor error-code asymmetry: the same non-finite position/size defect yields
+  `FIGURE_SHEET_CONTAINMENT_INVALID` on the containment path and
+  `FIGURE_LAYOUT_INVALID` on the transform path (intentional, documented in the
+  module headers).
+- No publication raster exists yet → image/pixel tolerance gate
+  **NOT YET APPLICABLE**.
+
+## 8. Exact Next Recommended Task
+
+Implement **P5.4** (patient-anchored annotation projection and anchor policy)
+in `@nuclear/figure-engine` only, strictly per the ratified OD-4 terms:
+`LPS → view plane → viewport → panel content → sheet mm` using the resolved
+`ComposerViewInstance` state incl. overrides; `planeToleranceMm = 0` ⇒ no fade
+band; `fadeBandMm = planeToleranceMm` with linear 1→0 opacity over
+`(tol, 2·tol]`; `loading`/`offline-cached`/`missing`/`mismatch` hide the
+annotation fail-closed; no screen-pixel persistence; editorial (panel/sheet)
+anchors unchanged.
+
+---
+
+## Independent Verdicts — P5.3
+
+- **`nuclear-reviewer` — PASS.** Verified literal fidelity to the ratified
+  amendment (OD-1 formula/validation/alignment/offset/invertibility; OD-2 centre
+  origin, clockwise y-down, exact inverse), the medical rotation policy, the
+  no-invented-behaviour boundary, file sizes and package boundary. Findings:
+  one LOW (stale “no ratified origin” error text) and nits N1–N5. Resolution:
+  the message and module header were corrected; the OD-2 rotation primitive was
+  extracted to `sheet-placement.ts` (single responsibility, `layout.ts` 156);
+  shape guards added so malformed input is a typed `FIGURE_LAYOUT_INVALID`.
+  Bounded re-review **PASS**: all fixes verified, behaviour preserved, 47/47 and
+  typecheck green. N2 (intentional containment-vs-transform error-code
+  distinction) and N5 (indirect inverse coverage) accepted as recorded debt.
+- **`nuclear-qa` — PASS (all 11 gates).** Independently re-ran scope isolation,
+  `git diff --check`, `npm run typecheck`, focused 47/9, `npm test` 599/109/0,
+  `npm run build`, pytest 411, mypy 77, file-length (max 268), and runtime
+  spot-checks of the ratified OD-1/OD-2 values (21/21 and 42/42 round-trips at
+  ε = 1e-9). No unexpected deltas; image/pixel-tolerance gate **NOT YET
+  APPLICABLE**.

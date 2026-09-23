@@ -3,15 +3,21 @@
  * (P5.1, ADR-014 D3 and OD-2).
  *
  * `PanelLayoutState` governs Panel Content Space -> Figure Sheet Space. This
- * module exposes the panel's sheet-space rectangle, a fail-closed containment
- * check and a deterministic z-order. Rotation is intentionally not evaluated:
- * `PanelLayoutState.rotationDeg` has no ratified origin (ADR-014 OD-2), so a
- * non-zero rotation is a typed refusal rather than a guessed rectangle.
+ * module exposes the axis-aligned panel sheet-space rectangle, a fail-closed
+ * containment check and a deterministic z-order. Rotation is deliberately not
+ * evaluated here: the current contract cannot distinguish an editorial
+ * container from a medical panel, so **medical** placement/containment stays
+ * fail-closed for `rotationDeg !== 0` (ADR-014 OD-2, ratified 2026-09-23). The
+ * ratified pure rotation primitive lives in `sheet-placement.ts`.
  *
  * Pure and Node-safe: no DOM, no WebGL, no Cornerstone.
  */
 
-import type { ComposerPanel, PanelLayoutState, SheetSizeMm } from '@nuclear/shared-types';
+import type {
+  ComposerPanel,
+  PanelLayoutState,
+  SheetSizeMm,
+} from '@nuclear/shared-types';
 
 import {
   FIGURE_PUBLICATION_ERROR_CODES,
@@ -46,15 +52,21 @@ function assertSheetSize(sheetSizeMm: SheetSizeMm): void {
 
 /**
  * Returns the panel's sheet-space rectangle in millimetres. Refuses
- * `FIGURE_ROTATION_UNSUPPORTED` when `rotationDeg` is non-zero (ADR-014 OD-2)
- * and `FIGURE_SHEET_CONTAINMENT_INVALID` for non-finite position or
+ * `FIGURE_ROTATION_UNSUPPORTED` when `rotationDeg` is non-zero and
+ * `FIGURE_SHEET_CONTAINMENT_INVALID` for non-finite position or
  * non-finite/non-positive size. Nothing is clamped to the sheet.
+ *
+ * The rotation refusal is the ratified **medical** policy (ADR-014 OD-2): the
+ * origin/sign are now defined, but the current contract cannot distinguish an
+ * editorial container from a medical panel, so medical placement/containment
+ * stays fail-closed. The ratified pure rotation primitive is
+ * `panelContentToSheet`/`sheetToPanelContent`.
  */
 export function panelSheetRectMm(layout: PanelLayoutState): SheetRectMm {
   if (layout.rotationDeg !== 0) {
     refuse(
       FIGURE_PUBLICATION_ERROR_CODES.rotationUnsupported,
-      `panel rotation ${String(layout.rotationDeg)} deg is not supported: PanelLayoutState.rotationDeg has no ratified origin (ADR-014 OD-2), so a rotated sheet rectangle is refused rather than guessed`,
+      `panel rotation ${String(layout.rotationDeg)} deg is refused for medical panel placement: the current contract cannot distinguish an editorial container from a medical panel (ADR-014 OD-2, ratified 2026-09-23); use the sheet-placement primitive for editorial content`,
     );
   }
 

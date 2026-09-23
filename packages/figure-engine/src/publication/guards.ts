@@ -2,9 +2,10 @@
  * @nuclear/figure-engine — internal structural guards for publication input
  * validation (P5.2). Not part of the public barrel.
  *
- * Every rejection is a typed `FigurePublicationError` (`FIGURE_PUBLICATION_
- * REQUEST_INVALID`), never a bare `TypeError`; nothing is coerced or inferred
- * (the only sanctioned default is the documented `alpha: 'opaque'`).
+ * Every rejection is a typed `FigurePublicationError`, never a bare
+ * `TypeError`. `refuse` carries the caller's code; the `as*` guards use
+ * `FIGURE_PUBLICATION_REQUEST_INVALID`. Nothing is coerced or inferred (the only
+ * sanctioned default is the documented `alpha: 'opaque'`).
  *
  * Pure and Node-safe: no DOM, no WebGL, no Cornerstone.
  */
