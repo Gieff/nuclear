@@ -645,3 +645,129 @@ interpretation, confirm it (or supersede the interpretation note).
   file-length (max 268), and 35/35 runtime policy spot-checks. Confirmed no
   LPS→viewport projection code in `figure-engine`. Image/pixel-tolerance gate
   **NOT YET APPLICABLE**.
+
+---
+
+# Slice Record — P5.4 completion (OD-5 patient projection)
+
+## 1. What Was Implemented
+
+- **ADR-014 OD-5 ratified (phase owner, 2026-09-23; options A/A/A + `'hide'`
+  confirmed).** The amendment records: OD-5a plane =
+  `referenceLocation + sliceOffsetMm · viewPlaneNormal`; OD-5b signed distance
+  `d = dot(anchorLps − planePoint, viewPlaneNormal)` from physical LPS geometry
+  (never the projective `z`); OD-5c the authored row-major transforms are
+  **consumed, never derived**; OD-5d `'hide'` is a hard cutoff (confirmed).
+- **`projectPatientAnnotation`** (`patient-projection.ts`): pure, Node-safe
+  projection of a patient-anchored annotation to a frozen
+  `{ visible, opacity, outOfPlaneDistanceMm, sheetPointMm? }`.
+  - Out-of-plane decision from the physical LPS plane; visibility via the OD-4
+    policy (`|d|`); hidden ⇒ no `sheetPointMm`, distance still reported.
+  - Placement via the authored transforms: `patientToViewPlane` →
+    `viewPlaneToViewport` (row-major affine, `w = 1`) → normalize by
+    `viewportSizePx` → OD-1 `viewportToPanelContent` → OD-2
+    `panelContentToSheet`.
+  - Fail-closed: non-`patient` anchor, malformed/absent anchor fields,
+    non-finite `SpatialState`, a non-unit `viewPlaneNormal` (tolerance `1e-5`,
+    aligned with the Fase-1 contract oracle), a non-finite/non-affine matrix
+    (including a non-zero projective row), an invalid `viewportSizePx`, and
+    malformed framing/layout are all typed refusals.
+- Review fixes folded in: the `annotation-policy.ts` scope note now records that
+  OD-5 is ratified and the projection lives in `patient-projection.ts`; the
+  unit-normal tolerance was aligned to the contract oracle (`1e-5`); the affine
+  comment now names the projective row; anchor `planeToleranceMm` /
+  `outOfPlaneBehavior` are validated at the anchor path with precise messages.
+
+## 2. Files Changed
+
+Created:
+- `packages/figure-engine/src/publication/patient-projection.ts`
+- `tests/figure-engine/patient-projection.test.ts`
+
+Modified:
+- `docs/decisions/ADR-014-…md` (Status + `### OD-5` ratified section; `'hide'`
+  confirmation)
+- `docs/plans/PHASE_5_FIGURE_ENGINE_PLAN.md`,
+  `docs/plans/PHASE_5_OPENCODE_RUNBOOK.md` (P5.4 COMPLETE; OD-5 resolved)
+- `packages/figure-engine/src/publication/annotation-policy.ts` (scope-note fix)
+- `packages/figure-engine/src/publication/index.ts` (barrel)
+- `docs/agentlog/phase-5.md` — this handover.
+
+Not modified: `shared-types`, `rendering-presets`, `medical-engine`,
+`view-engine`, `project-model`, `ui`, `apps/*`, `python/`, `AGENTS.md`,
+`CHANGELOG.md`.
+
+## 3. Architectural Assumptions Made (boundary adherence)
+
+- `figure-engine` derives nothing: the transforms are applied algebraically;
+  their physical derivation remains with `view-engine`/`medical-engine`
+  (OD-5c), preserving the acyclic boundary.
+- The projection consumes the resolved `MedicalViewState`; local overrides are
+  applied upstream by `view-engine` (ADR-011) and are not re-applied here.
+- No-invented-geometry: the plane and distance are the ratified physical LPS
+  definitions; no clamping/defaulting; hidden annotations produce no sheet point.
+- Imports remain type-only `@nuclear/shared-types` or local.
+
+## 4. Tests Added & Executed
+
+- `node --test "tests/figure-engine/*.test.ts"` → **60 tests / 11 suites, 60
+  pass / 0 fail** (18 P5.1 + 16 P5.2 + 13 P5.3 + 5 policy + 8 projection).
+  Projection coverage: full-chain placement at the fixture transforms
+  (LPS (0,0,0) → sheet (60,60); (10,0,0) → (61.5625,60)); signed distance
+  (0,0,±3); plane shift by `sliceOffsetMm` and `referenceLocation`; fade band
+  incl. the `2·tol` opacity-0 endpoint; `'hide'` cutoff; non-online hidden with
+  no sheet point (distance still reported); malformed refusals (NaN position,
+  negative tolerance, bad behaviour, non-unit normal, non-affine `m15` and
+  `m[12]`, zero/negative viewport); frozen output.
+- `npm run typecheck` → **PASS**; `npm run build` → **PASS**.
+- `npm test` → **618 tests / 112 suites, 618 pass / 0 fail** (Phase 5 adds the
+  8 projection tests). The phase-owner `listen EPERM` caveat still applies; the
+  figure-engine suite is green in both environments.
+- `npm run test:python` → **411 passed**; `npm run typecheck:python` → **clean,
+  77 files**.
+- File-length: largest Phase-5 source `request-validation.ts` = **268**;
+  `patient-projection.ts` = 226; all ≤ 300. `git diff --check` → clean.
+
+## 5. Documentation, AgentLog & ADR Status
+
+- ADR-014 OD-5 **Accepted** with the exact ratified parameters; plan/runbook
+  mark P5.4 COMPLETE; this is the completion AgentLog entry.
+- `AGENTS.md`/`CHANGELOG.md` untouched.
+
+## 6. Project Model Impact
+
+None. No `.ncp` schema change and no `shared-types` contract change.
+
+## 7. Known Limitations & Technical Debt
+
+- The authored `patientToViewPlane`/`viewPlaneToViewport` are still placeholders
+  in fixtures; `figure-engine` correctly consumes them, but end-to-end physical
+  correctness awaits the real view-engine/renderer transform set.
+- The projection uses `panelContentToSheet`, which accepts any finite rotation;
+  the rotated-medical case is unreachable because the medical placement path
+  (`layout.ts`) refuses `rotationDeg !== 0` first (OD-2).
+- P5.5–P5.7 remain NOT YET IMPLEMENTED. No publication raster → image/pixel
+  tolerance gate **NOT YET APPLICABLE**.
+
+## 8. Exact Next Recommended Task
+
+Implement **P5.5** (publication renderer port + orchestration): define the port
+that consumes the medical `RenderTarget` capability, produce one
+high-resolution medical raster per panel from a live `PublicationRenderRequest`,
+and keep `figure-engine` free of `@cornerstonejs/*`/WebGL ownership.
+
+---
+
+## Independent Verdicts — P5.4 completion (OD-5)
+
+- **`nuclear-reviewer` — PASS** (two LOW doc/consistency concerns, resolved
+  in-slice). Verified OD-5a/b/c/d fidelity, the consumed-not-derived transforms,
+  the resolved-state boundary, fail-closed refusals, boundary/file-size and the
+  tests (8/8 executed, arithmetic hand-checked). C1 (unit-normal tolerance not
+  aligned with the contract oracle) and C2 (stale `annotation-policy.ts` scope
+  note) were fixed; comment/test nits were addressed.
+- **`nuclear-qa` — PASS (all 11 gates).** Scope isolation, `git diff --check`,
+  `npm run typecheck`, focused **60/11**, `npm test` **618/112/0** (no flake this
+  run), `npm run build`, pytest 411, mypy 77, file-length (max 268), and 8/8
+  runtime spot-checks against the fixture transforms. Confirmed no forbidden
+  runtime imports. Image/pixel-tolerance gate **NOT YET APPLICABLE**.

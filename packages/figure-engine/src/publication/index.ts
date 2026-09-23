@@ -15,6 +15,7 @@ export * from './framing.js';
 export * from './layout.js';
 export * from './sheet-placement.js';
 export * from './annotation-policy.js';
+export * from './patient-projection.js';
 export * from './provenance.js';
 export * from './targets.js';
 export * from './request-types.js';
