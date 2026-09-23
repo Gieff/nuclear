@@ -1,13 +1,18 @@
 /**
- * @nuclear/figure-engine — publication subsystem barrel (P5.1).
+ * @nuclear/figure-engine — publication subsystem barrel (P5.1, P5.2).
  *
  * Re-exports the Node-safe publication core: typed fail-closed errors, the
- * physical mm <-> pixel units, panel/sheet raster dimensioning and figure-sheet
- * placement. No React, DOM, Cornerstone or `medical-engine` runtime import
- * lives here (ADR-014 D1/D2).
+ * physical mm <-> pixel units, panel/sheet raster dimensioning, figure-sheet
+ * placement, provenance equality and `PublicationRenderRequest` assembly. No
+ * React, DOM, Cornerstone or `medical-engine` runtime import lives here
+ * (ADR-014 D1/D2).
  */
 
 export * from './errors.js';
 export * from './units.js';
 export * from './panel-raster.js';
 export * from './layout.js';
+export * from './provenance.js';
+export * from './targets.js';
+export * from './request-types.js';
+export * from './request.js';

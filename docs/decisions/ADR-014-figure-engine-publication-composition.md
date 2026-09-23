@@ -64,7 +64,13 @@ truth: ADR-009’s formula is normative, and a cross-package **equivalence test*
 over a curated size/DPI matrix must assert that the two implementations and the
 Fase-1 oracle agree exactly. Neither implementation may change without updating
 the other and the equivalence test. `figure-engine` must not otherwise duplicate
-medical-engine geometry or rendering logic.
+medical-engine geometry or rendering logic. Separately, and for the same
+package-graph reason (the Fase-1 oracle is test-side only), `figure-engine`
+mirrors the oracle's `isSourceFingerprint` structural rules for the fingerprints
+it relies on when validating an offline preview (`fingerprint-validation.ts`).
+This check is publication-scoped, is proven against the oracle by the
+`tests/figure-engine/publication-request*.test.ts` suites, and does **not**
+authorize a general contract validator inside `figure-engine`.
 
 ### D3 — Physical millimetres are primary; the publication target never resizes the live canvas
 

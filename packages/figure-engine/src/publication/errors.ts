@@ -1,9 +1,11 @@
 /**
  * @nuclear/figure-engine — typed, fail-closed publication errors (P5.1).
  *
- * Every refusal is explicit, typed and actionable. Nothing is clamped,
- * defaulted or inferred: a non-physical input never produces a physical
- * publication dimension. See `docs/decisions/ADR-014-…md` (D2, D4).
+ * Every refusal is explicit, typed and actionable. Nothing is clamped or
+ * inferred, and no non-physical input produces a physical publication
+ * dimension. The only sanctioned default in this subsystem is
+ * `alpha: 'opaque'` for a live publication target (`readAlpha`, P5.2). See
+ * `docs/decisions/ADR-014-…md` (D2, D4).
  */
 
 export const FIGURE_PUBLICATION_ERROR_CODES = {
@@ -11,6 +13,11 @@ export const FIGURE_PUBLICATION_ERROR_CODES = {
   rotationUnsupported: 'FIGURE_ROTATION_UNSUPPORTED',
   containmentInvalid: 'FIGURE_SHEET_CONTAINMENT_INVALID',
   orderInvalid: 'FIGURE_PANEL_ORDER_INVALID',
+  requestInvalid: 'FIGURE_PUBLICATION_REQUEST_INVALID',
+  panelSourceInvalid: 'FIGURE_PUBLICATION_PANEL_SOURCE_INVALID',
+  availabilityRefused: 'FIGURE_PUBLICATION_AVAILABILITY_REFUSED',
+  mixedAvailability: 'FIGURE_PUBLICATION_MIXED_AVAILABILITY',
+  offlineProvenanceInvalid: 'FIGURE_PUBLICATION_OFFLINE_PROVENANCE_INVALID',
 } as const;
 
 export type FigurePublicationErrorCode =

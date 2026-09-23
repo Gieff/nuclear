@@ -191,3 +191,173 @@ record and its reviewer/QA verdicts are in place (they are).
   P4.4b files appeared), `npm run build`, pytest 411, mypy 77, file-length, the
   cross-package equivalence evidence and the fail-closed coverage. No unexpected
   deltas. Image/pixel-tolerance gate **NOT YET APPLICABLE**.
+
+---
+
+# Slice Record — P5.2 (`PublicationRenderRequest` assembly)
+
+## 1. What Was Implemented
+
+- **Fail-closed `PublicationRenderRequest` assembly** in `@nuclear/figure-engine`.
+  `assemblePublicationRenderRequest(input)` takes a composed `FigureSheet` and
+  exactly one `PreparedView` per panel, derives the render mode, target, output
+  spec and panel inputs, and returns a frozen contract-valid request. Nothing is
+  accepted verbatim from the caller: the `TemporaryRenderTargetSpec` /
+  `CachedPreviewRenderTargetSpec` and the `PublicationOutputSpec` are built
+  internally (ADR-014 D3/D5).
+- **Availability resolution is fail-closed (ADR-014 D4).** `loading`, `missing`
+  and `mismatch` always refuse (`FIGURE_PUBLICATION_AVAILABILITY_REFUSED`); an
+  all-`online` sheet is `live-medical`; an all-`offline-cached` sheet requires
+  `availabilityPolicy: 'allow-offline-preview'`; a mixed sheet refuses
+  (`FIGURE_PUBLICATION_MIXED_AVAILABILITY`).
+- **Offline provenance verification.** An offline panel must carry a
+  `cachedPreviewReference` on both the medical view binding and the prepared
+  view, the two must be value-equal (mirroring the oracle's `samePreview`), the
+  cached fingerprint set must equal the prepared-view provenance fingerprints
+  (order-independent, duplicate-sensitive multiset), and all offline panels must
+  agree on one render-state hash. A caller-supplied `renderStateHash` must equal
+  that derived hash; omitting it derives it from the single verified preview —
+  never an invented value (`FIGURE_PUBLICATION_OFFLINE_PROVENANCE_INVALID`).
+- **Malformed-object robustness.** Every input is validated with typed refusals
+  and never a bare `TypeError`; validation covers non-object inputs, malformed
+  sheets/panels/bindings, malformed prepared views, duplicate or missing
+  panel↔prepared-view matches, malformed cached previews, field-level
+  `SourceFingerprint` conformance, and malformed scalars/identity fields.
+- **Decomposition** into `guards.ts`, `fingerprint-validation.ts`,
+  `request-types.ts`, `request-validation.ts`, `request.ts` (all ≤300 lines) so
+  the Rule 02 file-size gate is respected.
+
+## 2. Files Changed
+
+Created:
+- `packages/figure-engine/src/publication/guards.ts`
+- `packages/figure-engine/src/publication/fingerprint-validation.ts`
+- `packages/figure-engine/src/publication/provenance.ts`
+- `packages/figure-engine/src/publication/request-types.ts`
+- `packages/figure-engine/src/publication/request-validation.ts`
+- `packages/figure-engine/src/publication/request.ts`
+- `packages/figure-engine/src/publication/targets.ts`
+- `tests/figure-engine/fixtures/publication-request-fixtures.ts`
+- `tests/figure-engine/publication-request.test.ts`
+- `tests/figure-engine/publication-request-availability.test.ts`
+- `tests/figure-engine/publication-request-malformed.test.ts`
+- `tests/figure-engine/publication-request-boundary.test.ts`
+
+Modified:
+- `packages/figure-engine/src/publication/errors.ts` — five new typed codes
+  (`FIGURE_PUBLICATION_REQUEST_INVALID`, `_PANEL_SOURCE_INVALID`,
+  `_AVAILABILITY_REFUSED`, `_MIXED_AVAILABILITY`,
+  `_OFFLINE_PROVENANCE_INVALID`).
+- `packages/figure-engine/src/publication/index.ts` — barrel adds
+  `provenance`, `targets`, `request-types`, `request`.
+- `docs/decisions/ADR-014-figure-engine-publication-composition.md` — D2 note on
+  the publication-scoped `SourceFingerprint` structural co-implementation.
+- `docs/agentlog/phase-5.md` — this handover.
+
+Not modified by Phase 5: `shared-types`, `rendering-presets`, `medical-engine`,
+`view-engine`, `project-model`, `ui`, `apps/*`, `python/`, `AGENTS.md`,
+`CHANGELOG.md`, ADR-012 and all Phase 4 documents.
+
+## 3. Architectural Assumptions Made (boundary adherence)
+
+- `figure-engine` stays inside the Rule 02 dependency matrix; all new imports
+  are type-only `@nuclear/shared-types` or local. No React/DOM/Cornerstone and no
+  runtime import of `medical-engine`/`view-engine`/`project-model`/
+  `rendering-presets`.
+- The assembler validates only the fields it consumes. The **trust boundary** is
+  now stated explicitly in `request.ts`: deep `PreparedView.state`/`links`/
+  `locks` validity, full `FigureSheet` framing/layout/decoration/annotation
+  semantics and non-fingerprint provenance completeness are upstream
+  (`view-engine` ADR-011 / figure-engine composition / `project-model`); the
+  Fase-1 oracle remains the authority for the assembled result. An accepted
+  input satisfies the oracle for every field this module reads; the caller must
+  supply contract-valid `FigureSheet`/`PreparedView` objects.
+- `SourceFingerprint` structural rules are mirrored from the Fase-1 oracle in
+  `fingerprint-validation.ts` (publication-scoped, oracle-proven) — ADR-014 D2
+  now records this second co-implementation.
+- Metadata is passed by reference (availability, binding cached preview, the
+  sheet and prepared views); only newly created containers are frozen, so the
+  inputs are never mutated.
+
+## 4. Tests Added & Executed
+
+- `node --test "tests/figure-engine/*.test.ts"` → **34 tests / 7 suites, 34 pass
+  / 0 fail** (18 P5.1 + 4 positive assembly + 5 availability/offline + 6
+  malformed + 1 boundary).
+  - Positive: live PDF/PNG and offline PDF/TIFF requests are each asserted
+    accepted by the Fase-1 `isPublicationRenderRequest` oracle; offline
+    hash-derivation is covered.
+  - Fail-closed: missing/mismatch/loading, offline-without-policy, mixed
+    availability, missing/unequal cached preview, fingerprint-set mismatch,
+    render-state-hash mismatch.
+  - Malformed objects: non-object inputs; malformed sheet/panels/bindings;
+    duplicate panel/composer-view-instance ids; non-array annotations; binding↔
+    instance `preparedViewId` mismatch; malformed prepared views; empty or
+    field-invalid provenance fingerprints; malformed cached-preview fingerprints;
+    malformed scalars — every case asserts `FigurePublicationError` and **not**
+    `TypeError`.
+  - Boundary: deep `PreparedView.state` is passed through and rejected only by
+    the oracle, pinning the upstream trust boundary by evidence.
+- `npm run typecheck` → **PASS**; `npm run build` → **PASS**.
+- `npm test` → **586 tests / 107 suites, 586 pass / 0 fail**. Phase 5 contributes
+  34 figure-engine tests; the remainder includes the parallel P4.4b suite, which
+  grew during the session. No failure, no sandbox artifact on this run.
+- `npm run test:python` → **411 passed**; `npm run typecheck:python` → **clean,
+  77 files**.
+- File-length: largest Phase-5 source `request-validation.ts` = **262 lines**;
+  all Phase-5 source files ≤ 300. `git diff --check` → clean.
+
+## 5. Documentation, AgentLog & ADR Status
+
+- ADR-014 D2 amended with the publication-scoped `SourceFingerprint` structural
+  co-implementation note. No new ADR was required.
+- This eight-point handover is the Phase 5 AgentLog entry for P5.2.
+- `AGENTS.md` and `CHANGELOG.md` intentionally untouched.
+
+## 6. Project Model Impact
+
+None. No `.ncp` schema change and no `shared-types` contract change.
+
+## 7. Known Limitations & Technical Debt
+
+- `P5.3`–`P5.7` remain **NOT YET IMPLEMENTED**: no framing/layout transform set,
+  no annotation projection, no renderer port, no TIFF/PNG flattening and no
+  hybrid PDF.
+- ADR-014 OD-1–OD-4 remain open and are refused, not guessed.
+- The assembler does not re-validate deep clinical contracts; this is the stated
+  trust boundary (upstream `view-engine` ADR-011 / figure-engine composition).
+- No publication raster exists yet, so no image/pixel tolerance gate applies
+  (`NOT YET APPLICABLE`).
+- `renderStateHash` for live requests is caller-supplied provenance, not
+  computed here (the renderer owns it in P5.5).
+
+## 8. Exact Next Recommended Task
+
+Implement **P5.3** (ratified framing/layout transform set: Viewport ↔ Panel
+Content ↔ Figure Sheet), which is blocked until ADR-014 OD-1 (framing
+arithmetic), OD-2 (rotation origin) and OD-3 (`contentScale` application) are
+resolved by an ADR amendment — do not implement them by guesswork. If OD-1–OD-3
+must remain open, the next unblocked slice is **P5.4** only after those
+resolutions; otherwise proceed to resolve the ADR amendment first.
+
+---
+
+## Independent Verdicts — P5.2
+
+- **`nuclear-reviewer` — initial CONCERNS (non-blocking), then PASS.** Initial
+  review found one MEDIUM (M1: the trust boundary was understated — some
+  deeper-malformed accepted inputs were oracle-rejected) and LOW items (alpha
+  default wording; malformed coverage; missing agentlog). Resolution in-slice:
+  `assertSheetStructure` (annotations array, unique panel/instance ids),
+  binding↔instance `preparedViewId` enforcement, `readFingerprint` field-level
+  validation for both fingerprint sets, an explicit rewritten trust-boundary
+  docblock, and a boundary test. Re-review confirmed **PASS**: all probed M1
+  cases now either refuse typed or are pinned by the boundary test; the one
+  residual LOW (empty `provenance.sourceFingerprints`) was closed in the same
+  slice by refusing it as `FIGURE_PUBLICATION_REQUEST_INVALID`; file sizes and
+  boundaries verified.
+- **`nuclear-qa` — PASS (all 11 gates).** Independently re-ran scope isolation,
+  `git diff --check`, `npm run typecheck`, focused 32/5 (at QA time),
+  `npm test` 563/103/0, `npm run build`, pytest 411, mypy 77, file-length,
+  oracle usage and the malformed/no-`TypeError` coverage. No unexpected deltas;
+  image/pixel-tolerance gate **NOT YET APPLICABLE**.
