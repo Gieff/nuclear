@@ -170,6 +170,41 @@ Stop the active slice as `BLOCKED` rather than guessing when:
 
 ## Exact Next Step
 
-Start **P3.0** only: establish and document the real Cornerstone/WebGL
-capability, package/version choice, fixture requirements and harness boundary.
-Do not add ViewportSurfaces, a UI or an export compositor in that slice.
+Phase 3 (P3.0–P3.6) is complete. The post-Phase-3 integration update below
+records the subsequently accepted real-source hydration boundary. Do not reopen
+Phase 3 to reimplement that boundary; any future renderer/residency work must be
+scoped to its owning phase and use the existing `VolumeIngestionPlan` path.
+
+## Post-Phase-3 Integration Update — 2B.3b (2026-09-23)
+
+The historical P3.2 fixture-only pixel path and its acceptance evidence remain
+accurate for that slice. The later Phase 2B.3b implementation, committed as
+`d29eeb1` under Accepted [ADR-013](../decisions/ADR-013-pixel-volume-transport.md),
+adds the verified real-source transport/hydration boundary before the existing
+`buildVolumeIngestionPlan` call:
+
+```text
+DICOM source
+  -> Python worker decode + source/geometry fingerprint evidence
+  -> hash/length/TTL-checked worker payload
+  -> medical-engine bridge hydration
+  -> existing VolumeIngestionPlan
+  -> existing Cornerstone / residency path
+```
+
+The TypeScript bridge validates and transports the worker-declared descriptor
+and bytes; it does not parse DICOM, recompute geometry, rescale pixels or
+duplicate scientific calculations. The Phase 3 planner, residency backend and
+`ResourceManager` remain unchanged. The fixture-only route remains useful for
+curated renderer tests; ADR-013 adds a distinct supported real-source route
+rather than rewriting the historical P3.2 evidence.
+
+This is **not** a promise to ingest every DICOM representation. V1 explicitly
+refuses unsupported/compressed pixel representations, multi-sample data,
+malformed or inconsistent metadata, and volumes over its ratified resource
+limits. The Phase 2B handover records the tested cases and remaining limits.
+No Phase 3 code or acceptance gate is reopened by this integration update.
+
+P4.4b remains separate and blocked until ADR-012 is Accepted and an admissible
+`SpatialTransform` is available; MI evidence without `errorMarginMm` remains
+non-admissible under R11-B.

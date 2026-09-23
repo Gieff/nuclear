@@ -595,11 +595,12 @@ closed.
 
 ## 7. Known Limitations & Technical Debt
 
-- **Generic pixel ingestion debt (explicit, not hidden behind
-  `SourceLocator`).** Real sources still have no verifiable pixel-transport
-  boundary: the pixel-format authority here is the committed fixture
-  descriptor. A separate, declared hydration contract (pixel format + voxel
-  transport) is required before real-source live rendering, with its own ADR.
+- **Historical P3.2 status — generic pixel ingestion debt (RESOLVED by 2B.3b,
+  commit `d29eeb1`; see the post-Phase-3 integration addendum).** At this
+  handover's completion, the committed fixture descriptor was the pixel-format
+  authority and a declared hydration contract was still required before
+  real-source live rendering. Accepted ADR-013 and 2B.3b now provide that
+  separately owned boundary for the ratified v1 input scope.
 - **Axial-identity fixtures cannot disambiguate Mat3 element order** at the
   world-geometry level (an identity transpose is still identity). Mitigated
   by an array-level `deepEqual` against the assembled worker triplets and a
@@ -756,9 +757,11 @@ preserved and no residual cache entry, including the register-then-throw case.
 
 ## 7. Known Limitations & Technical Debt
 
-- **Generic pixel ingestion debt remains** (ADR-004): real-source live
-  rendering still needs a separate, verifiable hydration boundary (pixel format
-  + voxel transport); it must not be hidden behind `SourceLocator`.
+- **Historical P3.2.1 status — generic pixel ingestion debt (RESOLVED by
+  2B.3b, commit `d29eeb1`; see the post-Phase-3 integration addendum).** At
+  this handover's completion, real-source live rendering still needed the
+  separate, verifiable pixel-format and voxel-transport boundary; it remains
+  explicit and is not hidden behind `SourceLocator`.
 - `declaredConstructor` returns `Function | undefined` (review NB-3, cosmetic);
   no `any`, but a tighter constructor type would be tidier.
 - The rescaled-float32 bit-layout branch is deliberately conservative (a
@@ -4105,3 +4108,82 @@ rendering-fixture evidence files.
   completed residency manager without reimplementing engine behaviour.
 - Optional tooling follow-up: make the version bump regenerate or re-stamp the
   rendering-fixture evidence automatically.
+
+---
+
+# Post-Phase-3 Integration Addendum — Phase 2B.3b (2026-09-23)
+
+## 1. What Was Reconciled
+
+The P3.2 and P3.2.1 handovers above accurately recorded the state at their
+completion: fixture-only pixel ingestion, with real-source transport still
+unavailable. That specific technical debt is now **closed for the ratified v1
+scope** by Phase 2B.3b. The P3.2/P3.2.1 entries retain the account of their
+then-current state and now label it explicitly as historical; this addendum
+records the superseding accepted boundary.
+
+Commit `d29eeb1` adds the worker-owned real-source decode and fingerprint path,
+verified temporary payload transport through the `@nuclear/medical-engine`
+bridge, and hydration into the existing `VolumeIngestionPlan`. It occurs before
+planner construction and renderer/residency interaction. The Phase 3 planner,
+`VolumeResidencyBackend`, `ResourceManager`, and `VolumeIngestionPlan` contract
+were not replaced or duplicated. See Accepted
+[`ADR-013`](../decisions/ADR-013-pixel-volume-transport.md) and the Phase 2B.3b
+closeout in [`phase-2b.md`](phase-2b.md).
+
+## 2. Files Changed
+
+- `docs/plans/PHASE_3_MEDICAL_ENGINE_PLAN.md` — current completion status and
+  post-Phase-3 integration note.
+- `docs/agentlog/phase-3.md` — this reconciliation addendum; original P3.2
+  handovers retained as historical evidence.
+
+## 3. Architectural Assumptions and Boundaries
+
+- The Python worker remains the DICOM pixel decoder and scientific authority;
+  TypeScript validates descriptor/bytes and hydrates the pre-existing plan.
+- The fixture-only route is retained for reproducible renderer tests. ADR-013
+  adds supported real-source transport; it does not claim support for every
+  DICOM representation.
+- ADR-013's v1 restrictions remain binding, including fail-closed refusal of
+  compressed/unsupported encodings, invalid correlation and over-limit volumes.
+- No UI, `view-engine`, planner, residency or renderer behavior is added here.
+
+## 4. Verification Evidence
+
+- The implementation commit `d29eeb1` was accepted as Phase 2B.3b/P2B.5 PASS;
+  its post-commit gates are recorded in the Phase 2B handover.
+- This change is documentation-only. Final documentation verification is
+  `git diff --check`; no source code or executable contract changed.
+
+## 5. Documentation and ADR Status
+
+- ADR-013 is **Accepted** and governs the real-source hydration boundary.
+- The stale current-debt claim from the P3.2-era handovers is superseded; their
+  historical substance is retained and explicitly labeled as the state at
+  their original acceptance.
+- Phase 3 remains **COMPLETE**. This addendum does not reopen P3.2 or P3.6.
+
+## 6. Project Model and Package Impact
+
+None. No `.ncp`, shared contract, `VolumeIngestionPlan`, residency API or package
+ownership boundary changed. The existing medical-engine plan feeds the existing
+Cornerstone and residency pipeline.
+
+## 7. Remaining Limits (Not Open Phase 3 Slices)
+
+- V1 does not support every DICOM encoding; unsupported/compressed
+  representations and payloads outside ADR-013 limits fail closed.
+- Real Windows `msvcrt` execution remains **NOT YET APPLICABLE** in the current
+  environment.
+- R6's near-collinearity numeric threshold remains deferred.
+- MI evidence without `errorMarginMm` is not admissible to a transformed link
+  under R11-B. P4.4b remains blocked until ADR-012 is Accepted and a qualifying
+  transform is available.
+
+## 8. Exact Next Step
+
+No further Phase 3 implementation is required for this boundary. Prepare any
+ADR-012 ratification package as a separate documentation/decision task. Do not
+start P4.4b until ADR-012 R-1–R-4/OD-6 are Accepted and the required admissible
+`SpatialTransform` evidence exists.
