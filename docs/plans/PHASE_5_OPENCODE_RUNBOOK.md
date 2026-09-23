@@ -107,16 +107,21 @@ Every delegation brief must include:
 - Any transform must be pure, invertible where required and expressed in
   physical units.
 
-### P5.4 — Annotation Projection and Anchor Policy (READY after P5.3 — OD-4 ratified 2026-09-23)
+### P5.4 — Annotation Visibility Policy (PARTIAL — projection BLOCKED on OD-5)
 
-- Depends on the P5.3 transform tests and the ratified OD-4 terms:
-  `planeToleranceMm = 0` ⇒ no fade band (exact plane only, else hidden);
-  `fadeBandMm = planeToleranceMm`, linear opacity `1 → 0` over
-  `(tol, 2·tol]`, hidden beyond; distances in mm; `loading` behaves like
-  `offline-cached`/`missing`/`mismatch` (patient annotation hidden fail-closed).
-- Patient-anchored annotations keep their LPS anchor and are reprojected through
-  the declared coordinate chain; panel/sheet-anchored editorial objects never
-  participate in the medical transform. Screen pixels are never persisted.
+- Delivered: the ratified OD-4 visibility/opacity policy with an **explicit,
+  declared** out-of-plane distance (`planeToleranceMm = 0` ⇒ no fade band;
+  `fadeBandMm = planeToleranceMm`, linear `1 → 0` over `(tol, 2·tol]`, hidden
+  beyond; distances in mm; `loading` behaves like
+  `offline-cached`/`missing`/`mismatch` — hidden fail-closed).
+- **Blocked:** the `LPS → view plane → viewport` projection requires an
+  ADR-014 follow-up (OD-5a/b/c in the plan) defining the displayed-plane
+  relation, the out-of-plane distance source and whether
+  `patientToViewPlane`/`viewPlaneToViewport` are consumed as authored or
+  derived. Do not guess them; keep the projection fail-closed until ratified.
+- Patient-anchored annotations keep their LPS anchor; panel/sheet-anchored
+  editorial objects never participate in the medical transform. Screen pixels
+  are never persisted.
 
 ### P5.5 — Publication Renderer Port
 
@@ -131,6 +136,9 @@ Every delegation brief must include:
 - Do not add an encoder dependency before its ADR is ratified with user
   sign-off. Compose from already-produced layers; never rasterize the whole
   page for the hybrid PDF.
+- An annotation whose resolved opacity is `0` — e.g. the OD-4 fade endpoint at
+  exactly `2 × planeToleranceMm` — must be emitted as nothing, never as a
+  zero-opacity primitive.
 
 ## Required Gate Commands
 

@@ -186,6 +186,14 @@ the resolved `ComposerViewInstance` state including applicable local overrides.
 - `loading` behaves exactly like `offline-cached`, `missing` and `mismatch`:
   the patient annotation is hidden (fail-closed).
 
+**Interpretation note (subject to owner confirmation).** The band above
+describes `outOfPlaneBehavior: 'fade'`. The frozen contract also allows
+`'hide'`; it is interpreted as a hard visibility cutoff at `planeToleranceMm`
+(no fade band), and `planeToleranceMm = 0` is a hard cutoff in both behaviours.
+This reading never grants more visibility than `'fade'` would, and no other
+behaviour is implemented. If the owner intends `'hide'` to differ, this note
+must be superseded by an amendment.
+
 ## Consequences
 
 - Phase 5 can proceed with pure, Node-testable editorial geometry and

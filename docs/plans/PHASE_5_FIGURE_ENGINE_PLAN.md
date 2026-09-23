@@ -123,7 +123,7 @@ baseline when:
 | P5.1 | engine engineer | Publication physical units + panel content raster dimensioning + sheet containment + deterministic panel ordering | Pure Node tests: exact mm↔px at 300/600 DPI, equivalence with the ADR-009 formula and the Fase-1 oracle, typed refusals for non-physical input and non-zero rotation, stable ordering |
 | P5.2 | engine engineer | `PublicationRenderRequest` assembly with fail-closed availability | Positive live and explicit offline-preview cases; `missing`/`mismatch`/fingerprint-mismatch refusals; result accepted by the Fase-1 contract oracle |
 | P5.3 | engine engineer | Framing/layout transform set (Viewport ↔ Panel Content ↔ Sheet), invertible where required. **READY — ADR-014 OD-1/OD-2/OD-3 ratified 2026-09-23.** | Reference-point and round-trip tests; OD-1 alignment/crop cases; OD-2 transform (medical rotation still refused); file-size gate |
-| P5.4 | engine engineer | Annotation projection and anchor policy (patient reprojection + plane tolerance hide/fade; editorial fixed). **READY after P5.3 tests — ADR-014 OD-4 ratified 2026-09-23.** | Anchor/space tests; `planeToleranceMm = 0` no-fade case; `fadeBandMm = tolerance` linear fade; `loading`/`offline-cached`/`missing`/`mismatch` hidden; no screen-pixel persistence |
+| P5.4 | engine engineer | Annotation visibility policy (OD-4). **PARTIAL — the visibility/opacity policy is delivered; the `LPS → view plane → viewport` projection is BLOCKED on an ADR-014 follow-up (OD-5)** because the displayed-plane definition and the content semantics of `patientToViewPlane`/`viewPlaneToViewport` are unratified. | `planeToleranceMm = 0` no-fade; `fadeBandMm = tolerance` linear fade; `loading`/`offline-cached`/`missing`/`mismatch` hidden; no screen-pixel persistence; projection evidence deferred |
 | P5.5 | engine engineer | Publication renderer port + orchestration (consume the medical `RenderTarget` capability; no Cornerstone import) | Port-contract tests; real-harness evidence for a live panel; fail-closed on unavailable source |
 | P5.6 | engine engineer | TIFF/PNG raster flatten composition via an encoder port | Deterministic composition against a curated fixture; encoder ADR ratified first |
 | P5.7 | engine engineer | Hybrid vector PDF emission via an encoder port | Vector-preservation assertions (text/annotations native, medical panel raster); encoder ADR ratified first |
@@ -139,6 +139,32 @@ and must implement the OD-4 terms exactly (no fade band at
 `planeToleranceMm = 0`; `fadeBandMm = planeToleranceMm`; `loading`/`offline-
 cached`/`missing`/`mismatch` hidden fail-closed). Any behaviour not covered by
 the amendment remains fail-closed and must not be invented.
+
+**Blocked sub-slice — patient projection (needs OD-5).** The ratified OD-4
+chain needs the displayed-plane definition and the content semantics of
+`CoordinateTransformSet.patientToViewPlane` / `viewPlaneToViewport`. Both are
+unratified today: the matrices are placeholder transforms that are only
+carried (`patientToViewPlane` is identity and `viewPlaneToViewport` is
+identity-plus-256-translation in every existing artifact; `medical-engine`
+never composes or re-derives them — ADR-008 step 4/ADR-009), and
+`medical-engine` refuses non-neutral slice positioning (`referenceLocation`
+non-zero / `sliceOffsetMm !== 0`). P5.4 therefore delivers the ratified
+visibility policy with an **explicit, declared** out-of-plane distance and
+leaves the projection fail-closed until an ADR-014 follow-up (OD-5) ratifies:
+
+- **OD-5a** the displayed-plane point/normal relation to `referenceLocation`,
+  `viewPlaneNormal` and `sliceOffsetMm` (does `sliceOffsetMm` shift the plane
+  along the normal, and from which origin?);
+- **OD-5b** the out-of-plane distance source (view-plane homogeneous `z` after
+  `patientToViewPlane`, versus the plane-equation `dot(anchor − planePoint,
+  normal)`);
+- **OD-5c** whether `patientToViewPlane` / `viewPlaneToViewport` are to be
+  consumed as authored (row-major, homogeneous, per `Matrix4x4`) or are
+  placeholders Phase 5 must derive — ADR-009 explicitly left the view-plane →
+  pixel derivation to Phase 5.
+
+Until OD-5 is ratified, `resolvePatientAnnotationVisibility` accepts the
+distance as an input and no LPS projection is performed.
 
 ## Fixture and Test Policy
 
@@ -185,20 +211,15 @@ Stop the active slice as `BLOCKED` rather than guessing when:
 
 ## Exact Next Step
 
-P5.0–P5.2 are delivered and accepted; ADR-014 OD-1–OD-4 are ratified
-(2026-09-23). **Implement P5.3** in `@nuclear/figure-engine` only, strictly per
-the ratified amendment:
+P5.0–P5.3 are delivered and accepted; P5.4 is **PARTIAL** (OD-4 visibility
+policy delivered; the LPS projection is blocked on OD-5). Two unblocked paths
+exist:
+
+1. **Ratify OD-5a/b/c** (ADR-014 follow-up) to unblock the patient projection.
+2. **Proceed to P5.5** (publication renderer port + orchestration), which
+   depends on P5.2 — not on P5.4 — and is therefore unblocked.
 
 ```text
-packages/figure-engine/src/publication/framing.ts          — OD-1 Viewport ↔ Panel Content
-packages/figure-engine/src/publication/layout.ts (extend)  — OD-2 Panel Content ↔ Sheet
-tests/figure-engine/framing-transform.test.ts              — OD-1 cases
-tests/figure-engine/layout-transform.test.ts               — OD-2 cases
+P5.4 projection (BLOCKED on OD-5a/b/c)  — patient annotation reprojection
+P5.5 (READY after P5.2)                 — publication renderer port
 ```
-
-OD-1: normalized crop with validation; `scaledSize = contentSizeMm ×
-contentScale`; the five `alignment` offsets; `contentOffsetMm`; invertible;
-`overflow` is a clip policy, not part of the affine map. OD-2: rotation about
-the panel center, clockwise in `y-down`; **`rotationDeg !== 0` stays refused for
-medical panels** (the contract cannot yet distinguish editorial vs medical
-rotation). P5.3 must not implement P5.4 patient reprojection.
