@@ -107,18 +107,17 @@ Every delegation brief must include:
 - Any transform must be pure, invertible where required and expressed in
   physical units.
 
-### P5.4 — Annotation Visibility Policy (PARTIAL — projection BLOCKED on OD-5)
+### P5.4 — Annotation Visibility Policy and Patient Projection (COMPLETE — OD-4/OD-5 ratified 2026-09-23)
 
-- Delivered: the ratified OD-4 visibility/opacity policy with an **explicit,
-  declared** out-of-plane distance (`planeToleranceMm = 0` ⇒ no fade band;
-  `fadeBandMm = planeToleranceMm`, linear `1 → 0` over `(tol, 2·tol]`, hidden
-  beyond; distances in mm; `loading` behaves like
-  `offline-cached`/`missing`/`mismatch` — hidden fail-closed).
-- **Blocked:** the `LPS → view plane → viewport` projection requires an
-  ADR-014 follow-up (OD-5a/b/c in the plan) defining the displayed-plane
-  relation, the out-of-plane distance source and whether
-  `patientToViewPlane`/`viewPlaneToViewport` are consumed as authored or
-  derived. Do not guess them; keep the projection fail-closed until ratified.
+- Delivered: the OD-4 visibility/opacity policy and the OD-5 patient
+  projection (`projectPatientAnnotation`). The projection uses the physical LPS
+  plane (`referenceLocation + sliceOffsetMm · viewPlaneNormal`) for the
+  out-of-plane distance and **applies** the authored row-major transforms
+  (`patientToViewPlane` → `viewPlaneToViewport` → normalize by `viewportSizePx`
+  → OD-1 → OD-2); it derives no transform.
+- Fail-closed: non-unit `viewPlaneNormal`, non-finite/non-affine matrix,
+  invalid viewport size, malformed anchor, or any non-`online` availability
+  (hidden, no sheet point) is a typed refusal/outcome.
 - Patient-anchored annotations keep their LPS anchor; panel/sheet-anchored
   editorial objects never participate in the medical transform. Screen pixels
   are never persisted.

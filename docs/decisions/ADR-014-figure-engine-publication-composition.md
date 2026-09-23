@@ -2,10 +2,11 @@
 
 ## Status
 
-Accepted (boundary decisions D1–D5). **Amendment 2026-09-23: OD-1–OD-4 are
+Accepted (boundary decisions D1–D5). **Amendment 2026-09-23: OD-1–OD-5 are
 ratified** by the phase owner (OD-1 A refined, OD-2 A with medical rotation
-still fail-closed, OD-3 A, OD-4 A refined — see “Ratified Amendment”). The
-dependent slices (P5.3, P5.4) may proceed under those terms.
+still fail-closed, OD-3 A, OD-4 A refined, OD-5 A/A/A with the `'hide'` cutoff
+confirmed — see “Ratified Amendment”). The dependent slices (P5.3, P5.4) may
+proceed under those terms.
 
 ## Date
 
@@ -193,6 +194,40 @@ describes `outOfPlaneBehavior: 'fade'`. The frozen contract also allows
 This reading never grants more visibility than `'fade'` would, and no other
 behaviour is implemented. If the owner intends `'hide'` to differ, this note
 must be superseded by an amendment.
+
+**Confirmed 2026-09-23:** the owner ratified the `'hide'` hard-cutoff
+interpretation (OD-5d) in full.
+
+### OD-5 — Patient annotation projection (ratified 2026-09-23, A/A/A)
+
+The projection uses the **physical LPS geometry** for the out-of-plane decision
+and the **authored transforms** for placement; it derives nothing.
+
+- **OD-5a — displayed plane.** The displayed plane passes through
+  `planePoint = referenceLocation + sliceOffsetMm · viewPlaneNormal` and has
+  normal `viewPlaneNormal` (unit). With the neutral reference
+  (`referenceLocation = [0,0,0]`, `sliceOffsetMm = 0`) the plane passes through
+  the LPS origin. `sliceOffsetMm` is a signed shift along the normal and is
+  never inert.
+- **OD-5b — out-of-plane distance.** The signed distance is
+  `d = dot(anchorLps − planePoint, viewPlaneNormal)`, in millimetres; the OD-4
+  policy consumes `|d|`. It is computed from `SpatialState` alone and does **not**
+  read the (possibly placeholder) projective `z`.
+- **OD-5c — transforms are consumed, never derived.** `patientToViewPlane` and
+  `viewPlaneToViewport` are applied as authored row-major homogeneous
+  `Matrix4x4` values
+  (`viewportPx = viewPlaneToViewport · (patientToViewPlane · [lps, 1])`), then
+  normalized by `viewportSizePx` and carried through OD-1 (`viewportToPanelContent`)
+  and OD-2 (`panelContentToSheet`). Their physical derivation remains with
+  `view-engine`/`medical-engine`; `figure-engine` performs only algebraic
+  application and fails closed on non-finite/non-affine matrices or an invalid
+  viewport size.
+- **OD-5d — `'hide'` (confirmed).** A hard cutoff at `planeToleranceMm`; with
+  `planeToleranceMm = 0` both behaviours collapse to the exact plane.
+- **Resolved state.** The projection input is the resolved `MedicalViewState`
+  of the `ComposerViewInstance` (local overrides already applied by
+  `view-engine` per ADR-011; not re-applied here). The policy input
+  `availability` comes from the panel's `medicalViewBinding.availability`.
 
 ## Consequences
 
