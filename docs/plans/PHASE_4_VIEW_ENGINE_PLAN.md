@@ -136,7 +136,7 @@ context.
 | P4.5 | engine engineer | `LOCK` + `LocalViewOverride` | Lock blocks mutation of named state; override diverges, round-trips and leaves the source view unchanged |
 | P4.6 | engine engineer | `ViewportSurfaceRegistry` + `SurfaceLayoutManager` | Stable identity across bind/rebind/re-layout; `disposed` carries no binding; capacity 16 logical ≠ WebGL contexts; placement geometry is pure |
 | P4.7 | engine engineer | `ResourceDemand` projection into `ResourceManager` | Demand→lease reconciliation; shared asset retained once; eviction preserves semantic view identity and reload restores residency |
-| P4.8 | reviewer + QA | Independent phase review, gates and final handover | Reviewer/QA verdicts, all configured gates and the eight-point phase report recorded |
+| P4.8 ✅ | reviewer + QA | Independent phase review, gates and final handover | Reviewer/QA verdicts, all configured gates and the eight-point phase report recorded; final closure addendum (P4.8b) records P4.4b integrated and **Phase 4 COMPLETE** (2026-09-23, HEAD `d8dabeb`) |
 
 P4.4 depends on P4.1 and P4.3; P4.7 depends on the accepted P4.1 slot model.
 Do not begin a later slice before the predecessor’s review and QA evidence
@@ -267,23 +267,14 @@ Stop the active slice as `BLOCKED` rather than guessing when:
 
 ## Exact Next Step
 
-P4.0–P4.2 are **closed**; all ratified correctives are complete. **Start P4.3
-(shared-state groups)** under the binding ADR-011 addendum contract:
+**Phase 4 is COMPLETE** (P4.0–P4.8, incl. P4.4b; closure HEAD `d8dabeb`,
+2026-09-23). All ratified correctives are complete; ADR-010, ADR-011 and
+ADR-012 are Accepted. See the **Phase 4 Final Closure Addendum** in
+`docs/agentlog/phase-4.md` for the whole-phase verdict and carried debt.
 
-```text
-private holder → atomic replacement → new projection → frozen published DTO
-```
-
-P4.3 entry conditions:
-
-- Entry HEAD `a46099d`; gates green (`npm test` 348/348, 68 suites).
-- Define and **test** which identity stays stable (holder identity,
-  `PreparedViewId`, `ViewSlot`) and which published value is regenerated after
-  an update.
-- Every replacement payload passes `assertSerializableValue` → `deepFreeze`;
-  never mutate frozen state in place, never clone shared state, never publish
-  a mutable object.
-- Owner package: `@nuclear/view-engine` only; pure Node tests; ≤300-line
-  source files.
-- Do not reinterpret the ADR-011 model; do not add P4.4 linking, P4.5 locks,
-  P4.6 surfaces or P4.7 demand in P4.3.
+**Start Phase 5 (figure engine & publication export)** under
+`docs/plans/PHASE_5_FIGURE_ENGINE_PLAN.md` and
+`docs/plans/PHASE_5_OPENCODE_RUNBOOK.md`, consuming the stable
+`ViewportSurfaceRegistry`/`SurfaceLayoutManager` and declaring composition
+demand only. Do not reopen Phase 4 without an ADR; Phases 6–7 (UI) remain
+blocked until Phase 5 permits them.

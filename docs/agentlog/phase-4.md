@@ -1,24 +1,20 @@
 # Phase 4 — View Engine: Workspace, Link/Lock/Override & Persistent Surfaces
 
-Status: **P4.0–P4.5 CLOSED** (2026-09-22). P4.0–P4.2 were closed after the
-independent review reopened them and the ratified corrective chain landed
-(final corrective HEAD `a46099d`; `npm test` 348/348, 68 suites, typecheck/build
-clean, pytest 189, mypy 47). **P4.3 (shared-state groups)** closed under the
-binding ADR-011 addendum contract (`private holder → atomic replacement → new
-projection → frozen published DTO`); its test file was split by `8ab08f5`
-(361/361, 70 suites). **P4.4 (link semantics)** closed under ADR-010 §3/§7.2
-(co-referenced application restricted to the exact `{spatial, camera}`
-synchronized set; 384/384, 72 suites). **P4.5 (lock + LocalViewOverride) is
-closed**: `StateLock` enforcement on the shared-state `attach`/`replace`
-mutations plus a frozen local override resolver with deep value validation
-(C5a); `npm test` **404/404 (75 suites)**, typecheck/build clean. **P4.6–P4.8
-pending**; the next slice is P4.6
-(surfaces and layout). Reopened slices closed: P4.0
-(co-reference contract honesty),
-P4.1 (workspace input integrity, slot rule), P4.2 (`PreparedView` assembly,
-provenance correlation, published-DTO immutability).
-Corrective commits: `db4ba42` + `f71d609` (C8), `7680acc` (C1), `0c8921e`
-(C2+C5+C6), `95a04fb` (C3+C7), `f8a5571` (C4), `a46099d` (C1b+C4b). See
+Status: **PHASE 4 COMPLETE — P4.0–P4.8 all closed, incl. P4.4b** at HEAD
+`d8dabeb` (2026-09-23). `@nuclear/view-engine` is the accepted headless
+orchestration layer between the frozen Phase 1 view contracts and Phase 3
+`medical-engine`. Whole-suite gate on the closure tree: `npm test` **599/599
+(109 suites), 0 fail**; typecheck/build clean; pytest **411**; mypy **77 files**;
+docs clean; `git diff --check` clean; every authored source file ≤300 lines.
+**P4.0–P4.8 and all ratified correctives are closed**; ADR-010, ADR-011 and
+**ADR-012 are Accepted**. P4.4b (inter-study link application/propagation)
+landed last in commit `d8dabeb` under the ratified ADR-012 record — see the P4.8
+closure record and the **Phase 4 Final Closure Addendum** below.
+Reopened slices closed: P4.0 (co-reference contract honesty), P4.1 (workspace
+input integrity, slot rule), P4.2 (`PreparedView` assembly, provenance
+correlation, published-DTO immutability). Corrective commits: `db4ba42` +
+`f71d609` (C8), `7680acc` (C1), `0c8921e` (C2+C5+C6), `95a04fb` (C3+C7),
+`f8a5571` (C4), `a46099d` (C1b+C4b). See
 `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` §“Reopened — Ratified Correction
 Slices”, `docs/decisions/ADR-010-…md` §7 and
 `docs/decisions/ADR-011-prepared-view-immutability-and-shared-state-mutation.md`.
@@ -2794,7 +2790,10 @@ image/pixel-tolerance gate exists in Phase 4).
   application/propagation required ADR-012 **Accepted** (R-1..R-4) and Phase 2B
   producing a verifiable `SpatialTransform`. No such code exists. *(Update
   2026-09-23: ADR-012 is now Accepted — P4.4b is READY, still NOT YET
-  IMPLEMENTED; see the ratification handover below.)*
+  IMPLEMENTED; see the ratification handover below.)* *(Final update
+  2026-09-23: P4.4b is now **IMPLEMENTED** and independently verified — commit
+  `d8dabeb`; this blocker is **RESOLVED**. See the Phase 4 Final Closure Addendum
+  below.)*
 - The demand projection is **not wired into `ImagingWorkspace`**; composition
   demand must be facaded explicitly rather than assumed.
 - `ViewportSurfaceRegistry` does **not** bind a `ComposerViewInstance` (the
@@ -2816,7 +2815,8 @@ closed baseline with:
 
 1. All Phase 4 gates green on the closure commit (442/442, 80 suites;
    typecheck/build/pytest/mypy/docs clean; boundary and file-size gates
-   verified).
+   verified). *(Superseded 2026-09-23 by the Final Closure Addendum below: the
+   whole-suite total at final closure is 599/599, 109 suites.)*
 2. `figure-engine` may consume the stable `ViewportSurfaceRegistry` and pure
    `SurfaceLayoutManager` for panel framing, but must define its **own**
    `ComposerViewInstance` ↔ surface binding semantics (not representable by the
@@ -2832,6 +2832,8 @@ closed baseline with:
    2B yields `SpatialTransform` evidence. *(Condition met 2026-09-23: ADR-012
    Accepted; admissible landmark/Procrustes evidence exists — P4.4b READY, NOT
    YET IMPLEMENTED; it still requires its own slice entry before any code.)*
+   *(Final update 2026-09-23: P4.4b was executed and is **COMPLETE** — commit
+   `d8dabeb`; this condition is fully discharged.)*
 
 ---
 
@@ -3140,3 +3142,132 @@ gate once more, commit atomically with a `feat(view-engine)` /
 `v0.4.0`/`main`). Then either close Phase 4 with a P4.8-style final note or
 continue Phase 5 under its own plan; Phase 6 UI remains blocked on later
 slices.
+
+---
+
+# Phase 4 Final Closure Addendum — P4.4b Integrated; Phase 4 COMPLETE (P4.8b)
+
+Date: 2026-09-23. Closure HEAD: `d8dabeb`. The P4.8 closure record above closed
+Phase 4 with P4.4b **blocked**; ADR-012 has since been ratified (Accepted,
+2026-09-23) and P4.4b executed. This addendum records that final outstanding
+slice and re-declares **Phase 4 COMPLETE**.
+
+## 1. What Was Delivered
+
+P4.4b — inter-study link application & propagation — implemented strictly
+inside the **Accepted** ADR-012 record (R-1..R-4 + OD-1..OD-6):
+
+- `@nuclear/medical-engine` spatial primitives: pure rigid
+  `applySpatialTransform` (row-major `Matrix4x4`, orthonormal 3×3 with det ≈ +1,
+  homogeneous last row; typed `MATRIX_MALFORMED` / `MATRIX_NOT_RIGID`) and
+  native-grid domain membership/clamp over worker-verified `AssetGeometry`
+  (half-voxel `[-0.5, dim-0.5]`; AABB is **not** membership evidence;
+  `GRID_EVIDENCE_INVALID`).
+- `@nuclear/view-engine` linking: one-shot `transformed`-only admission
+  (`manual-alignment`/Procrustes only, MI excluded under R11-B; a **present**
+  `errorMarginMm <= toleranceMm`), `registerInterStudyLink` with mandatory-DAG
+  cycle/self-edge refusals, and workspace-level staged atomic
+  `applySpatialIntent` that additionally refuses convergent-path conflicts, with
+  a causality token, lock precedence, and typed `clamp`/`hide`/`warn`
+  out-of-domain outcomes; **+10 additive `LinkError` codes**.
+- **42 new tests** (21 medical + 21 view-engine); slice handover above.
+  Independent `nuclear-reviewer` and `nuclear-qa`: **PASS**.
+
+Every Phase 4 slice is now closed:
+
+| Slice | Status |
+| --- | --- |
+| P4.0 | closed (correctives C8, C1, C1b) |
+| P4.1 | closed (correctives C2, C6) |
+| P4.2 | closed (correctives C3, C4, C4b, C5, C7) |
+| P4.3 | closed |
+| P4.4 | closed (+ C5a) |
+| P4.4b | **closed** (commit `d8dabeb`) |
+| P4.5 | closed (+ C5a) |
+| P4.6 | closed (+ P4.6-N3) |
+| P4.7 | closed (+ P4.7a) |
+| P4.8 | closure record |
+
+## 2. Files Changed
+
+- **P4.4b commit `d8dabeb` — 20 files, +2606/−13:**
+  `packages/medical-engine/src/spatial/{apply-spatial-transform,native-grid-domain,index}.ts`,
+  `packages/medical-engine/src/index.ts`,
+  `packages/view-engine/src/linking/{admission,inter-study,propagate,propagate-traverse,errors,index}.ts`,
+  `packages/view-engine/src/workspace/imaging-workspace.ts`,
+  `tests/medical/{spatial-transform,native-grid-domain}.test.ts`,
+  `tests/view-engine/inter-study-{admission,propagation}.test.ts`,
+  `tests/view-engine/fixtures/inter-study-{fixtures,chain-fixtures}.ts`,
+  `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md`, `docs/agentlog/phase-4.md`,
+  `AGENTS.md`.
+- **This closure addendum (docs only):** status header above, dated annotations
+  on the P4.8 §7/§8 records, this addendum,
+  `docs/plans/PHASE_4_VIEW_ENGINE_PLAN.md` (P4.8 ✅ + closure state + exact next
+  step) and `AGENTS.md` (baseline header → Phase 4 complete).
+- Unchanged: `CHANGELOG.md`, the version, `shared-types/**`, `python/**`, and any
+  Phase-5 figure-engine artefact.
+
+## 3. Architectural Boundaries
+
+- ADR-012 §1–§8 upheld: `relative` deferred; MI not admitted; domain from
+  worker-verified geometry (never viewport/AABB); `transformed`-only; no DTO
+  status field; the 10-code taxonomy is closed.
+- R-4/OD-2: all matrix/rotation math lives in `medical-engine`; `view-engine`
+  composes only. Inter-study targets never join a `SharedStateGroup`.
+- Phase 4 invariants 1–10 remain upheld; `view-engine` stays
+  React/DOM/Cornerstone-free and the package graph stays acyclic. The concurrent
+  Phase-5 figure-engine edits in this worktree are **outside** Phase 4 and
+  outside this closure.
+
+## 4. Whole-Phase Gates (working tree at closure HEAD `d8dabeb`; unchanged by this docs-only addendum)
+
+The greenfield suite total below includes the Phase-5 figure-engine suites
+already present at `d8dabeb`; the P4.4b slice itself contributes **42/42
+standalone** (21 medical + 21 view-engine). A reviewer independently reproduced
+every number below.
+
+| Command | Observed result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm test` | **599 pass / 0 fail / 109 suites** (0 skipped/todo) |
+| `npm run build` | exit 0 |
+| `npm run test:python` | **411 passed** |
+| `npm run typecheck:python` | clean, **77 files** |
+| `npm run docs` | exit 0 |
+| `git diff --check` | clean |
+| File length | every authored source ≤300 (max 296) |
+
+## 5. Documentation, Agentlog & ADR Status
+
+ADR-010 Accepted, ADR-011 Accepted, **ADR-012 Accepted** (2026-09-23).
+Eight-point handovers exist for every Phase 4 slice, including P4.4b and this
+addendum. `CHANGELOG.md` is intentionally untouched — release notes are produced
+by `/promote-changelog 4` only on explicit request; no tag or release was created.
+
+## 6. Project Model Impact
+
+None. No `.ncp` schema, Phase 1 contract or validator change.
+
+## 7. Known Limitations & Remaining Risks (carried into Phase 5)
+
+- Composition-time demand is **not wired into `ImagingWorkspace`**; a
+  workspace-level demand facade is required (non-blocking debt).
+- `ViewportSurfaceRegistry` does **not** bind a `ComposerViewInstance`; a
+  `shared-types` extension with its own ADR/validator/fixture is required before
+  the Composer can own a surface binding.
+- Capacity is a lifetime-total logical identity budget (no purge API); one
+  `ResourceManager` per demand authority; the builder shape-check is
+  intentionally opaque (ADR-010 §8/§9).
+- C5a's product validator mirror has no automated parity test against the
+  contract validator.
+- `relative` inter-study application remains deferred (ADR-012 R-2/OD-4).
+- Phase-3 carried debt: renderer size headroom; hardware-GPU and a true
+  production bundle remain **NOT YET APPLICABLE**.
+
+## 8. Exact Next Step
+
+Phase 4 is **COMPLETE**. Proceed to **Phase 5 — figure engine & publication
+export** under `docs/plans/PHASE_5_FIGURE_ENGINE_PLAN.md` and
+`docs/plans/PHASE_5_OPENCODE_RUNBOOK.md`, starting from this closed baseline and
+the current Phase-5 HEAD. Do not reopen Phase 4 without an ADR. Phases 6–7 (UI)
+remain blocked until Phase 5 permits them.
