@@ -34,4 +34,4 @@ Modules:
     volume_operations: DICOM pixel decode + volume transport handlers (2B.3b).
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
