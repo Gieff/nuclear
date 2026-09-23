@@ -125,7 +125,7 @@ baseline when:
 | P5.3 | engine engineer | Framing/layout transform set (Viewport ↔ Panel Content ↔ Sheet), invertible where required. **READY — ADR-014 OD-1/OD-2/OD-3 ratified 2026-09-23.** | Reference-point and round-trip tests; OD-1 alignment/crop cases; OD-2 transform (medical rotation still refused); file-size gate |
 | P5.4 | engine engineer | Annotation visibility policy (OD-4) + patient projection (OD-5 ratified 2026-09-23, A/A/A). **COMPLETE.** | OD-4 policy cases; OD-5 plane/distance cases; full LPS→sheet chain; fail-closed refusals (non-unit normal, non-affine matrix, invalid viewport, malformed anchor) |
 | P5.5a | engine engineer | Publication renderer **port contract** + live render orchestration (consume the medical `RenderTarget` capability through a caller-supplied port; no Cornerstone import). **COMPLETE.** | Port-contract tests with a fake port: per-panel physical target (aperture × DPI), request order, fail-closed on non-live/unavailable/malformed/short raster |
-| P5.5b | engine engineer | **Real-harness adapter evidence** for a live panel: wire a `PublicationRendererPort` implementation to `captureTemporaryRenderTarget` in the controlled browser harness. **NOT YET IMPLEMENTED** — requires a composition-root/harness adapter. | Browser-harness capture at the panel aperture; live-canvas invariance; fail-closed on unavailable source |
+| P5.5b | engine engineer | **Real-harness adapter evidence** for a live panel: a `PublicationRendererPort` implementation over `captureTemporaryRenderTarget` in the controlled browser harness. **COMPLETE.** | Browser capture at the panel aperture (80 mm @ 600 DPI → 1890×1890, native byte length), live-canvas invariance, temporary-target disposal, and fail-closed on an unavailable source |
 | P5.6 | engine engineer | TIFF/PNG raster flatten composition via an encoder port | Deterministic composition against a curated fixture; encoder ADR ratified first |
 | P5.7 | engine engineer | Hybrid vector PDF emission via an encoder port | Vector-preservation assertions (text/annotations native, medical panel raster); encoder ADR ratified first |
 | P5.8 | reviewer + QA | Independent phase review, gates and final handover | Reviewer/QA verdicts, configured gates and the eight-point phase report recorded |
@@ -197,14 +197,14 @@ Stop the active slice as `BLOCKED` rather than guessing when:
 
 ## Exact Next Step
 
-P5.0–P5.4 and **P5.5a** are delivered and accepted. **Implement P5.5b**: the
-real-harness adapter evidence for a live panel — add a
-`PublicationRendererPort` implementation backed by
-`captureTemporaryRenderTarget` to the controlled browser harness and assert a
-panel-aperture capture plus live-canvas invariance. If the renderer harness is
-not available in the environment, report P5.5b `BLOCKED` rather than PASS.
+P5.0–P5.4 and P5.5a/P5.5b are delivered and accepted. **The P5.5 renderer cycle
+is closed.** The next slice is **P5.6** (TIFF/PNG raster flatten composition),
+which must not start before an **encoder ADR** is ratified (ADR-014 D5): no PDF/
+TIFF/PNG library may be added without an explicit ADR and user sign-off. The
+raster composition takes the `PublicationRenderResult` panels from P5.5a and the
+editorial layers from the figure sheet.
 
 ```text
-P5.5b (READY after P5.5a)  — real-harness publication renderer adapter
-P5.6  (READY after P5.5a)  — TIFF/PNG raster flatten composition (encoder ADR first)
+P5.6 (BLOCKED on encoder ADR; READY after P5.5a) — TIFF/PNG raster flatten
+P5.7 (after P5.6)                               — hybrid vector PDF
 ```

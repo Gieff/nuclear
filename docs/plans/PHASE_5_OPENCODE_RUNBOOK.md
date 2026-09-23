@@ -134,14 +134,23 @@ Every delegation brief must include:
   mismatch, a port failure or a malformed/short raster. A below-required-density
   raster is refused, never upscaled.
 
-### P5.5b — Real-Harness Adapter (NOT YET IMPLEMENTED)
+### P5.5b — Real-Harness Adapter (COMPLETE)
 
-- Add a `PublicationRendererPort` implementation backed by
-  `captureTemporaryRenderTarget` to the controlled browser harness and assert a
-  panel-aperture capture (`FIGURE_PUBLICATION_RASTER_INVALID` on a short raster),
-  live-canvas invariance and fail-closed on an unavailable source.
-- If the renderer harness is unavailable in the environment, report P5.5b
-  `BLOCKED`, never PASS.
+- The controlled browser harness now bundles `fixtures/publication-entry.ts`,
+  which wires a `PublicationRendererPort` implementation to the real
+  `captureTemporaryRenderTarget` and drives the full `renderLivePublication`
+  orchestration. It asserts a panel-aperture capture (80 mm @ 600 DPI →
+  1890×1890 with the native byte length), live-canvas invariance, temporary-
+  target disposal, and fail-closed on an unavailable source
+  (`FIGURE_PUBLICATION_RENDER_UNAVAILABLE`).
+- The short-raster `FIGURE_PUBLICATION_RASTER_INVALID` refusal is asserted in
+  the pure fake-port suite (`tests/figure-engine/publication-render.test.ts`):
+  the real capture always returns the exact physical dimensions, so a short
+  raster can only be synthesised through a fake port. The browser evidence
+  covers the real capture path; the browser-side short-raster case is
+  intentionally omitted rather than fabricated.
+- If the renderer harness is unavailable in an environment (e.g. `listen EPERM`
+  sandbox), report P5.5b `BLOCKED` there rather than PASS.
 
 ### P5.6 / P5.7 — Raster and PDF Encoders
 
