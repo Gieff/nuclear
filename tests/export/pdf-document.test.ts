@@ -243,4 +243,32 @@ describe('NuClear P5.7 — hybrid-PDF request builder', () => {
       FIGURE_PUBLICATION_ERROR_CODES.compositionInvalid,
     );
   });
+
+  it('7. accepts and validates ellipse/polygon primitives (ADR-016 OD-7g)', () => {
+    const base = plan();
+    const valid = buildPublicationPdfRequest(base, {
+      vectorLayers: [
+        { kind: 'ellipse', centerMm: [100, 60], radiiMm: [10, 6], rotationDeg: 45, strokeColor: '#ff0000', strokeWidthMm: 0.5 },
+        { kind: 'polygon', pointsMm: [[10, 10], [20, 10], [20, 20]], fillColor: '#00ff00' },
+      ],
+      metadata: METADATA,
+    });
+    assert.deepEqual(valid.vectorLayers.map((layer) => layer.kind), ['ellipse', 'polygon']);
+
+    const cases: readonly unknown[] = [
+      { kind: 'ellipse', centerMm: [5, 5], radiiMm: [10, 10], rotationDeg: 0, fillColor: '#000000' },
+      { kind: 'ellipse', centerMm: [100, 60], radiiMm: [0, 6], rotationDeg: 0, fillColor: '#000000' },
+      { kind: 'ellipse', centerMm: [100, 60], radiiMm: [10, 6], rotationDeg: 0 },
+      { kind: 'ellipse', centerMm: [100, 60], radiiMm: [10, 6], rotationDeg: 0, strokeColor: '#ff0000' },
+      { kind: 'polygon', pointsMm: [[10, 10], [20, 10]], fillColor: '#00ff00' },
+      { kind: 'polygon', pointsMm: [[10, 10], [200, 10], [20, 20]], fillColor: '#00ff00' },
+      { kind: 'polygon', pointsMm: [[10, 10], [20, 10], [20, 20]], fillColor: '#00ff00', placement: 'middle' },
+    ];
+    for (const layer of cases) {
+      expectError(
+        () => buildPublicationPdfRequest(base, { vectorLayers: [layer] as never, metadata: METADATA }),
+        FIGURE_PUBLICATION_ERROR_CODES.pdfDocumentInvalid,
+      );
+    }
+  });
 });

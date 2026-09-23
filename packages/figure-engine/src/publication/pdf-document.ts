@@ -20,10 +20,18 @@ import {
 } from './compose-sheet.js';
 import { FIGURE_PUBLICATION_ERROR_CODES } from './errors.js';
 import { refuse } from './guards.js';
-import { readPdfMetadata, readVectorLayers } from './pdf-document-validation.js';
+import { readPdfMetadata } from './pdf-document-validation.js';
+import { readVectorLayers } from './pdf-vector-validation.js';
 import { isRecord } from './pdf-validation-primitives.js';
 import type { SheetRectMm } from './layout.js';
 import type { PixelDimensions } from './units.js';
+
+/**
+ * Paint placement relative to the medical panel rasters (ADR-016 OD-7a). Panel
+ * backgrounds are `'below-medical'`; borders, annotations and labels are
+ * `'above-medical'` (the default so P5.7 callers are unchanged).
+ */
+export type PdfPlacement = 'below-medical' | 'above-medical';
 
 export interface PdfTextLayer {
   readonly kind: 'text';
@@ -31,7 +39,11 @@ export interface PdfTextLayer {
   readonly originMm: readonly [number, number];
   readonly fontSizePt: number;
   readonly color: string;
+  /** Optional editorial box bounds (OD-7e); the adapter refuses overflow. */
+  readonly maxWidthMm?: number;
+  readonly maxHeightMm?: number;
   readonly opacity?: number;
+  readonly placement?: PdfPlacement;
 }
 
 export interface PdfRectLayer {
@@ -41,6 +53,7 @@ export interface PdfRectLayer {
   readonly borderColor?: string;
   readonly borderWidthMm?: number;
   readonly opacity?: number;
+  readonly placement?: PdfPlacement;
 }
 
 export interface PdfLineLayer {
@@ -50,9 +63,39 @@ export interface PdfLineLayer {
   readonly strokeColor: string;
   readonly strokeWidthMm: number;
   readonly opacity?: number;
+  readonly placement?: PdfPlacement;
 }
 
-export type PublicationVectorLayer = PdfTextLayer | PdfRectLayer | PdfLineLayer;
+/** A sheet-mm ellipse (ADR-016 OD-7g), `rotationDeg` clockwise in y-down sheet space. */
+export interface PdfEllipseLayer {
+  readonly kind: 'ellipse';
+  readonly centerMm: readonly [number, number];
+  readonly radiiMm: readonly [number, number];
+  readonly rotationDeg: number;
+  readonly fillColor?: string;
+  readonly strokeColor?: string;
+  readonly strokeWidthMm?: number;
+  readonly opacity?: number;
+  readonly placement?: PdfPlacement;
+}
+
+/** A closed sheet-mm polygon (ADR-016 OD-7g), at least three points. */
+export interface PdfPolygonLayer {
+  readonly kind: 'polygon';
+  readonly pointsMm: readonly (readonly [number, number])[];
+  readonly fillColor?: string;
+  readonly strokeColor?: string;
+  readonly strokeWidthMm?: number;
+  readonly opacity?: number;
+  readonly placement?: PdfPlacement;
+}
+
+export type PublicationVectorLayer =
+  | PdfTextLayer
+  | PdfRectLayer
+  | PdfLineLayer
+  | PdfEllipseLayer
+  | PdfPolygonLayer;
 
 export interface PublicationPdfMetadata {
   readonly title: string;

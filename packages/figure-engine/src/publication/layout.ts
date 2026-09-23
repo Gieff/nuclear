@@ -70,21 +70,35 @@ export function panelSheetRectMm(layout: PanelLayoutState): SheetRectMm {
     );
   }
 
-  const [xMm, yMm] = layout.positionMm;
-  const [widthMm, heightMm] = layout.sizeMm;
-  if (!Number.isFinite(xMm) || !Number.isFinite(yMm)) {
+  // Validate the pairs *before* destructuring so a malformed layout is a typed
+  // refusal, never an `undefined is not iterable` TypeError.
+  const positionMm = layout.positionMm;
+  const sizeMm = layout.sizeMm;
+  if (
+    !Array.isArray(positionMm) ||
+    positionMm.length !== 2 ||
+    !Number.isFinite(positionMm[0]) ||
+    !Number.isFinite(positionMm[1])
+  ) {
     refuse(
       FIGURE_PUBLICATION_ERROR_CODES.containmentInvalid,
-      `panel position [${String(xMm)}, ${String(yMm)}] mm must be finite`,
+      `panel position [${String(positionMm?.[0])}, ${String(positionMm?.[1])}] mm must be finite`,
     );
   }
-  if (!isPositiveFinite(widthMm) || !isPositiveFinite(heightMm)) {
+  if (
+    !Array.isArray(sizeMm) ||
+    sizeMm.length !== 2 ||
+    !isPositiveFinite(sizeMm[0]) ||
+    !isPositiveFinite(sizeMm[1])
+  ) {
     refuse(
       FIGURE_PUBLICATION_ERROR_CODES.containmentInvalid,
-      `panel size [${String(widthMm)}, ${String(heightMm)}] mm must be finite and strictly positive`,
+      `panel size [${String(sizeMm?.[0])}, ${String(sizeMm?.[1])}] mm must be finite and strictly positive`,
     );
   }
 
+  const [xMm, yMm] = positionMm;
+  const [widthMm, heightMm] = sizeMm;
   return { xMm, yMm, widthMm, heightMm };
 }
 

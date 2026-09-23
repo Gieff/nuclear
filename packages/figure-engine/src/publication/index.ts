@@ -23,6 +23,7 @@ export * from './compose-sheet.js';
 export * from './plan-builder.js';
 export * from './pdf-units.js';
 export * from './pdf-document.js';
+export * from './editorial-mapping.js';
 export * from './provenance.js';
 export * from './targets.js';
 export * from './request-types.js';

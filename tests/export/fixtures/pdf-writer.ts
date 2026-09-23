@@ -3,9 +3,9 @@
  *
  * Composition-root-shaped adapter (test infrastructure until `apps/desktop`
  * exists): pdf-lib embeds the medical panel rasters as image XObjects and any
- * supplied text/rect/line primitives as native PDF operators in Figure Sheet
- * millimetres with an embedded Inter subset (OD-6e). Vectors are never
- * rasterized and nothing is resampled.
+ * supplied native primitives (text/rect/line/ellipse/polygon, ADR-016) as PDF
+ * operators in Figure Sheet millimetres with an embedded Inter subset (OD-6e).
+ * Vectors are never rasterized and nothing is resampled.
  *
  * Determinism (OD-6f): `updateMetadata: false`, metadata and the trailer `/ID`
  * derive only from the declared request, and `useObjectStreams: false` fixes
@@ -13,22 +13,20 @@
  */
 
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 
 import fontkit from '@pdf-lib/fontkit';
-import { PDFDocument, PDFHexString, rgb } from 'pdf-lib';
+import { PDFDocument, PDFHexString } from 'pdf-lib';
 
 import {
   mmToPoints,
-  pdfPointsFromSheetY,
-  pdfRectFromSheetRect,
   type EncodedArtifact,
   type EncoderPort,
   type PublicationPdfMetadata,
   type PublicationPdfRequest,
   type PublicationVectorLayer,
 } from '../../../packages/figure-engine/src/publication/index.ts';
-import { encodePng } from './png-writer.ts';
+import { drawRasterLayer, drawSheetBackground, drawVectorLayer } from './pdf-draw.ts';
+import { vendoredInterBytes } from './pdf-font.ts';
 
 export const REFERENCE_PDF_ENCODER_NAME = 'nuclear-reference-pdf';
 export const REFERENCE_PDF_ENCODER_VERSION = '0.4.0';
@@ -42,30 +40,18 @@ export interface PdfWriterOptions {
   readonly fontName?: string;
 }
 
-let cachedFontBytes: Uint8Array | undefined;
-
-/** Loads the vendored Inter Regular TTF (SIL OFL 1.1) on first use. */
-function vendoredInterBytes(): Uint8Array {
-  if (cachedFontBytes === undefined) {
-    cachedFontBytes = new Uint8Array(
-      readFileSync(new URL('./fonts/Inter-Regular.ttf', import.meta.url)),
-    );
-  }
-  return cachedFontBytes;
-}
-
 function sha256Hex(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-function toRgb(hex: string): ReturnType<typeof rgb> {
-  const value = Number.parseInt(hex.slice(1), 16);
-  return rgb(((value >> 16) & 0xff) / 255, ((value >> 8) & 0xff) / 255, (value & 0xff) / 255);
+function placementField(layer: PublicationVectorLayer): { placement?: 'below-medical' | 'above-medical' } {
+  return layer.placement === undefined ? {} : { placement: layer.placement };
 }
 
 /** Fixed key order so the canonical JSON is independent of input key order. */
 function canonicalVector(layer: PublicationVectorLayer): unknown {
   const opacity = layer.opacity === undefined ? {} : { opacity: layer.opacity };
+  const placement = placementField(layer);
   if (layer.kind === 'text') {
     return {
       kind: 'text',
@@ -74,6 +60,7 @@ function canonicalVector(layer: PublicationVectorLayer): unknown {
       fontSizePt: layer.fontSizePt,
       color: layer.color,
       ...opacity,
+      ...placement,
     };
   }
   if (layer.kind === 'rect') {
@@ -85,16 +72,52 @@ function canonicalVector(layer: PublicationVectorLayer): unknown {
       ...(layer.borderColor === undefined ? {} : { borderColor: layer.borderColor }),
       ...(layer.borderWidthMm === undefined ? {} : { borderWidthMm: layer.borderWidthMm }),
       ...opacity,
+      ...placement,
     };
   }
-  return {
-    kind: 'line',
-    fromMm: [...layer.fromMm],
-    toMm: [...layer.toMm],
-    strokeColor: layer.strokeColor,
-    strokeWidthMm: layer.strokeWidthMm,
-    ...opacity,
-  };
+  if (layer.kind === 'line') {
+    return {
+      kind: 'line',
+      fromMm: [...layer.fromMm],
+      toMm: [...layer.toMm],
+      strokeColor: layer.strokeColor,
+      strokeWidthMm: layer.strokeWidthMm,
+      ...opacity,
+      ...placement,
+    };
+  }
+  if (layer.kind === 'ellipse') {
+    return {
+      kind: 'ellipse',
+      centerMm: [...layer.centerMm],
+      radiiMm: [...layer.radiiMm],
+      rotationDeg: layer.rotationDeg,
+      ...(layer.fillColor === undefined ? {} : { fillColor: layer.fillColor }),
+      ...(layer.strokeColor === undefined ? {} : { strokeColor: layer.strokeColor }),
+      ...(layer.strokeWidthMm === undefined ? {} : { strokeWidthMm: layer.strokeWidthMm }),
+      ...opacity,
+      ...placement,
+    };
+  }
+  if (layer.kind === 'polygon') {
+    return {
+      kind: 'polygon',
+      pointsMm: layer.pointsMm.map((point) => [...point]),
+      ...(layer.fillColor === undefined ? {} : { fillColor: layer.fillColor }),
+      ...(layer.strokeColor === undefined ? {} : { strokeColor: layer.strokeColor }),
+      ...(layer.strokeWidthMm === undefined ? {} : { strokeWidthMm: layer.strokeWidthMm }),
+      ...opacity,
+      ...placement,
+    };
+  }
+  // Exhaustive over the closed `PublicationVectorLayer` union: a future member
+  // must be added to the deterministic `/ID` hash explicitly, never silently
+  // hashed as a polygon.
+  return assertNeverVector(layer);
+}
+
+function assertNeverVector(layer: never): never {
+  throw new Error(`unhandled publication vector layer ${JSON.stringify(layer)}`);
 }
 
 /** Deterministic canonical JSON of the request (ADR-015 OD-6f). */
@@ -141,6 +164,7 @@ function canonicalRequest(request: PublicationPdfRequest): string {
 export function computePublicationPdfId(request: PublicationPdfRequest): string {
   return sha256Hex(new TextEncoder().encode(canonicalRequest(request)));
 }
+
 function applyMetadata(doc: PDFDocument, metadata: PublicationPdfMetadata): void {
   doc.setTitle(metadata.title);
   doc.setAuthor(metadata.author);
@@ -157,9 +181,10 @@ function applyMetadata(doc: PDFDocument, metadata: PublicationPdfMetadata): void
 }
 
 /**
- * Emits the hybrid PDF. Panel rasters are embedded as image XObjects at their
- * physical rectangle; vectors are emitted natively after them. `/ID` is the
- * two halves of the deterministic request hash. No wall-clock, no randomness.
+ * Emits the hybrid PDF honouring the ADR-016 OD-7a paint order: sheet
+ * background, `'below-medical'` vectors, panel rasters, `'above-medical'`
+ * vectors. `/ID` is the two halves of the deterministic request hash. No
+ * wall-clock, no randomness.
  */
 export async function encodePdf(
   request: PublicationPdfRequest,
@@ -170,60 +195,25 @@ export async function encodePdf(
   applyMetadata(doc, request.metadata);
 
   const sheetHeightMm = request.sheetSizeMm[1];
-  const widthPt = mmToPoints(request.sheetSizeMm[0]);
-  const heightPt = mmToPoints(sheetHeightMm);
-  const page = doc.addPage([widthPt, heightPt]);
-  page.drawRectangle({ x: 0, y: 0, width: widthPt, height: heightPt, color: toRgb(request.backgroundColor) });
+  const page = doc.addPage([mmToPoints(request.sheetSizeMm[0]), mmToPoints(sheetHeightMm)]);
+  drawSheetBackground(page, request.sheetSizeMm, request.backgroundColor);
 
   const font = await doc.embedFont(options.fontBytes ?? vendoredInterBytes(), {
     subset: true,
     ...(options.fontName === undefined ? {} : { customName: options.fontName }),
   });
 
-  for (const layer of request.rasterLayers) {
-    const png = encodePng({ pixelDimensions: layer.pixelDimensions, rgba: layer.rgba, colorProfile: 'srgb' });
-    const image = await doc.embedPng(png.bytes);
-    const rect = pdfRectFromSheetRect(layer.rectMm, sheetHeightMm);
-    page.drawImage(image, {
-      x: rect.xPt,
-      y: rect.yPt,
-      width: rect.widthPt,
-      height: rect.heightPt,
-    });
-  }
+  const below = request.vectorLayers.filter((layer) => layer.placement === 'below-medical');
+  const above = request.vectorLayers.filter((layer) => layer.placement !== 'below-medical');
 
-  for (const layer of request.vectorLayers) {
-    const opacity = layer.opacity === undefined ? {} : { opacity: layer.opacity };
-    if (layer.kind === 'text') {
-      page.drawText(layer.text, {
-        x: mmToPoints(layer.originMm[0]),
-        y: pdfPointsFromSheetY(layer.originMm[1], sheetHeightMm),
-        size: layer.fontSizePt,
-        font,
-        color: toRgb(layer.color),
-        ...opacity,
-      });
-    } else if (layer.kind === 'rect') {
-      const rect = pdfRectFromSheetRect(layer.rectMm, sheetHeightMm);
-      page.drawRectangle({
-        x: rect.xPt,
-        y: rect.yPt,
-        width: rect.widthPt,
-        height: rect.heightPt,
-        ...(layer.fillColor === undefined ? {} : { color: toRgb(layer.fillColor) }),
-        ...(layer.borderColor === undefined ? {} : { borderColor: toRgb(layer.borderColor) }),
-        ...(layer.borderWidthMm === undefined ? {} : { borderWidth: mmToPoints(layer.borderWidthMm) }),
-        ...(layer.opacity === undefined ? {} : { opacity: layer.opacity, borderOpacity: layer.opacity }),
-      });
-    } else {
-      page.drawLine({
-        start: { x: mmToPoints(layer.fromMm[0]), y: pdfPointsFromSheetY(layer.fromMm[1], sheetHeightMm) },
-        end: { x: mmToPoints(layer.toMm[0]), y: pdfPointsFromSheetY(layer.toMm[1], sheetHeightMm) },
-        thickness: mmToPoints(layer.strokeWidthMm),
-        color: toRgb(layer.strokeColor),
-        ...opacity,
-      });
-    }
+  for (const layer of below) {
+    drawVectorLayer(page, layer, sheetHeightMm, font);
+  }
+  for (const layer of request.rasterLayers) {
+    await drawRasterLayer(doc, page, layer, sheetHeightMm);
+  }
+  for (const layer of above) {
+    drawVectorLayer(page, layer, sheetHeightMm, font);
   }
 
   const idHex = computePublicationPdfId(request);
@@ -233,7 +223,13 @@ export async function encodePdf(
   ]);
 
   const bytes = await doc.save({ useObjectStreams: false, addDefaultPage: false });
-  return { format: 'pdf', pixelDimensions: request.pixelDimensions, colorProfile: 'srgb', bytes, encoder: ENCODER };
+  return {
+    format: 'pdf',
+    pixelDimensions: request.pixelDimensions,
+    colorProfile: 'srgb',
+    bytes,
+    encoder: ENCODER,
+  };
 }
 
 /**
