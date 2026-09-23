@@ -166,7 +166,13 @@ export const isPublicationOutputSpec = (value: unknown): value is PublicationOut
 
 export const isCachedPreviewRenderTargetSpec = (value: unknown): value is CachedPreviewRenderTargetSpec => record(value) && value.kind === 'cached-preview' && nonEmpty(value.colorProfile) && value.resampling === 'forbidden' && value.liveCanvasPolicy === 'never-resize-live-canvas';
 
-const expectedPixels = (mm: number, dpi: number): number => Math.round(mm / 25.4 * dpi);
+/**
+ * Fase-1 contract oracle for the publication pixel dimension of one axis.
+ * Exported so `tests/figure-engine/publication-units.test.ts` can assert that
+ * this oracle, `figure-engine`'s `mmToPixels` and `medical-engine`'s ADR-009
+ * `computeRenderTargetPixelDimensions` agree exactly (ADR-014 D2).
+ */
+export const expectedPixels = (mm: number, dpi: number): number => Math.round(mm / 25.4 * dpi);
 const inputMatchesPanel = (input: Record<string, unknown>, sheetPanel: ComposerPanel): boolean => input.panelId === sheetPanel.id && input.composerViewInstanceId === sheetPanel.viewInstance.id && input.preparedViewId === sheetPanel.viewInstance.preparedViewId;
 
 export const isPublicationRenderRequest = (value: unknown): value is PublicationRenderRequest => {
