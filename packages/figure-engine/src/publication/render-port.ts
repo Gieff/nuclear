@@ -30,6 +30,11 @@ export interface PublicationPanelRenderRequest {
   readonly medicalViewState: MedicalViewState;
   /** Temporary high-resolution target; never the live interactive canvas. */
   readonly target: TemporaryRenderTargetSpec;
+  /**
+   * Physical aperture size in millimetres corresponding to the target, so the
+   * renderer can validate the target spec against its physical size (ADR-009).
+   */
+  readonly sizeMm: readonly [number, number];
   /** Approved render-state hash the raster must correspond to. */
   readonly renderStateHash: string;
 }

@@ -897,3 +897,132 @@ start after its encoder ADR; P5.5a is its declared predecessor.)
   (`render-orchestrator.ts` 229 ≤ 250), and runtime fake-port spot-checks
   (945×945 target, `missing` → `RENDER_UNAVAILABLE`, 512×512 → `RASTER_INVALID`).
   Real-harness evidence **NOT YET APPLICABLE** (P5.5b).
+
+---
+
+# Slice Record — P5.5b (real-harness publication renderer port adapter)
+
+## 1. What Was Implemented
+
+- **`sizeMm` on the port request** (P5.5a contract amendment): the per-panel
+  `PublicationPanelRenderRequest` now carries the physical aperture in mm, which
+  the renderer needs to validate its temporary target spec
+  (`validateTemporaryRenderTargetSpec(spec, sizeMm)`, ADR-009). The orchestrator
+  sets it from `panelFraming.contentSizeMm` (never derived from pixels).
+- **Real-harness adapter** (`tests/rendering/fixtures/publication-scenarios.ts`):
+  a `PublicationRendererPort` implementation over the real
+  `captureTemporaryRenderTarget` that renders the request's resolved
+  `MedicalViewState` on a separate temporary target, maps the returned
+  `MedicalCaptureDescriptor` to a neutral `PublicationPanelRaster` (dims,
+  byteLength, base64 RGBA, real renderer name + `@cornerstonejs/core` version),
+  and drives the full `renderLivePublication` orchestration.
+- **Browser harness entry + support**
+  (`publication-entry.ts`, `publication-probe-types.ts`,
+  `publication-test-support.ts`) and a new Node test
+  (`tests/rendering/publication-render-port.test.ts`).
+- **Evidence**: 80 mm × 80 mm @ 600 DPI → native **1890×1890** raster with
+  `byteLength = 1890² × 4`; live element/canvas/camera/aspect/actor invariance;
+  the temporary-target container disposed after the run; `missing` availability
+  → `FIGURE_PUBLICATION_RENDER_UNAVAILABLE` with no capture.
+
+## 2. Files Changed
+
+Created:
+- `tests/rendering/fixtures/publication-probe-types.ts`
+- `tests/rendering/fixtures/publication-scenarios.ts`
+- `tests/rendering/fixtures/publication-entry.ts`
+- `tests/rendering/fixtures/publication-test-support.ts`
+- `tests/rendering/publication-render-port.test.ts`
+
+Modified:
+- `packages/figure-engine/src/publication/render-port.ts` (`sizeMm`)
+- `packages/figure-engine/src/publication/render-orchestrator.ts` (set `sizeMm`)
+- `tests/figure-engine/publication-render.test.ts` (assert `sizeMm`)
+- `docs/plans/PHASE_5_FIGURE_ENGINE_PLAN.md`,
+  `docs/plans/PHASE_5_OPENCODE_RUNBOOK.md` (P5.5b COMPLETE; P5.6 gated on the encoder ADR)
+- `docs/agentlog/phase-5.md` — this handover.
+
+Not modified: `shared-types`, `rendering-presets`, `medical-engine`,
+`view-engine`, `project-model`, `ui`, `apps/*`, `python/`, `AGENTS.md`,
+`CHANGELOG.md`.
+
+## 3. Architectural Assumptions Made (boundary adherence)
+
+- The adapter lives in **test infrastructure** (the composition-root shape), not
+  in `figure-engine`; `figure-engine` still imports no `@cornerstonejs/*` or
+  `medical-engine` and owns no canvas.
+- The port request carries no plan/evidence/layers: a real composition root
+  correlates those itself; the harness binds them from its single CT fixture.
+- The renderer identity is the capture descriptor's real renderer name plus the
+  imported `@cornerstonejs/core` version — no fabricated version.
+- The `sizeMm` amendment is permitted by ADR-014 ("the renderer port contract may
+  be edited while preserving D1–D4") and requires no new ADR.
+
+## 4. Tests Added & Executed
+
+- `node --test tests/rendering/publication-render-port.test.ts` → **2 tests / 1
+  suite, pass** (real esbuild bundle + Playwright Chromium SwiftShader harness):
+  native panel-aperture capture with live-canvas invariance and disposal;
+  fail-closed unavailable source.
+- `node --test "tests/figure-engine/*.test.ts"` → **67 tests / 12 suites, pass**.
+- `npm test` → **627 tests / 114 suites, 627 pass / 0 fail** (Phase 5 adds the 2
+  browser tests; the earlier `listen EPERM` caveat is environment-specific and
+  did **not** occur in this run — the harness listener bound normally).
+- `npm run typecheck` → **PASS**; `npm run build` → **PASS**.
+- `npm run test:python` → **411 passed**; `npm run typecheck:python` → **clean,
+  77 files**.
+- File-length: `render-orchestrator.ts` = 235 (≤ 250); `publication-scenarios.ts`
+  = 223; all touched files ≤ 300. `git diff --check` → clean.
+
+## 5. Documentation, AgentLog & ADR Status
+
+- Plan/runbook mark P5.5b COMPLETE and gate P5.6 on a future encoder ADR. The
+  runbook records that the short-raster refusal is covered by the pure fake-port
+  suite (the real capture always returns exact dimensions) and is not fabricated
+  in the browser.
+- No new ADR was required. This is the P5.5b AgentLog entry.
+  `AGENTS.md`/`CHANGELOG.md` untouched.
+
+## 6. Project Model Impact
+
+None. No `.ncp` schema change and no `shared-types` contract change.
+
+## 7. Known Limitations & Technical Debt
+
+- The browser harness binds a single committed CT fixture and therefore the
+  plan/evidence/layers; a production composition root must derive those from the
+  real workspace.
+- The browser evidence covers only the default SwiftShader backend; hardware-GPU
+  remains `NOT YET APPLICABLE`.
+- A browser-side short-raster negative is intentionally omitted (unreachable
+  through the real capture); that refusal is pure-tested.
+- P5.6/P5.7 remain NOT YET IMPLEMENTED and P5.6 is gated on the encoder ADR. No
+  publication raster encoder exists → image/pixel tolerance gate **NOT YET
+  APPLICABLE**.
+
+## 8. Exact Next Recommended Task
+
+Draft and ratify the **encoder ADR** for P5.6 (library choice, colour profile,
+compression, determinism, provenance), then implement TIFF/PNG flattened raster
+composition over the P5.5 `PublicationRenderResult` panels and the figure-sheet
+editorial layers. Do not add any encoder dependency before that ADR is Accepted.
+
+---
+
+## Independent Verdicts — P5.5b
+
+- **`nuclear-reviewer` — PASS after CONCERNS resolved.** Initial review confirmed
+  adapter fidelity, the boundary (test-only adapter; `sizeMm` amendment
+  justified), real-harness evidence, honesty and file sizes, and raised two
+  concerns: the plan/runbook/agentlog were not yet updated, and the runbook's
+  short-raster browser bullet was unmet. Both were resolved in-slice: docs mark
+  P5.5b COMPLETE, the runbook records that the short-raster refusal is pure-tested
+  (unreachable through the real capture), the adapter now renders
+  `request.medicalViewState`, and the browser test asserts temporary-target
+  disposal.
+- **`nuclear-qa` — PASS (all applicable gates), real browser evidence executed.**
+  Scope isolation, `git diff --check`, `npm run typecheck`, focused **67/12**,
+  browser suite **2/1**, `npm test` **627/114/0**, `npm run build`, pytest 411,
+  mypy 77, file-length (`render-orchestrator.ts` 235 ≤ 250), and the browser
+  assertions (1890×1890, byte length, live invariance, fail-closed `missing`).
+  No unexpected deltas. Image/pixel tolerance gate **NOT YET APPLICABLE**.

@@ -192,10 +192,15 @@ export async function renderLivePublication(
       );
     }
 
-    const pixelDimensions = computePanelContentPixels(
-      asRecord(sheetPanel.framing, `panel '${panelId}' framing`) as unknown as PanelFramingState,
-      dpi,
-    );
+    const panelFraming = asRecord(
+      sheetPanel.framing,
+      `panel '${panelId}' framing`,
+    ) as unknown as PanelFramingState;
+    const pixelDimensions = computePanelContentPixels(panelFraming, dpi);
+    const sizeMm: readonly [number, number] = Object.freeze([
+      panelFraming.contentSizeMm[0],
+      panelFraming.contentSizeMm[1],
+    ]);
     const panelTarget: TemporaryRenderTargetSpec = Object.freeze({
       kind: 'temporary-high-resolution',
       pixelDimensions,
@@ -213,6 +218,7 @@ export async function renderLivePublication(
         preparedViewId: preparedViewId as PreparedViewId,
         medicalViewState: medicalViewState as unknown as MedicalViewState,
         target: panelTarget,
+        sizeMm,
         renderStateHash,
       },
       panelId,

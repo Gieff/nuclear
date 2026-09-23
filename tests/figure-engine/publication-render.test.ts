@@ -120,6 +120,7 @@ describe('NuClear P5.5a — live publication render orchestration', () => {
     if (calls[0].target.kind === 'temporary-high-resolution') {
       assert.equal(calls[0].target.dpi, 300);
     }
+    assert.deepEqual(calls[0].sizeMm, [80, 80]);
     assert.equal(calls[0].medicalViewState, mockPreparedView.state);
     assert.equal(calls[0].renderStateHash, mockPdfRenderRequest.renderStateHash);
   });
