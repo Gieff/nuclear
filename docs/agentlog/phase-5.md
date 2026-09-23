@@ -1052,3 +1052,135 @@ code.
 - Exact next step: owner ratifies ADR-015 (track + OD-6a…OD-6g), then implement
   P5.6 (raster flatten) behind the encoder port with byte-determinism and
   round-trip evidence.
+
+---
+
+# Slice Record — ADR-015 Accepted and P5.6 (raster flatten + reference encoders)
+
+## 1. What Was Implemented
+
+- **ADR-015 ratified (phase owner, 2026-09-23): Accepted — Track 1** with
+  OD-6a…OD-6g defaults (minimal `node:zlib` writers; baseline TIFF + Deflate;
+  declare sRGB/no ICC; composition-root adapter; PDF fonts = permissive
+  open-source subset, Inter; strict determinism; P5.7 raster + native vectors).
+- **Pure sheet compositor** (`compose-sheet.ts`): `PublicationCompositionPlan` +
+  `composeSheetRgba`, which fills an opaque `#rrggbb` background and composites
+  raster layers with deterministic alpha-over. It **never resamples** (a layer
+  whose pixel dimensions differ from its mm destination at the plan DPI is
+  refused), refuses overflow and malformed/non-physical input with typed
+  `FIGURE_COMPOSITION_INVALID`, and never silently drops a layer.
+- **Encoder port** (`encode-port.ts`): `PublicationRasterRequest`,
+  `EncodedArtifact` (format, dimensions, colour profile, bytes, encoder
+  identity) and `EncoderPort` (`encodePng`/`encodeTiff`) — renderer-neutral.
+- **Reference encoders** (test infrastructure, composition-root shape per
+  OD-6d): minimal deterministic **PNG** (IHDR/sRGB/gAMA/IDAT/IEND, fixed filter
+  0, deflate level 9, CRC32) and **TIFF** (little-endian baseline, one Deflate
+  RGB strip, fixed IFD order) writers over `node:zlib`, wired behind the port as
+  `createReferenceEncoder`, plus test-only decoders.
+
+## 2. Files Changed
+
+Created:
+- `packages/figure-engine/src/publication/encode-port.ts`
+- `packages/figure-engine/src/publication/compose-sheet.ts`
+- `tests/export/fixtures/png-writer.ts`
+- `tests/export/fixtures/tiff-writer.ts`
+- `tests/export/fixtures/reference-encoder.ts`
+- `tests/export/compose-sheet.test.ts`
+- `tests/export/raster-encoder.test.ts`
+
+Modified:
+- `docs/decisions/ADR-015-export-encoder-pipeline.md` — Status **Accepted** +
+  Ratification Record (OD-6a…OD-6g resolved).
+- `packages/figure-engine/src/publication/errors.ts` (`FIGURE_COMPOSITION_INVALID`)
+- `packages/figure-engine/src/publication/index.ts` (barrel adds port + compositor)
+- `docs/plans/PHASE_5_FIGURE_ENGINE_PLAN.md`,
+  `docs/plans/PHASE_5_OPENCODE_RUNBOOK.md` (P5.6 READY; follow-ups named)
+- `docs/agentlog/phase-5.md` — this handover.
+
+Not modified: `shared-types`, `rendering-presets`, `medical-engine`,
+`view-engine`, `project-model`, `ui`, `apps/*`, `python/`, `AGENTS.md`,
+`CHANGELOG.md`.
+
+## 3. Architectural Assumptions Made (boundary adherence)
+
+- `figure-engine` stays pure and browser-safe: the barrel imports no
+  `node:zlib`, no DOM and no third-party encoder; the writers live only in
+  `tests/export/fixtures/` (the composition-root shape ratified by OD-6d, to be
+  relocated to `apps/desktop` when it exists). The P5.5b browser bundle is
+  therefore unaffected.
+- Composition is deterministic integer source-over; no wall-clock, random IDs
+  or resampling; the `EncoderPort` is the only encoding seam (ADR-014 D5).
+- Scope is explicit: P5.6 delivers the **compositor + port + raster writers**.
+  The figure-sheet **plan builder** and editorial **text/vector rasterization**
+  are named follow-up sub-slices, not implied as done.
+
+## 4. Tests Added & Executed
+
+- `node --test "tests/export/*.test.ts"` → **8 tests / 2 suites, pass**:
+  compositor background/alpha-over/no-resampling/overflow/boundary-fit/malformed
+  refusals; PNG byte-determinism + CRC-validated decoder round-trip; TIFF
+  byte-determinism + decoder round-trip; end-to-end compose→encode→decode;
+  non-sRGB refusal in both formats.
+- `node --test "tests/figure-engine/*.test.ts"` → **67/12, pass** (regression).
+- `npm test` → **635 tests / 116 suites, 635 pass / 0 fail** (P5.6 adds 8; the 2
+  browser tests remain green in this environment).
+- `npm run typecheck` → **PASS**; `npm run build` → **PASS**.
+- `npm run test:python` → **411 passed**; `npm run typecheck:python` → **clean,
+  77 files**.
+- File-length: largest new file `compose-sheet.ts` = **237** (≤ 250 Rule-02
+  threshold); all touched files ≤ 300. `git diff --check` → clean.
+
+## 5. Documentation, AgentLog & ADR Status
+
+- ADR-015 **Accepted** with the ratification record. Plan/runbook mark P5.6
+  READY with the two follow-up sub-slices named. This is the P5.6 AgentLog entry.
+- `AGENTS.md`/`CHANGELOG.md` untouched.
+
+## 6. Project Model Impact
+
+None. No `.ncp` schema change and no `shared-types` contract change.
+
+## 7. Known Limitations & Technical Debt
+
+- **Plan builder pending**: nothing yet maps a `FigureSheet` + P5.5
+  `PublicationRenderResult` into a `PublicationCompositionPlan`.
+- **Text/vector rasterization pending**: annotations/typography are not yet
+  rasterized into the flattened PNG/TIFF (needs a font/vector-rasterizer
+  decision).
+- Byte-determinism is scoped to the same `zlib` build; cross-version stability
+  is not claimed (the encoder version is recorded in provenance).
+- `EncodedArtifact` does not yet carry DPI and the PNG/TIFF writers embed no
+  physical-resolution metadata (pHYs / XResolution); derivable from the plan.
+- Test decoders are self-authored (now CRC-validating and structural); no
+  independent third-party decoder is invoked.
+- P5.7 remains NOT YET IMPLEMENTED; true image/pixel tolerance on real datasets
+  remains **NOT YET APPLICABLE**.
+
+## 8. Exact Next Recommended Task
+
+Implement **P5.7** (hybrid vector PDF behind the `EncoderPort`, `pdf-lib`,
+embedded permissive open-source font subset per OD-6e) and, in parallel or
+before, the **figure-sheet plan builder** sub-slice so a real `FigureSheet` +
+P5.5 rasters produce a `PublicationCompositionPlan`. Keep byte-determinism and
+the no-resampling/no-upscale refusals as gates.
+
+---
+
+## Independent Verdicts — P5.6
+
+- **`nuclear-reviewer` — PASS after CONCERNS resolved.** Confirmed boundary
+  purity (no `node:zlib`/DOM in `figure-engine`; writers only in test
+  infrastructure), compositor math, encoder port, writer structure and scope
+  honesty. Findings resolved in-slice: MINOR-1 (huge finite `xMm` could be
+  silently dropped), MINOR-2 (bare `TypeError` on malformed plan shapes),
+  MINOR-3 (decoder now validates PNG CRCs and TIFF SamplesPerPixel), MINOR-4
+  (plan-builder follow-up now named in plan/runbook); nits (TIFF non-sRGB test,
+  exact-fit boundary, negative origin) addressed.
+- **`nuclear-qa` — PASS (all 11 gates).** Scope isolation, `git diff --check`,
+  `npm run typecheck`, focused **8/2** and **67/12**, `npm test` **634/116/0**
+  (at QA time; 635 after the review nits), `npm run build`, pytest 411, mypy 77,
+  file-length, and runtime spot-checks (byte-identical PNG/TIFF, decoder
+  round-trips, resampling refusal, zero `node:zlib` imports under
+  `figure-engine/src`). Image/pixel tolerance on real datasets **NOT YET
+  APPLICABLE**.
