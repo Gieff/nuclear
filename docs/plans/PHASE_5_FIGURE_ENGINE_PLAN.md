@@ -127,7 +127,7 @@ baseline when:
 | P5.5a | engine engineer | Publication renderer **port contract** + live render orchestration (consume the medical `RenderTarget` capability through a caller-supplied port; no Cornerstone import). **COMPLETE.** | Port-contract tests with a fake port: per-panel physical target (aperture × DPI), request order, fail-closed on non-live/unavailable/malformed/short raster |
 | P5.5b | engine engineer | **Real-harness adapter evidence** for a live panel: a `PublicationRendererPort` implementation over `captureTemporaryRenderTarget` in the controlled browser harness. **COMPLETE.** | Browser capture at the panel aperture (80 mm @ 600 DPI → 1890×1890, native byte length), live-canvas invariance, temporary-target disposal, and fail-closed on an unavailable source |
 | P5.6 | engine engineer | TIFF/PNG raster flatten composition via an encoder port (ADR-015 **Accepted**, Track 1). **COMPLETE** — pure sheet compositor + `EncoderPort` + plan builder + reference `node:zlib` writers. Open follow-ups: (a) **aperture-inside-panel placement** is not yet ratified (the builder requires `framing.contentSizeMm === layout.sizeMm` and refuses otherwise); (b) editorial **text/vector rasterization** into the flattened raster (needs a font/vector-rasterizer decision). | Byte-determinism + decoder round-trip; bounds/resampling refusal; plan-builder mapping/z-order/refusals; encoder provenance |
-| P5.7 | engine engineer | Hybrid vector PDF emission via an encoder port (ADR-015 Accepted; fonts = embedded permissive open-source subset, Inter). **COMPLETE** — pure PDF units/document contract + `EncoderPort.encodePdf` + reference `pdf-lib` adapter. Delivers the **vector-PDF mechanism**; mapping `FigureSheet` typography/panel letters/badges/scalebars/annotations into `PublicationVectorLayer`s is a tracked follow-up sub-slice. | Vector-preservation assertions (caller-supplied text/line/rect native with embedded font, medical panel raster XObject); exact mm↔pt y-flip; deterministic PDF metadata/`/ID` |
+| P5.7 | engine engineer | Hybrid vector PDF emission via an encoder port (ADR-015 Accepted; fonts = embedded permissive open-source subset, Inter). **COMPLETE.** Follow-up **(c)** implemented under ADR-016 (Accepted A-set): pure `buildEditorialVectorLayers` maps panel backgrounds/borders/labels, text/panel-letter boxes, `line` (sheet/panel-content/patient) and sheet/panel-content ROI ellipses/polygons; native `ellipse`/`polygon` emitters added. Patient-space ROI/text shapes remain fail-closed pending OD-7k (plane/box orientation). | Vector-preservation assertions (native text/line/rect/ellipse/polygon with embedded font, medical panel raster XObject); exact mm↔pt y-flip; OD-7a paint order; deterministic PDF metadata/`/ID`; typed refusals for arrow/bold/dashed/unsupported-font/patient shapes |
 | P5.8 | reviewer + QA | Independent phase review, gates and final handover | Reviewer/QA verdicts, configured gates and the eight-point phase report recorded |
 
 Dependency order: P5.2 → P5.1; P5.3 → P5.1; P5.4 → P5.3; P5.5a → P5.2;
@@ -175,7 +175,7 @@ invalid viewport size, a non-unit normal or malformed framing/layout.
 | Physical geometry | mm↔px exactness at 300/600 DPI, sheet containment and deterministic ordering fail-closed |
 | Publication assembly | Fail-closed availability and offline-preview provenance; result accepted by the Fase-1 contract oracle |
 | No upscale | Target pixel dimensions derived from mm+DPI; below-density input refused |
-| Vector PDF | Hybrid PDF mechanism (P5.7): caller-supplied text/line/rect emitted as native vectors with the embedded font, medical panel as a raster XObject, deterministic metadata/`/ID`. FigureSheet content → vector mapping is follow-up (c) and is **not** claimed by this gate. |
+| Vector PDF | Hybrid PDF (P5.7): caller-supplied primitives and the ADR-016 `buildEditorialVectorLayers` mapping (backgrounds, solid borders, labels/captions, text/panel-letter boxes, `line`, sheet/panel-content ROIs) emitted as native vectors with the embedded font; medical panel as a raster XObject; deterministic metadata/`/ID`. Patient-space ROI/text shapes remain fail-closed (OD-7k). |
 | Boundary | No UI/React/DOM/Cornerstone import, no `medical-engine` runtime import; package graph acyclic; Rule 02 file-size limit respected |
 | Quality | Typecheck, Node tests, configured Python tests, build and source-integrity report actual results |
 | Review | `nuclear-reviewer` and `nuclear-qa` independently inspect the Phase 5 diff and evidence before closure |
@@ -197,20 +197,13 @@ Stop the active slice as `BLOCKED` rather than guessing when:
 
 ## Exact Next Step
 
-P5.7 is **COMPLETE** (hybrid vector PDF: pure PDF units/document contract,
-`EncoderPort.encodePdf`, `pdf-lib` + embedded Inter adapter in test
-infrastructure). P5.8 (independent phase review, gates and final handover)
-remains. Three tracked follow-up sub-slices are explicitly **not** delivered by
-P5.6/P5.7 and must not be assumed:
+P5.7 and its follow-up **(c)** are **COMPLETE** under the ratified ADR-016 A-set.
+P5.8 (independent phase review, gates and final handover) remains. The remaining
+tracked follow-ups are explicitly **not** delivered and must not be assumed:
 
 ```text
 (a) aperture-inside-panel placement   — needs ratification before contentSizeMm != sizeMm
 (b) text/vector rasterization (PNG/TIFF) — needs a font/vector-rasterizer decision
-(c) FigureSheet content → PublicationVectorLayer mapping — panel letters/captions,
-    badges/decoration borders, scalebars, measurement ticks and annotation kinds
-    (arrow heads, ROI rotation, text-box alignment) need ratified editorial/geometry
-    semantics; P5.7 delivers the native-vector *emission mechanism* only, and the
-    "Vector PDF" completion gate is satisfied for that mechanism, not yet for
-    FigureSheet content. **Gated on `ADR-016-editorial-vector-mapping.md` (Proposed,
-    OD-7a…OD-7j); do not implement before that record is ratified.**
+(c) COMPLETE per ADR-016 (Accepted). Residual OD-7k: patient-space ROI/text shapes
+    are refused until the ROI plane / text-box orientation is ratified.
 ```

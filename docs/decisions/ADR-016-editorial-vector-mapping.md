@@ -2,11 +2,11 @@
 
 ## Status
 
-**Proposed** (2026-09-23): the mapping semantics of the frozen editorial
-contracts into `PublicationVectorLayer`s are **not yet ratified**. Implementation
-of follow-up (c) is blocked on the owner accepting OD-7a … OD-7j below. This
-record adds no code and no dependency; P5.7's native-vector emission mechanism is
-already delivered and unchanged.
+**Accepted** (phase owner, 2026-09-23): the A-set for **OD-7a … OD-7j** was
+ratified in full. Follow-up (c) is implemented for the ratified scope; see
+"Ratification Record" and the implementation clarification on patient-space
+shapes. P5.7's native-vector emission mechanism is unchanged and remains
+delivered.
 
 ## Date
 
@@ -156,6 +156,28 @@ these are genuinely under-specified and are therefore Open Decisions.
 
 ## Ratification Record
 
-_Pending. The phase owner ratifies OD-7a … OD-7j (the A-options above constitute
-the recommended set). No behaviour may be implemented before this record is
-filled._
+**Ratified 2026-09-23 (phase owner): the A-set is accepted in toto.** In
+particular: OD-7a paint order (backgrounds → rasters → borders → annotations →
+labels/captions); OD-7b/7c background fill + solid centred border, dashed/dotted
+refused; OD-7d/7e baseline/top-left anchors with explicit math, overflow, bold
+and unsupported fonts refused; OD-7f/7g/7h only traceable primitives (line,
+ellipse, polygon) with OD-2 rotation, arrows/scalebars/measurements refused;
+OD-7i patient projection through the physical chain; OD-7j typed
+`FIGURE_PDF_DOCUMENT_INVALID` refusals.
+
+### Implementation clarification (2026-09-23)
+
+Two patient-space shape cases remain **refused** fail-closed because the
+contract does not determine their orientation, and the A-set does not decide it:
+
+- **Patient-anchored ROI shapes** (circle/ellipse/rectangle): projecting the
+  *centre* is ratified (OD-7i), but the ROI's **plane orientation** in LPS is not
+  defined (a 3D centre with two radii and a rotation is under-determined without
+  a plane), so the shape is refused rather than assumed to lie in the view plane.
+- **Patient-anchored text/panel-letter boxes**: the box orientation in the view
+  plane is likewise undefined, so they are refused.
+
+These are recorded as a follow-up decision (**OD-7k**) rather than invented;
+patient-anchored **line** annotations *are* mapped (their endpoints are points
+and use the ratified OD-7i chain). Sheet- and panel-content-space ROI/text/line
+mappings are fully implemented.

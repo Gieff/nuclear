@@ -198,18 +198,21 @@ Every delegation brief must include:
   font, never rasterized; the mm↔pt and y-down→PDF bottom-left transforms are
   explicit and exactly tested; metadata and the trailer `/ID` are deterministic
   (OD-6f) with an explicit `/Producer`.
-- **Tracked follow-up (c):** mapping `FigureSheet` panel letters, captions,
-  decoration borders, scalebars, measurement ticks and annotation kinds into
-  `PublicationVectorLayer`s is **not** delivered by P5.7 (their editorial/geometry
-  semantics are not yet ratified). The P5.7 "Vector PDF" gate therefore covers
-  the native-vector **emission mechanism**, not yet FigureSheet content; do not
-  claim otherwise in the phase handover.
-- **Follow-up (c) is gated on `docs/decisions/ADR-016-editorial-vector-mapping.md`
-  (Proposed).** Its OD-7a…OD-7j record the exact under-specified semantics
-  (paint order, label/box anchors, stroke alignment, dash/arrowhead/tick
-  geometry, font-family/weight, ROI rotation, patient endpoint projection). Do
-  not implement any part of (c) before the phase owner fills the ADR-016
-  Ratification Record; an unsupported element stays a typed fail-closed refusal.
+- **Tracked follow-up (c) — COMPLETE (ADR-016 Accepted, A-set).** The pure
+  `buildEditorialVectorLayers(figureSheet, { font, resolutions })` maps panel
+  backgrounds, solid borders (`dashed`/`dotted` refused), labels/captions,
+  text/panel-letter boxes (OD-7e padding + real Inter ascent, overflow refused by
+  the adapter), `line` annotations (sheet/panel-content/patient) and
+  sheet/panel-content ROI ellipses/polygons (OD-2 clockwise rotation). It emits
+  the OD-7a paint order via `placement: 'below-medical' | 'above-medical'`, and
+  the adapter gained native `ellipse`/`polygon` emitters. Arrow, scale-bar,
+  measurement, bold and unsupported font families are typed
+  `FIGURE_PDF_DOCUMENT_INVALID` refusals.
+- **Residual OD-7k (still fail-closed):** patient-anchored ROI shapes and
+  patient-anchored text boxes are refused because their plane/box orientation is
+  not defined by the contract; patient `line` endpoints *are* projected through
+  the ratified OD-5 chain. Do not present the phase as covering patient-space
+  ROI/text shapes.
 
 ## Required Gate Commands
 

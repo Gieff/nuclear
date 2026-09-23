@@ -1524,3 +1524,182 @@ geometry) and the plan's stop condition.
   emitter extension, with per-kind fail-closed tests.
 - Exact next step: the phase owner ratifies or amends OD-7a…OD-7j; then implement
   (c), then P5.8.
+
+---
+
+# Slice Record — P5.7 follow-up (c): editorial FigureSheet → native PDF vectors
+
+## 1. What Was Implemented
+
+- **ADR-016 ratified (phase owner, 2026-09-23): the A-set is accepted in toto**
+  (OD-7a…OD-7j); the ADR is now **Accepted** with the ratification record and an
+  implementation clarification for two residual patient-space cases (OD-7k).
+- **Native PDF primitives extended** (`pdf-document.ts`, ADR-016 OD-7g): new
+  `PdfEllipseLayer` (centre, radii, `rotationDeg`) and `PdfPolygonLayer`
+  (≥ 3 sheet-mm points), plus an explicit `placement: 'below-medical' |
+  'above-medical'` (OD-7a) and optional `maxWidthMm`/`maxHeightMm` on text
+  (OD-7e). Validation moved to `pdf-vector-validation.ts` with exact rotated
+  ellipse bounding-box containment and polygon containment.
+- **Adapter** (`pdf-draw.ts`): `ellipse` via `drawEllipse` with
+  `degrees(-rotationDeg)` (OD-2 clockwise y-down → PDF y-up negation) and
+  `polygon` via `drawSvgPath` in sheet mm (`x=0, y=heightPt, scale=PT_PER_MM`);
+  the writer now paints `'below-medical'` vectors → rasters → `'above-medical'`
+  vectors, honouring OD-7a. The adapter (the only place with the embedded font)
+  refuses text that overflows its declared box.
+- **Pure mapping** (`editorial-mapping.ts` + `editorial-mapping-annotations.ts` +
+  `editorial-mapping-support.ts`): `buildEditorialVectorLayers(figureSheet,
+  { font, resolutions })` maps, in OD-7a order: panel backgrounds
+  (`'below-medical'`), solid borders, labels/captions (baseline-left via
+  `panelContentToSheet`), text/panel-letter boxes (top-left + padding + real
+  Inter ascent, `maxWidthMm`/`maxHeightMm`), `line` annotations (sheet,
+  panel-content, patient) and sheet/panel-content ROI ellipses/polygons. It
+  consumes only the ratified transforms and **invents no geometry**.
+- **OD-7j fail-closed refusals** (typed `FIGURE_PDF_DOCUMENT_INVALID`): arrows,
+  scalebars, measurements, `dashed`/`dotted` borders, bold, any
+  font family other than the embedded Inter, malformed/missing fields and
+  patient-space ROI/text shapes (residual OD-7k). A hidden patient line emits
+  nothing.
+- `projectPatientPointToSheet` was exposed (OD-7i) from the ratified OD-5 chain
+  so multi-point patient annotations reuse the same transforms; no derivation.
+- **Review fixes folded in (P5.7(c) review):** every object-valued mapping field
+  (`panel`, `layout`, `decoration`, `border`, `label`/`caption`, `framing`,
+  `typography`, `box`, `geometry`, `anchor`, and each `annotations[i]` entry) is
+  now `asRecord`-guarded so malformed structures are typed
+  `FIGURE_PDF_DOCUMENT_INVALID` refusals (never a bare `TypeError`); embedded line
+  separators are refused as unratified multi-line (OD-7e) instead of inheriting a
+  library default line height; the anchor/coordinate-space pairing is validated
+  (OD-7j); a patient-`line` test covers projection, the OD-4 fade opacity and
+  hidden→nothing; `patient-projection.ts` was decomposed (the affine primitives
+  moved to `patient-projection-primitives.ts`, 206 lines). A second bounded review
+  caught two residual `TypeError` paths (a null annotation entry and a panel
+  missing `framing`), both now closed and covered in
+  `editorial-mapping-extra.test.ts`. A third sweep found a pre-existing latent
+  `TypeError` in P5.1 `panelSheetRectMm` (destructuring `positionMm`/`sizeMm`
+  before validating); it was fixed at the source (validate-before-destructure)
+  **and** guarded at the mapping boundary, with probes added.
+
+## 2. Files Changed
+
+Created (`figure-engine`):
+- `publication/editorial-mapping.ts` (148), `editorial-mapping-annotations.ts`
+  (247), `editorial-mapping-support.ts` (217)
+- `publication/pdf-vector-validation.ts` (250), `patient-projection-primitives.ts` (74)
+Created (test infrastructure):
+- `tests/export/fixtures/pdf-draw.ts` (169), `pdf-font.ts` (34)
+- `tests/export/editorial-mapping.test.ts` (268),
+  `tests/export/editorial-mapping-extra.test.ts` (158),
+  `tests/export/pdf-editorial-encoder.test.ts` (121)
+Modified:
+- `publication/pdf-document.ts` (ellipse/polygon/placement/max-box), `index.ts`
+  (barrel exports the mapping), `pdf-document-validation.ts` (metadata only),
+  `pdf-validation-primitives.ts` (shape helpers), `patient-projection.ts`
+  (`projectPatientPointToSheet`; affine helpers extracted)
+- `tests/export/fixtures/pdf-writer.ts` (paint-order partition; font helpers
+  extracted), `tests/export/pdf-document.test.ts` (ellipse/polygon validation)
+- `docs/decisions/ADR-016-…md` (Accepted + ratification + OD-7k residual),
+  `docs/plans/PHASE_5_FIGURE_ENGINE_PLAN.md`,
+  `docs/plans/PHASE_5_OPENCODE_RUNBOOK.md`, `docs/agentlog/phase-5.md`.
+
+Not modified: `shared-types`, `rendering-presets`, `medical-engine`,
+`view-engine`, `project-model`, `ui`, `apps/*`, `python/`, `AGENTS.md`,
+`CHANGELOG.md`.
+
+## 3. Architectural Assumptions Made (boundary adherence)
+
+- `packages/figure-engine/src/**` still imports no `pdf-lib`/`@pdf-lib`/`node:*`/
+  DOM/Cornerstone/`medical-engine`; the mapping consumes only frozen contracts and
+  the ratified transforms (`panelSheetRectMm`, `panelContentToSheet`,
+  `projectPatientAnnotation`/`projectPatientPointToSheet`).
+- No geometry/style is invented: every mapping is one of the ratified A-set
+  options; everything else is a typed refusal. `panel-content` mappings require an
+  unrotated panel (the composition plan already refuses rotations).
+- The paint order is explicit data (`placement`), not inferred by the adapter.
+- Text metrics remain with the font owner: the pure mapping declares the box
+  bounds and the adapter enforces overflow, so no metric is approximated in the
+  pure layer.
+
+## 4. Tests Added & Executed
+
+- `node --test "tests/export/*.test.ts"` → **47 tests / 9 suites, 47 pass / 0
+  fail** (17 new: 9 mapping + 4 patient/fail-closed edges + 3 editorial-encoder +
+  1 document). Coverage: OD-7a order; background/border/label; `none` skip and
+  dashed/dotted refusal; sheet and panel-content lines; ellipse/circle/rectangle
+  ROIs; OD-2 90° clockwise rectangle corners; OD-7e padding + real Inter ascent +
+  box bounds; refusals for arrow/scale-bar/measurement/bold/unsupported
+  font/patient ROI; line-separator refusal; anchor/space mismatch; structurally
+  malformed panels/annotations (typed, never `TypeError`); patient-line projection
+  with OD-4 fade opacity and hidden→nothing; determinism and non-mutation; the
+  encoder emits one image XObject plus native `c`/`m`/`l`/`Tj` operators with no
+  `DCTDecode`/`JPXDecode`; paint order (panel background before `Do`, border/label
+  after); text-overflow refusal.
+- `node --test "tests/figure-engine/*.test.ts"` → **67/12, pass** (unchanged).
+- `npm test` → **674 tests / 123 suites, 674 pass / 0 fail**.
+- `npm run typecheck` → **PASS**; `npm run build` → **PASS**.
+- `npm run test:python` → **411 passed**; `npm run typecheck:python` → **clean,
+  77 files**.
+- File-length (after the P5.7(c) review fix): largest **new** package source
+  `pdf-vector-validation.ts` = **250**; `editorial-mapping-annotations.ts` 247,
+  `patient-projection.ts` 206, `editorial-mapping-support.ts` 217; all new package
+  source ≤ 250. Pre-existing package maxima (`request-validation.ts` 268,
+  `request.ts` 251) are untouched by this slice. Test files ≤ 268. `git diff
+  --check` → clean.
+
+## 5. Documentation, AgentLog & ADR Status
+
+- ADR-016 moved **Proposed → Accepted** with the ratification record and the
+  OD-7k residual clarification. Plan/runbook mark follow-up (c) COMPLETE and the
+  "Vector PDF" gate updated. `AGENTS.md`/`CHANGELOG.md` untouched.
+
+## 6. Project Model Impact
+
+None. No `.ncp` schema change and no `shared-types` contract change.
+
+## 7. Known Limitations & Technical Debt
+
+- **OD-7k open:** patient-anchored ROI shapes and patient-anchored text boxes are
+  refused (plane/box orientation undefined); patient `line` endpoints are
+  projected. Sheet/panel-content ROI/text/line are fully mapped.
+- Arrowheads, scalebar/measurement ticks and number formatting remain unratified
+  and refused (OD-7f/7h).
+- `dashed`/`dotted` borders remain refused (OD-7c); bold needs a vendored face.
+- **Multi-line text is refused** (embedded line separators, OD-7e): no
+  line-height/alignment rule is ratified, so it is not laid out with a library
+  default. Label/caption overflow is likewise not measured (no box).
+- Ellipse containment uses the exact rotated bounding box; unrotated panels only.
+- No real-dataset image/pixel-tolerance gate → **NOT YET APPLICABLE**.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P5.8** (independent phase review, configured gates and the final
+eight-point phase handover), carrying follow-ups (a)/(b) and residual OD-7k; or,
+if the phase owner wishes, ratify OD-7k to enable patient-space ROI/text shapes.
+
+---
+
+## Independent Verdicts — P5.7 follow-up (c)
+
+- **`nuclear-reviewer` — PASS after three bounded rounds.** Round 1: OD-7a paint
+  order, no-invented-geometry (OD-2 rotation, OD-7e real-metric baseline), OD-7i
+  projection, boundary purity, validation and scope honesty all verified, with
+  four MEDIUM findings: (1) structurally malformed mapping input could throw a
+  bare `TypeError`; (2) embedded line separators inherited pdf-lib's unratified
+  24 pt line height and defeated the OD-7e height guard; (3) the patient-line path
+  had no test evidence; (4) `patient-projection.ts` exceeded 250 lines and the
+  agentlog size claim was inaccurate. Round 2 confirmed those resolved but found
+  two residual `TypeError` paths (a null annotation entry; a panel missing
+  `framing`). Round 3 found one pre-existing latent `TypeError` in P5.1
+  `panelSheetRectMm` (destructure-before-validate). **Final bounded confirmation:
+  PASS** — all 13 malformed-input probes now produce a typed
+  `FigurePublicationError` (mapping-boundary guards over hardened shared
+  primitives); 47/9, 67/12, 674/123 and typecheck reproduce; new package source
+  ≤ 250; OD-7k recorded truthfully.
+- **`nuclear-qa` — PASS (all applicable gates), three runs.** Independently ran
+  scope isolation, `git diff --check`, `npm run typecheck`, focused **47/9** and
+  **67/12**, `npm test` **674/123/0**, `npm run build`, pytest 411, mypy 77, and
+  an independent reproduction: patient-line projection ([60,60]→[61.5625,60];
+  fade opacity 0.5; `missing`→nothing), byte-identical encodes
+  (`sha256 e16c5957…`), the typed refusals (null panel, missing `layout`/`framing`,
+  text without `box`, `\n` text), native `c`/`m`/`l`/`Tj` operators with one
+  80×80 image XObject and no `DCTDecode`/`JPXDecode`, the OD-7a paint order, and
+  zero forbidden imports under `packages/figure-engine/src`. Zero flakes.
+  Real-dataset image/pixel-tolerance gate **NOT YET APPLICABLE**.
