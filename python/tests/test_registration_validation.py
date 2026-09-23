@@ -227,7 +227,7 @@ def test_mi_zero_iteration_is_accepted_only_with_structural_evidence() -> None:
         == "optimisation-failed"
     )
     assert outcome_violation(0.5, "Step too small.", iterations=-1) == "optimisation-failed"
-    assert outcome_violation(float("nan"), "Step too small.", iterations=0) == "invalid-residual"
+    assert outcome_violation(float("nan"), "Step too small.", iterations=0) == "invalid-metric"
     # ... and a non-rigid transform is refused through the shared validator.
     with pytest.raises(MiRefusal) as excinfo:
         require_rigid_transform(np.diag([1.0, 1.0, 0.0, 1.0]))

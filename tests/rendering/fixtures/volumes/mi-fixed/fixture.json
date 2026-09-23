@@ -1,0 +1,11 @@
+{
+  "studyInstanceUID": "1.2.826.0.1.3680043.10.7100.1",
+  "seriesInstanceUID": "1.2.826.0.1.3680043.10.7100.2",
+  "frameOfReferenceUID": "1.2.826.0.1.3680043.10.7100.4",
+  "modality": "CT",
+  "rescale": {
+    "slope": 0.01,
+    "intercept": 0.0
+  },
+  "provenanceNote": "NuClear 2B.3b test-only MI rigid fixed (source) volume; deterministic synthetic_mi_phantom 48^3 quantised to int16*0.01; no patient data."
+}

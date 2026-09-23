@@ -84,6 +84,11 @@ export class WorkerSupervisor {
     return this.#requestTimeoutMs;
   }
 
+  /** The validated handshake advertised by the current worker, if any. */
+  protected get currentHandshake(): WorkerHandshake | null {
+    return this.#handshake;
+  }
+
   /** Availability hook; the facade overrides it for listener fan-out. */
   protected onAvailability(_next: WorkerAvailability): void {
     // No-op in the base supervisor.

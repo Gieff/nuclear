@@ -2,8 +2,8 @@
 
 Pure scientific core operating on ``sitk.Image`` objects: **no** DICOM reading,
 no voxel/volume transport, no file I/O and no IPC. The worker ``mode: 'rigid'``
-operation stays the reserved ``-32011 OPERATION_NOT_IMPLEMENTED`` stub in
-:mod:`dicom.registration_operations`; this module is not wired into it.
+operation (2B.3b) wires this core to real decoded volumes in
+:mod:`dicom.registration_operations`; this module stays transport-free.
 
 Convention (verified empirically in the fixture suite): SimpleITK's transform
 maps the *fixed* image onto the *moving* image, so this module labels
@@ -29,7 +29,10 @@ from numpy.typing import NDArray
 
 from .registration_math import homogenise
 from .registration_validation import (
-    NUMERICAL_GUARD, EvidenceRefusal, require_valid_matrix4x4, rotation_violation,
+    NUMERICAL_GUARD,
+    EvidenceRefusal,
+    require_valid_matrix4x4,
+    rotation_violation,
 )
 
 sitk: Any = _sitk
@@ -38,7 +41,7 @@ sitk: Any = _sitk
 
 FloatArray = NDArray[np.float64]
 RefusalReason = Literal[
-    "invalid-evidence", "optimisation-failed", "non-rigid-transform", "invalid-residual"
+    "invalid-evidence", "optimisation-failed", "non-rigid-transform", "invalid-metric"
 ]
 
 RIGIDITY_NUMERICAL_GUARD = NUMERICAL_GUARD  # single shared numerical guard
@@ -107,7 +110,7 @@ def outcome_violation(
     threshold is **unratified** and deliberately absent.
     """
     if not math.isfinite(metric_value):
-        return "invalid-residual"
+        return "invalid-metric"
     if iterations < 0 or not stop_condition.strip() or any(
         marker in stop_condition.lower() for marker in _OPTIMIZER_FAILURE_MARKERS
     ):

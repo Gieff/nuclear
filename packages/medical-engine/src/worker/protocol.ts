@@ -14,6 +14,7 @@ import {
   WorkerUnavailableError,
 } from './errors.js';
 import { asArray, asRecord, asString, isRecord, stringArray } from './narrowing.js';
+import { mapVolumeTransportCapability } from './volume-capability.js';
 import type { WorkerDiagnostic, WorkerHandshake } from './types.js';
 
 export const DEFAULT_PROTOCOL_VERSION = '1.0';
@@ -24,6 +25,10 @@ export const DICOM_GEOMETRY_METHOD = 'nuclear.dicom.geometry';
 export const DICOM_COMPATIBILITY_METHOD = 'nuclear.dicom.compatibility';
 export const QUANTITATION_SUVBW_METHOD = 'nuclear.quantitation.suvbw';
 export const REGISTRATION_METHOD = 'nuclear.registration';
+/** ADR-013 §2: decode a DICOM series into a worker-owned binary payload. */
+export const DICOM_VOLUME_METHOD = 'nuclear.dicom.volume';
+/** ADR-013 §2/§7: idempotent release of one volume handle. */
+export const VOLUME_RELEASE_METHOD = 'nuclear.volume.release';
 
 /** Operations a compatible worker must advertise during handshake. */
 export const REQUIRED_WORKER_OPERATIONS: readonly string[] = [
@@ -48,6 +53,17 @@ export const NUCLEAR_OPERATION_NOT_IMPLEMENTED = -32011;
  * Ratified by the phase owner on 2026-09-22 (2B.0 R10).
  */
 export const NUCLEAR_REGISTRATION_INVALID = -32012;
+/**
+ * ADR-013 §8 pixel/volume transport failure taxonomy (`-32013..-32018`). The
+ * worker returns these; the bridge propagates them typed with a closed reason
+ * and never fabricates a partial payload or transform.
+ */
+export const NUCLEAR_VOLUME_DECODE_FAILED = -32013;
+export const NUCLEAR_VOLUME_LIMIT_EXCEEDED = -32014;
+export const NUCLEAR_VOLUME_FINGERPRINT_MISMATCH = -32015;
+export const NUCLEAR_VOLUME_TRANSPORT_INTEGRITY = -32016;
+export const NUCLEAR_VOLUME_HANDLE_INVALID = -32017;
+export const NUCLEAR_VOLUME_CLEANUP_FAILED = -32018;
 
 export interface WorkerJsonRpcRequest {
   readonly jsonrpc: '2.0';
@@ -198,9 +214,13 @@ export function mapWorkerHandshake(
       `Worker is missing required operations: ${missing.join(', ')}.`,
     );
   }
+  // ADR-013 §2: `capabilities.volumeTransport` is additive/optional. A worker
+  // that predates it keeps working; a malformed advertised block fails closed.
+  const volumeTransport = mapVolumeTransportCapability(result.capabilities);
   return {
     protocolVersions,
     operations,
     workerMetadata: mapWorkerMetadata(result.workerMetadata),
+    ...(volumeTransport === undefined ? {} : { volumeTransport }),
   };
 }

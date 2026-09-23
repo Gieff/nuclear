@@ -29,10 +29,27 @@ export function rigidRequest(): WorkerRegistrationRequest {
     fixed: {
       locator: { kind: 'local-folder', path: '/data/fixed' },
       seriesInstanceUID: '1.2.3.4.5',
+      expectedFingerprint: {
+        studyInstanceUID: '1.2.3.4',
+        seriesInstanceUID: '1.2.3.4.5',
+        instanceCount: 3,
+        contentDigest: `sha256:${'0'.repeat(64)}`,
+        geometricDigest: `sha256:${'1'.repeat(64)}`,
+        totalBytes: 1234,
+      },
+      expectedFrameOfReferenceUID: '1.2.3.4.5.for',
     },
     moving: {
       locator: { kind: 'local-folder', path: '/data/moving' },
       seriesInstanceUID: '1.2.3.4.6',
+      expectedFingerprint: {
+        studyInstanceUID: '1.2.3.4',
+        seriesInstanceUID: '1.2.3.4.6',
+        instanceCount: 3,
+        contentDigest: `sha256:${'2'.repeat(64)}`,
+        geometricDigest: `sha256:${'3'.repeat(64)}`,
+      },
+      expectedFrameOfReferenceUID: '1.2.3.4.6.for',
     },
   } as WorkerRegistrationRequest;
 }

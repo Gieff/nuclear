@@ -12,15 +12,39 @@ import type {
   OutOfDomainBehavior,
   Point3D,
   ScientificWorkerMetadata,
+  SourceFingerprint,
   SourceLocator,
   SpatialTransform,
   TransformId,
 } from '@nuclear/shared-types';
 
-/** One fixed/moving asset reference for the voxel-registration mode. */
+/**
+ * Per-side source-fingerprint expectation for the voxel-registration mode.
+ *
+ * The registered asset's `SourceFingerprint` with its accepted
+ * `geometricDigest` made mandatory, so a caller cannot omit the geometry
+ * evidence the worker correlates. Optional fingerprint fields
+ * (`sopInstanceUIDsHash`, `totalBytes`) are preserved verbatim: the worker
+ * observes the SOP Instance UID digest itself and compares it only when the
+ * caller supplies an expected value (ADR-013 §5, owner-ratified 2026-09-23).
+ */
+export type WorkerRegistrationExpectedFingerprint = SourceFingerprint & {
+  readonly geometricDigest: string;
+};
+
+/**
+ * One fixed/moving asset reference for the voxel-registration mode.
+ *
+ * Phase 2B.3b requires each side to carry the registered asset's expected
+ * `SourceFingerprint` (with its accepted `geometricDigest`) and its expected
+ * Frame of Reference. The worker correlates both through the shared hydration
+ * service and fails closed on any mismatch.
+ */
 export interface WorkerRegistrationAssetRef {
   readonly locator: SourceLocator;
   readonly seriesInstanceUID: string;
+  readonly expectedFingerprint: WorkerRegistrationExpectedFingerprint;
+  readonly expectedFrameOfReferenceUID: FrameOfReferenceUID;
 }
 
 /** One ordered source -> target landmark correspondence (LPS mm). */

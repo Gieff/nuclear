@@ -28,6 +28,7 @@ from typing import Any
 from worker.protocol import ERROR_MESSAGES, INVALID_PARAMS, REGISTRATION_METHOD, ProtocolError
 
 from .locators import SourceLocator, parse_locator
+from .volume_payload import ExpectedFingerprint, FingerprintSchemaError, parse_expected_fingerprint
 
 REGISTRATION_MODES: tuple[str, ...] = ("rigid", "landmarks")
 OUT_OF_DOMAIN_BEHAVIORS: tuple[str, ...] = ("clamp", "hide", "warn")
@@ -57,8 +58,12 @@ class RegistrationRequest:
     out_of_domain_behavior: str
     fixed: SourceLocator | None = None
     fixed_series_instance_uid: str | None = None
+    fixed_expected_fingerprint: ExpectedFingerprint | None = None
+    fixed_expected_frame_of_reference_uid: str | None = None
     moving: SourceLocator | None = None
     moving_series_instance_uid: str | None = None
+    moving_expected_fingerprint: ExpectedFingerprint | None = None
+    moving_expected_frame_of_reference_uid: str | None = None
     source_frame_of_reference_uid: str | None = None
     target_frame_of_reference_uid: str | None = None
     landmarks: tuple[LandmarkPair, ...] = ()
@@ -107,14 +112,32 @@ def _finite_coordinate(value: Any, name: str, violations: list[str]) -> Coordina
 
 def _parse_side(
     params: Mapping[str, Any], key: str, violations: list[str]
-) -> tuple[Mapping[str, Any] | None, str | None]:
-    """Validate one ``fixed``/``moving`` asset reference (locator + series UID)."""
+) -> tuple[Mapping[str, Any] | None, str | None, ExpectedFingerprint | None, str | None]:
+    """Validate one ``fixed``/``moving`` reference (locator, series UID, expectation)."""
     side = params.get(key)
     if not isinstance(side, Mapping):
         violations.append(f"params.{key} must be an object.")
-        return None, None
+        return None, None, None, None
     uid = _non_empty_string(side.get("seriesInstanceUID"), f"{key}.seriesInstanceUID", violations)
-    return side, uid
+    expected: ExpectedFingerprint | None = None
+    try:
+        expected = parse_expected_fingerprint(
+            side.get("expectedFingerprint"), f"params.{key}.expectedFingerprint")
+    except FingerprintSchemaError as exc:
+        violations.append(str(exc))
+    # ADR-013 §5 fail-closed: the shared ``SourceFingerprint.geometricDigest`` is
+    # optional, but for a rigid side the worker must be able to compare the
+    # accepted geometry digest. Requiring it here prevents a caller from silently
+    # disabling that comparison; geometry is never inferred.
+    if expected is not None and not expected.geometric_digest:
+        violations.append(
+            f"params.{key}.expectedFingerprint.geometricDigest must be a non-empty string "
+            "for a rigid registration side; the worker cannot verify the accepted geometry "
+            "digest without it."
+        )
+    frame = _non_empty_string(
+        side.get("expectedFrameOfReferenceUID"), f"{key}.expectedFrameOfReferenceUID", violations)
+    return side, uid, expected, frame
 
 
 def _parse_landmarks(value: Any, violations: list[str]) -> tuple[LandmarkPair, ...]:
@@ -179,13 +202,17 @@ def parse_registration_request(params: Mapping[str, Any]) -> RegistrationRequest
     moving_side: Mapping[str, Any] | None = None
     fixed_uid: str | None = None
     moving_uid: str | None = None
+    fixed_fp: ExpectedFingerprint | None = None
+    moving_fp: ExpectedFingerprint | None = None
+    fixed_for: str | None = None
+    moving_for: str | None = None
     source_for: str | None = None
     target_for: str | None = None
     landmarks: tuple[LandmarkPair, ...] = ()
 
     if valid_mode == "rigid":
-        fixed_side, fixed_uid = _parse_side(params, "fixed", violations)
-        moving_side, moving_uid = _parse_side(params, "moving", violations)
+        fixed_side, fixed_uid, fixed_fp, fixed_for = _parse_side(params, "fixed", violations)
+        moving_side, moving_uid, moving_fp, moving_for = _parse_side(params, "moving", violations)
     elif valid_mode == "landmarks":
         source_for = _non_empty_string(
             params.get("sourceFrameOfReferenceUID"),
@@ -218,8 +245,12 @@ def parse_registration_request(params: Mapping[str, Any]) -> RegistrationRequest
         out_of_domain_behavior=behavior,
         fixed=fixed,
         fixed_series_instance_uid=fixed_uid,
+        fixed_expected_fingerprint=fixed_fp,
+        fixed_expected_frame_of_reference_uid=fixed_for,
         moving=moving,
         moving_series_instance_uid=moving_uid,
+        moving_expected_fingerprint=moving_fp,
+        moving_expected_frame_of_reference_uid=moving_for,
         source_frame_of_reference_uid=source_for,
         target_frame_of_reference_uid=target_for,
         landmarks=landmarks,

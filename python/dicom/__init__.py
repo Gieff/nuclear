@@ -28,6 +28,10 @@ Modules:
     registration_mi: Deterministic Mutual-Information rigid core (Phase 2B.3a).
     registration_contract: Shared refusal type, numerical guard and 4x4 coherence (2B.4).
     registration_validation: Fail-closed SpatialTransform evidence validator (2B.4).
+    volume_payload: Declared scalar payload, limits and DecodedVolume record (2B.3b).
+    source_fingerprint: Ratified source-series contentDigest + correlation (2B.3b).
+    volume_store: Worker-owned temp root, atomic publication, TTL and release (2B.3b).
+    volume_operations: DICOM pixel decode + volume transport handlers (2B.3b).
 """
 
 __version__ = "0.3.0"

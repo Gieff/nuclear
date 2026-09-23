@@ -51,9 +51,9 @@ from .registration_contract import (
 )
 
 __all__ = [
+    "NUMERICAL_GUARD",
     "EvidenceRefusal",
     "EvidenceRefusalReason",
-    "NUMERICAL_GUARD",
     "require_homogeneous_matrix4x4",
     "require_identity_matrix4x4",
     "require_valid_matrix4x4",

@@ -955,3 +955,188 @@ hydration. **ADR-013 stays `Proposed`** until OD-B/C/D are ratified. ADR-012
 stays **Proposed** and **P4.4b remains blocked**. After ratification the order
 is: implement **2B.3b** → integrate in `medical-engine` → complete the ADR-012
 **R-1/OD-6** admission policy → only then reassess P4.4b.
+
+# Handover Report — Phase 2B.3b: Real-Volume Transport and Rigid MI IPC
+
+## 1. What Was Delivered
+
+2B.3b delivers worker-owned real-source volume
+decoding and rigid Mutual Information registration, integrated through the
+`@nuclear/medical-engine` worker bridge into `VolumeIngestionPlan`. Python
+produces geometry-correlated pixel data and registration evidence; TypeScript
+validates and transports the declared payload without parsing DICOM or changing
+voxel values. The worker→bridge→engine chain is covered with NuClear-owned CT
+and PET fixtures; rigid MI has a real-worker recovery test on the curated
+`mi-fixed` / `mi-moving` phantom pair.
+
+The bridge validates the descriptor, exact byte length and SHA-256 before plan
+construction, checks publication-anchored TTL on both sides of the read, bounds
+the no-follow payload read, and releases known handles in `finally`. If the
+volume request times out before a descriptor exists, the bridge restarts the
+worker so the startup orphan sweep runs. The worker checks source fingerprint,
+Frame of Reference and geometry evidence before publication/registration. The
+new corrective also requires `SamplesPerPixel`, refuses compressed transfer
+syntaxes before pixel decode, and has explicit coverage for a missing transport
+capability. No `view-engine` or UI transport logic was introduced.
+
+**Status: 2B.3b and 2B.5 are PASS — real-volume IPC and medical-engine hydration
+accepted.** The owner-ratified `sopInstanceUIDsHash` contract is implemented on
+both sides. The worker computes the
+observed digest for each selected series and compares it only when the expected
+optional field is present; the bridge validates and correlates the observed
+value without hashing or normalizing it. Independent review and QA confirmed
+the acceptance gate set recorded below.
+
+## 2. Files Changed / Created
+
+Modified:
+- `docs/decisions/ADR-013-pixel-volume-transport.md` — Accepted ADR, current
+  lifecycle and owner-ratified optional hash canonicalization.
+- `docs/plans/PHASE_2B_SCIENTIFIC_REGISTRATION_PLAN.md` — current implementation,
+  evidence, blocked acceptance and next action.
+- `packages/medical-engine/src/index.ts`;
+  `packages/medical-engine/src/worker/{bridge.ts,index.ts,mapping-registration.ts,protocol.ts,registration-types.ts,supervisor.ts,types.ts}`.
+- `python/dicom/{__init__.py,registration_mi.py,registration_operations.py,registration_schema.py,registration_validation.py}`;
+  `python/worker/{dispatch.py,protocol.py}`.
+- `python/tests/{test_registration_mi.py,test_registration_operations.py,test_registration_validation.py,test_worker_envelope.py,test_worker_handshake.py}`.
+- `tests/fixtures/protocol/{error.unknown-method.json,response.handshake.json}`;
+  `tests/medical/fixtures/worker-registration-requests.ts`;
+  `tests/medical/worker-registration.test.ts`.
+
+Created:
+- `packages/medical-engine/src/renderer/volume-hydration.ts`;
+  `packages/medical-engine/src/worker/{volume-capability.ts,volume-descriptor-fields.ts,volume-descriptor.ts,volume-errors.ts,volume-limits.ts,volume-path.ts,volume-payload.ts,volume-types.ts}`.
+- `python/dicom/{sop_uid_digest.py,sop_uid_raw.py,source_fingerprint.py,volume_operations.py,volume_payload.py,volume_store.py}`;
+  `python/worker/{session_lock.py,volume_session.py}`;
+  `python/tests/{test_registration_schema_fingerprint.py,test_session_lock.py,test_sop_uid_digest.py,test_sop_uid_raw.py,test_source_fingerprint.py,test_volume_descriptor_publication.py,test_volume_pixel_format.py,test_volume_session_rmdir.py,test_volume_transport.py}`.
+- `tests/medical/fixtures/volume-bridge-fixtures.ts`;
+  `tests/medical/{worker-rigid-real.test.ts,worker-volume-capability.test.ts,worker-volume-files.test.ts,worker-volume-pet.test.ts,worker-volume-sop-uid.test.ts,worker-volume-timeout.test.ts,worker-volume-ttl.test.ts,worker-volume-unit.test.ts,worker-volume.test.ts}`.
+- Curated synthetic fixtures under `tests/rendering/fixtures/volumes/`: CT axial,
+  PT axial, PT axial coregistration, and MI fixed/moving series with expected
+  fingerprints. No patient data.
+
+The pre-existing user change in `opencode.json` is unrelated and was not
+modified as part of this handover. No `CHANGELOG.md` change.
+
+## 3. Architectural Assumptions and Invariants
+
+- **ADR-013 is Accepted** (2026-09-22; OD-A…OD-F ratified). Python remains the
+  only DICOM pixel decoder and scientific computation authority. TypeScript
+  accepts declared pixel bytes and geometry evidence only; no second geometry
+  derivation, scaling, or renderer fallback is introduced.
+- **`sopInstanceUIDsHash` canonicalization was ratified by the phase owner
+  2026-09-23** and recorded as normative ADR-013 §5. It hashes the exact logical
+  SOP UID list with the ratified domain/count/length framing; it remains distinct
+  from raw-instance `contentDigest` and scalar payload `contentHash`.
+- Series `contentDigest` uses the ratified canonicalization over exact raw DICOM
+  bytes. It is not the scalar payload's separate `contentHash`.
+- Handles are private, bounded, hash-verified and TTL-bound to descriptor
+  publication. Unknown-handle timeout cleanup is by worker restart/orphan sweep;
+  a known descriptor is released exactly once even when subsequent validation
+  fails.
+- PET fixture transport declares `rescaled-bqml`; TS checks it against registered
+  asset semantics and never rescales data.
+- Compressed transfer syntaxes are refused as
+  `unsupported-pixel-representation`; no codec is silently installed. Missing
+  `SamplesPerPixel` is refused as `missing-pixel-format`.
+- The worker validates raw SOP UI-VR bytes before pydicom conversion, rejecting
+  non-conformant padding and duplicate tags; it removes only the valid terminal
+  NUL VR pad before encoding the logical UID. The stdio worker uses a
+  cross-platform session-lock adapter; POSIX behavior is real-tested on macOS,
+  while the `msvcrt` Windows backend is covered by a mock and real Windows
+  execution remains **NOT YET APPLICABLE** in this environment.
+- `view-engine` remains outside volume transport; this does not unblock P4.4b.
+
+## 4. Tests and Verification Evidence
+
+Final local verification on the candidate (2026-09-23):
+
+| Gate | Result |
+| --- | --- |
+| `npm run typecheck` | **PASS** — `tsc -b` and test project, 0 errors |
+| `npm test` (standalone rerun) | **PASS** — 510/510 tests, 96 suites |
+| `npm run build` | **PASS** — clean TypeScript build |
+| `npm run test:python` | **PASS** — 411 passed |
+| `npm run typecheck:python` | **PASS** — mypy clean, 77 source files |
+| `npm run docs` | **PASS** — TypeDoc, pdoc and master API portal generated |
+| Focused TS real-worker/volume suites (independent QA) | **PASS** — 52/52 |
+| Focused Python SOP/raw UID/fingerprint/transport/session/MI suites (independent QA) | **PASS** — 152 passed |
+| Changed/new source length gate | **PASS** — all ≤300; maximum is 300 lines |
+| `git diff --check` | **PASS** |
+| Independent `nuclear-reviewer` | **PASS** — no blocking findings |
+| Independent `nuclear-qa` | **PASS** — all applicable acceptance gates green |
+
+An earlier full-suite attempt timed out in WebGL tests (first during parallel
+gate execution, later in `view-application` during a standalone run). The failing
+renderer file passed 13/13 when run alone; the subsequent standalone rerun passed
+510/510 (96 suites), independently confirmed by QA. The timeouts remain visible
+here rather than being counted as passes. Review found no blocking code-level
+acceptance defect.
+
+## 5. Documentation, Agentlog and ADR Status
+
+- ADR-013 remains **Accepted**. The optional
+  `SourceFingerprint.sopInstanceUIDsHash` canonicalization is now owner-ratified
+  and normative in §5; implementation emits it and fails closed on malformed
+  source values or mismatches.
+- The plan records 2B.3b and 2B.5 as **PASS**: real-volume IPC and
+  medical-engine hydration are accepted under the Accepted ADR-013 contract.
+  Independent reviewer and QA reports confirm the diff, fixture evidence and
+  applicable gates. R6 remains deferred and no decision path uses it.
+- `CHANGELOG.md` is untouched. Promote only release-facing capabilities through
+  the changelog workflow.
+
+## 6. Project Model Impact
+
+None. No `.ncp` schema, persisted project model, `shared-types` contract,
+`view-engine`, UI, or figure/export state changed. `VolumeIngestionPlan` remains
+the existing engine-owned boundary.
+
+## 7. Known Limitations and Technical Debt
+
+- **Cross-platform runtime evidence:** POSIX `flock` behavior is exercised on
+  macOS and Windows `msvcrt` lock behavior is exercised with a mock. A real
+  Windows worker runtime is **NOT YET APPLICABLE** because no Windows runner is
+  available here; this must not be reported as hardware-verified.
+- `sop_uid_raw.py` uses pydicom's pre-conversion callback, deprecated in pydicom
+  3.0 but retained because it is the supported raw-value seam across the
+  declared `pydicom>=2.4` floor. A future pydicom migration must preserve the
+  same capture/restore and raw-byte validation behavior.
+- **R6** near-degeneracy numeric bound remains deferred and unused.
+- Independent review's non-blocking follow-ups: add a regeneration assertion for
+  the synthetic MI pair's committed expected fingerprints; consider a static
+  handshake capability fixture; improve diagnostics for skipped unreadable
+  source files; and reject a missing `ImagePositionPatient` directly rather than
+  defaulting it in the decoder (the earlier geometry gate currently refuses it).
+- MI evidence intentionally omits `errorMarginMm` (R11-B); it is not thereby
+  admissible for inter-study `view-engine` propagation. ADR-012/P4.4b remains a
+  separate blocker.
+- A renderer validation comment still describes the scalar-domain rule as
+  fixture-only although OD-F now gates real transport; informational documentation
+  cleanup is not required for this 2B.3b acceptance candidate.
+- Production hardware-GPU and desktop bundle evidence remain outside the current
+  headless software-WebGL scope.
+
+## 8. Exact Next Recommended Task
+
+Phase 2B.3b/2B.5 is **PASS — real-volume IPC and medical-engine hydration
+accepted**. Keep MI evidence non-admissible to `transformed` links per R11-B and
+keep P4.4b blocked until ADR-012 and its evidence requirements are independently
+satisfied. Do not commit or promote a changelog entry as part of this handover.
+
+## Final Independent Closeout — Phase 2B.5 (2026-09-23)
+
+- `nuclear-reviewer`: **PASS**, no required fixes. Four low/informational
+  follow-ups are recorded under §7; none invalidates current acceptance evidence.
+- `nuclear-qa`: **PASS**. Independently confirmed 510/510 tests across 96 suites,
+  411 Python tests, 77-file mypy, typecheck/build/docs generation, 52 focused TS
+  and 152 focused Python tests, the handover, and the source-length/diff gates.
+- Acceptance is limited to real-volume IPC and `VolumeIngestionPlan` hydration
+  plus the rigid MI worker path on NuClear-owned synthetic fixtures. MI evidence
+  without `errorMarginMm` remains non-admissible to `transformed` links (R11-B).
+- Real Windows `msvcrt` execution is **NOT YET APPLICABLE**; only the mock
+  backend is tested here. Production hardware-GPU evidence also remains outside
+  this headless software-WebGL acceptance.
+- P4.4b remains **BLOCKED** until ADR-012 is Accepted and its separate evidence
+  requirements are met. No files were staged or committed; `opencode.json` was
+  excluded as a pre-existing user change, and `CHANGELOG.md` remains untouched.

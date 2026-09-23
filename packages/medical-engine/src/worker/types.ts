@@ -19,6 +19,7 @@ import type {
   StudyInstanceUID,
   Vector3D,
 } from '@nuclear/shared-types';
+import type { WorkerVolumeTransportCapability } from './volume-types.js';
 
 /** Supervisor lifecycle state of the bridge-managed worker process. */
 export type WorkerAvailability =
@@ -41,6 +42,8 @@ export interface WorkerHandshake {
   readonly protocolVersions: readonly string[];
   readonly operations: readonly string[];
   readonly workerMetadata: ScientificWorkerMetadata;
+  /** Additive ADR-013 volume transport capability; absent on old workers. */
+  readonly volumeTransport?: WorkerVolumeTransportCapability;
 }
 
 /** One inspected series with its worker-owned classification disposition. */
@@ -204,6 +207,8 @@ export interface ScientificWorkerBridgeOptions {
   readonly onStderr?: (chunk: string) => void;
   readonly onAvailabilityChange?: (availability: WorkerAvailability) => void;
   readonly spawnWorker?: (attempt: number) => ChildProcessWithoutNullStreams;
+  /** Injectable wall clock (ms) for the ADR-013 handle TTL guard; defaults to `Date.now`. */
+  readonly volumeClock?: () => number;
 }
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;

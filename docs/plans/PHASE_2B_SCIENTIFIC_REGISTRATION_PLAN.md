@@ -1,13 +1,18 @@
 # Phase 2B — Scientific Registration: `SpatialTransform` Generation & Verification
 
-Status: **Phase 2B scientific core closed; real-volume IPC extension blocked.**
-Slices 2B.1–2B.4 + 2B.3a are complete (2B.5 closure). `nuclear.registration`
-is registered with a fail-closed schema; the **landmarks** path performs
-deterministic Procrustes and returns evidence with a measured RMS `errorMarginMm`;
-the **MI** path has a verified deterministic core (2B.3a) that is **not**
-IPC-wired; evidence validity is enforced fail-closed in Python and TypeScript
-(2B.4). **2B.3b (real IPC volume transport) is BLOCKED** pending the **Proposed**
-`docs/decisions/ADR-013-pixel-volume-transport.md` (Pixel/Volume Transport). **2B.0 ratification:** R1–R5 and R7–R11 ratified; the **R6 numeric
+Status: **2B.3b and 2B.5 are PASS — real-volume IPC and medical-engine
+hydration accepted.** The
+phase owner ratified the `SourceFingerprint.sopInstanceUIDsHash` canonicalization
+on 2026-09-23; Python computes and compares it, and the bridge validates and
+preserves it without hashing. All local gates and independent review/QA pass.
+Slices 2B.1–2B.4, 2B.3a, 2B.3b, and 2B.5 are complete. `nuclear.registration`
+is registered with a fail-closed schema; the **landmarks** path performs deterministic Procrustes and
+returns evidence with a measured RMS `errorMarginMm`; the **MI** path has a
+verified deterministic core (2B.3a) and real-volume IPC implementation (2B.3b);
+evidence validity is enforced fail-closed in Python and TypeScript (2B.4).
+**2B.3b (real IPC volume transport) is authorized** under the Accepted
+`docs/decisions/ADR-013-pixel-volume-transport.md` (Pixel/Volume Transport).
+**2B.0 ratification:** R1–R5 and R7–R11 ratified; the **R6 numeric
 degeneracy bound is deferred** (not referenced by any decision path). Commits
 `1dbe540` (2B.1), `335926e` (2B.2), `6872ab1` (2B.3a), `9c75386` (2B.4),
 `c2c2556` (fixture corrective). Addendum to
@@ -143,9 +148,15 @@ protocol and the numeric degeneracy bound remain open.
 - **R10 — reserved code `-32012` (ratified 2026-09-22).** `REGISTRATION_INVALID`
   (`-32012`, "Registration invalid") is ratified as the reserved scientific
   refusal for `nuclear.registration`, distinct from `-32602` (schema) and `-32011`
-  (unimplemented). Its `data` carries exactly `{diagnostic, mode, reason}` with
-  `reason ∈ {same-frame-of-reference, degenerate-landmarks, reflection-required}`
-  and **never** a transform/matrix. Documented in Python and TypeScript.
+  (unimplemented). Its `data` carries exactly `{diagnostic, mode, reason}` and
+  **never** a transform/matrix. For `mode: 'landmarks'`, the ratified reasons
+  are `same-frame-of-reference`, `degenerate-landmarks`, and
+  `reflection-required`. **Owner addendum (2026-09-22):** for `mode: 'rigid'`,
+  the ratified reasons are `same-frame-of-reference`, `optimisation-failed`,
+  `invalid-evidence`, `non-rigid-transform`, and `invalid-metric`. Preserve the
+  original `MiRefusal.reason`; a non-finite Mattes objective is
+  `invalid-metric` (not a geometric residual), and an `EvidenceRefusal` is
+  translated to its corresponding typed reason rather than `-32603`.
 
 **Ratified fixture criteria — NOT universal clinical tolerances.**
 
@@ -310,17 +321,19 @@ validator and fixture.
 | 2B.0 | orchestrator | This plan + the operation/evidence schema + ADR-012 cross-reference | Slice boundaries and open tolerances documented |
 | 2B.1 | scientific engineer | Worker operation registration + TS bridge types | Handshake lists the new operation; bridge round-trips a stub; pytest/mypy green |
 | 2B.2 | scientific engineer | Procrustes (manual landmarks) | Exact-correspondence exactness + degenerate refusal + typed errors |
-| 2B.3 | scientific engineer | Automatic rigid MI registration | Synthetic-phantom recovery within the ratified tolerance; deterministic |
+| 2B.3a | scientific engineer | Deterministic MI core on `sitk.Image` (complete) | Synthetic-phantom recovery within the ratified tolerance; deterministic |
+| 2B.3b | scientific + engine engineers | ADR-013 pixel/volume IPC transport, verified hydration into `VolumeIngestionPlan`, and rigid MI IPC path | Worker→bridge→engine evidence; hash/length/geometric and fingerprint correlation; all ADR-013 failure modes fail closed; R3 recovery and R4 same-environment determinism; no `view-engine` import |
 | 2B.4 | scientific engineer | Evidence validity / `errorMarginMm` / fail-closed | Failed optimisation and FoR mismatch refused; no fabricated transform |
 | 2B.5 | reviewer + QA | Independent verification + handover | Reviewer/QA verdicts, pytest/mypy, fixture regression, eight-point report |
 
-**Slice status (2026-09-22).** 2B.0 partial; **2B.1 ✅** `1dbe540`;
+**Slice status (2026-09-23; independent 2B.5 closeout).** 2B.0 partial;
+**2B.1 ✅** `1dbe540`;
 **2B.2 ✅** `335926e`; **2B.3 ✅ split** — **2B.3a ✅** `6872ab1` (deterministic
-MI core, no IPC) and **2B.3b BLOCKED** (requires a Pixel/Volume Transport ADR);
-**2B.4 ✅** `9c75386`; **2B.5 = this closure**. Fixture corrective `c2c2556`.
-Still open: **R6** (numeric degeneracy bound, deferred — no decision path
-references it) and **2B.3b** (blocked). **P4.4b** remains blocked until ADR-012
-is **Accepted**.
+MI core, no IPC) and **2B.3b ✅** (real-volume IPC under Accepted ADR-013);
+**2B.4 ✅** `9c75386`; **2B.5 ✅** independent review and QA PASS, with all
+applicable local gates green. Fixture corrective `c2c2556`.
+Still deferred: **R6** (numeric degeneracy bound; no decision path references it).
+**P4.4b** remains blocked until ADR-012 is **Accepted**.
 
 Do not begin a later slice before its predecessor’s review/QA evidence is
 recorded.
@@ -344,7 +357,7 @@ Stop as `BLOCKED` (do not guess) when:
 
 ## Exact Next Step
 
-Ratify the **[TO RATIFY]** tolerances and the operation names, then execute
-**2B.0 → 2B.1** (schema + bridge), followed by **2B.2** (Procrustes), before any
-`transformed` inter-study link can be produced. In parallel, ratify **ADR-012**
-and its Open Decisions so **P4.4b** can be implemented after P4.6.
+2B.3b/2B.5 is closed. Do not consume MI evidence in `view-engine`: 2B.4's R11-B
+policy keeps absent `errorMarginMm` non-admissible, and P4.4b remains blocked
+until ADR-012 is Accepted. Any next implementation objective requires its own
+phase-aware scope and acceptance plan.

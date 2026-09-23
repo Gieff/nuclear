@@ -1,18 +1,17 @@
-"""Phase 2B.3a evidence for the deterministic Mutual-Information rigid core.
+"""Core evidence for the deterministic Mutual-Information rigid registration.
 
 Covers the ratified R4 protocol on the synthetic phantom (2B-T1 recovery), the
-strict ``P_target = M . P_source`` convention with an empirical direction check,
-bitwise determinism, rigidity/validity, provenance completeness, the fail-closed
-refusals (degenerate evidence and a directly-invoked non-rigid guard), and the
-re-assertion that the IPC ``mode: 'rigid'`` path still raises ``-32011``.
-
-Residual arithmetic here is independent pure numpy recomputation, not worker
-code. R3's bounds are a **fixture criterion**, not a clinical tolerance.
+strict ``P_target = M . P_source`` convention, bitwise determinism, provenance
+completeness and the fail-closed refusals. The real-worker IPC path is exercised
+in ``test_registration_operations.py``; this file also provides the synthetic
+MI DICOM pair helper used there. R3's bounds are a fixture criterion, not a
+clinical tolerance.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import json
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -43,28 +42,10 @@ from dicom.registration_mi import (
     rigidity_violation,
     single_threaded,
 )
-from dicom.registration_operations import registration_operation
-from worker.protocol import OPERATION_NOT_IMPLEMENTED, ProtocolError
 
 RMS_TOLERANCE_MM = 0.5
 MAX_TOLERANCE_MM = 0.5
 ROTATION_TOLERANCE_DEG = 0.5
-
-FROZEN_NOW = datetime(2026, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
-
-RIGID_REQUEST: dict[str, Any] = {
-    "mode": "rigid",
-    "transformId": "xform-rigid-1",
-    "outOfDomainBehavior": "clamp",
-    "fixed": {
-        "locator": {"kind": "local-folder", "path": "/data/fixed"},
-        "seriesInstanceUID": "1.2.3.4.5",
-    },
-    "moving": {
-        "locator": {"kind": "local-folder", "path": "/data/moving"},
-        "seriesInstanceUID": "1.2.3.4.6",
-    },
-}
 
 FloatArray = NDArray[np.float64]
 
@@ -227,7 +208,7 @@ def test_non_rigid_guard_is_pure_and_refuses_transforms() -> None:
 
 def test_outcome_guard_flags_failure_and_non_finite_metric() -> None:
     assert outcome_violation(1.0, "Step too small after 3 iterations.") is None
-    assert outcome_violation(float("nan"), "Step too small.") == "invalid-residual"
+    assert outcome_violation(float("nan"), "Step too small.") == "invalid-metric"
     assert (
         outcome_violation(1.0, "Exception thrown during optimisation")
         == "optimisation-failed"
@@ -250,11 +231,28 @@ def test_single_threaded_forces_one_and_restores_even_on_failure() -> None:
         sitk.ProcessObject.SetGlobalDefaultNumberOfThreads(original)
 
 
-def test_rigid_ipc_mode_still_returns_not_implemented() -> None:
-    with pytest.raises(ProtocolError) as excinfo:
-        registration_operation(RIGID_REQUEST, clock=lambda: FROZEN_NOW)
-    error = excinfo.value
-    assert error.code == OPERATION_NOT_IMPLEMENTED == -32011
-    assert error.data["mode"] == "rigid"
-    assert "transform" not in error.data
-    assert "matrix4x4" not in error.data
+MI_FIXED_SERIES = "1.2.826.0.1.3680043.10.7100.2"
+MI_MOVING_SERIES = "1.2.826.0.1.3680043.10.7100.3"
+MI_ROOT = Path(__file__).resolve().parents[2] / "tests" / "rendering" / "fixtures" / "volumes"
+
+
+def _mi_side(label: str, series_uid: str) -> dict[str, Any]:
+    """Build one rigid side from the committed deterministic MI fixture."""
+    fingerprint = json.loads((MI_ROOT / label / "expected-fingerprint.json").read_text())
+    return {
+        "locator": {"kind": "local-folder", "path": str(MI_ROOT / label / "instances")},
+        "seriesInstanceUID": series_uid,
+        "expectedFingerprint": fingerprint,
+        "expectedFrameOfReferenceUID": fingerprint["frameOfReferenceUID"],
+    }
+
+
+def mi_rigid_request() -> dict[str, Any]:
+    """Return the committed-fixture ``mode: 'rigid'`` request (frozen fingerprints)."""
+    return {
+        "mode": "rigid",
+        "transformId": "xform-mi-ipc",
+        "outOfDomainBehavior": "clamp",
+        "fixed": _mi_side("mi-fixed", MI_FIXED_SERIES),
+        "moving": _mi_side("mi-moving", MI_MOVING_SERIES),
+    }

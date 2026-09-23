@@ -32,7 +32,7 @@ const {
 } = await import('./fixtures/worker-registration-requests.js');
 const {
   JSON_RPC_INVALID_PARAMS,
-  NUCLEAR_OPERATION_NOT_IMPLEMENTED,
+  NUCLEAR_SOURCE_UNAVAILABLE,
   NUCLEAR_REGISTRATION_INVALID,
   REGISTRATION_METHOD,
   ScientificWorkerBridge,
@@ -58,7 +58,7 @@ async function rejectionOf(
 }
 
 describe('NuClear Phase 2B.1/2B.2 — nuclear.registration real worker', () => {
-  it('round-trips landmarks, refuses scientifically and keeps the rigid stub', async () => {
+  it('round-trips landmarks, refuses scientifically and accepts the rigid schema', async () => {
     assert.ok(existsSync(PYTHON), `worker venv python not found at ${PYTHON}`);
     const bridge = new ScientificWorkerBridge({
       command: PYTHON,
@@ -80,9 +80,10 @@ describe('NuClear Phase 2B.1/2B.2 — nuclear.registration real worker', () => {
       );
       assert.ok(validRejection instanceof WorkerProtocolError);
       const notImplemented = validRejection as WorkerProtocolFailure;
-      assert.equal(notImplemented.code, NUCLEAR_OPERATION_NOT_IMPLEMENTED);
-      assert.equal(notImplemented.data.phaseSlice, '2B.1');
-      assert.equal(notImplemented.data.mode, 'rigid');
+      // Phase 2B.3b: rigid is implemented and its per-side fingerprint/FoR
+      // schema is satisfied, so the refusal is the missing real source — not
+      // the retired `-32011` stub and never a fabricated transform.
+      assert.equal(notImplemented.code, NUCLEAR_SOURCE_UNAVAILABLE);
       assert.equal('transform' in notImplemented.data, false);
       assert.equal('matrix4x4' in notImplemented.data, false);
 
@@ -157,10 +158,27 @@ describe('NuClear Phase 2B.1 — registration mappers (wire-shape only)', () => 
       fixed: {
         locator: { kind: 'local-folder', path: '/data/fixed' },
         seriesInstanceUID: '1.2.3.4.5',
+        expectedFingerprint: {
+          studyInstanceUID: '1.2.3.4',
+          seriesInstanceUID: '1.2.3.4.5',
+          instanceCount: 3,
+          contentDigest: `sha256:${'0'.repeat(64)}`,
+          totalBytes: 1234,
+          geometricDigest: `sha256:${'1'.repeat(64)}`,
+        },
+        expectedFrameOfReferenceUID: '1.2.3.4.5.for',
       },
       moving: {
         locator: { kind: 'local-folder', path: '/data/moving' },
         seriesInstanceUID: '1.2.3.4.6',
+        expectedFingerprint: {
+          studyInstanceUID: '1.2.3.4',
+          seriesInstanceUID: '1.2.3.4.6',
+          instanceCount: 3,
+          contentDigest: `sha256:${'2'.repeat(64)}`,
+          geometricDigest: `sha256:${'3'.repeat(64)}`,
+        },
+        expectedFrameOfReferenceUID: '1.2.3.4.6.for',
       },
     });
     assert.deepEqual(registrationRequestParams(landmarkRequest()), {

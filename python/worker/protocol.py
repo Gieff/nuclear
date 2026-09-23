@@ -24,6 +24,11 @@ DICOM_GEOMETRY_METHOD = "nuclear.dicom.geometry"
 DICOM_COMPATIBILITY_METHOD = "nuclear.dicom.compatibility"
 QUANTITATION_SUVBW_METHOD = "nuclear.quantitation.suvbw"
 REGISTRATION_METHOD = "nuclear.registration"
+#: ADR-013 §2: decode a DICOM series into a worker-owned binary payload and
+#: return an opaque transport descriptor (no voxels in JSON).
+DICOM_VOLUME_METHOD = "nuclear.dicom.volume"
+#: ADR-013 §2/§7: idempotent release of one volume handle.
+VOLUME_RELEASE_METHOD = "nuclear.volume.release"
 SUPPORTED_PROTOCOL_VERSIONS: tuple[str, ...] = (PROTOCOL_VERSION,)
 
 PARSE_ERROR = -32700
@@ -38,6 +43,15 @@ OPERATION_NOT_IMPLEMENTED = -32011
 #: degenerate landmarks, improper/reflection fit) failed fail-closed. Ratified
 #: by the phase owner on 2026-09-22 (2B.0 R10).
 REGISTRATION_INVALID = -32012
+#: ADR-013 §8 pixel/volume transport failure taxonomy (`-32013..-32018`).
+#: Every code carries a non-empty ``data.diagnostic``, a ``reason`` from the
+#: closed enum in ADR-013 §8, and never a partial payload or transform.
+VOLUME_DECODE_FAILED = -32013
+VOLUME_LIMIT_EXCEEDED = -32014
+VOLUME_FINGERPRINT_MISMATCH = -32015
+VOLUME_TRANSPORT_INTEGRITY = -32016
+VOLUME_HANDLE_INVALID = -32017
+VOLUME_CLEANUP_FAILED = -32018
 
 STANDARD_ERROR_CODES = frozenset(
     {PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR}
@@ -48,6 +62,12 @@ NUCLEAR_RESERVED_CODES = frozenset(
         SOURCE_UNAVAILABLE,
         OPERATION_NOT_IMPLEMENTED,
         REGISTRATION_INVALID,
+        VOLUME_DECODE_FAILED,
+        VOLUME_LIMIT_EXCEEDED,
+        VOLUME_FINGERPRINT_MISMATCH,
+        VOLUME_TRANSPORT_INTEGRITY,
+        VOLUME_HANDLE_INVALID,
+        VOLUME_CLEANUP_FAILED,
     }
 )
 
@@ -61,6 +81,12 @@ ERROR_MESSAGES: dict[int, str] = {
     SOURCE_UNAVAILABLE: "Source unavailable",
     OPERATION_NOT_IMPLEMENTED: "Operation not implemented",
     REGISTRATION_INVALID: "Registration invalid",
+    VOLUME_DECODE_FAILED: "Volume decode failed",
+    VOLUME_LIMIT_EXCEEDED: "Volume limit exceeded",
+    VOLUME_FINGERPRINT_MISMATCH: "Volume fingerprint mismatch",
+    VOLUME_TRANSPORT_INTEGRITY: "Volume transport integrity",
+    VOLUME_HANDLE_INVALID: "Volume handle invalid",
+    VOLUME_CLEANUP_FAILED: "Volume cleanup failed",
 }
 
 

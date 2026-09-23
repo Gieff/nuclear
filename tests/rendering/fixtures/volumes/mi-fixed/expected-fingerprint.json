@@ -1,0 +1,10 @@
+{
+  "studyInstanceUID": "1.2.826.0.1.3680043.10.7100.1",
+  "seriesInstanceUID": "1.2.826.0.1.3680043.10.7100.2",
+  "instanceCount": 48,
+  "contentDigest": "sha256:acea298d704b24e45fe4286287473c0787592c0d5fe6017b4a340906b87fd8f3",
+  "geometricDigest": "sha256:2affc2e2a5c5509fcfa5d36c9bd347aeee3eedc95794de010a0fd7695e3e5999",
+  "sopInstanceUIDsHash": "sha256:c2a95b3b29f400d390e9e68cade489eb521e486eeec20a4aae7d4ed1e72f4d51",
+  "frameOfReferenceUID": "1.2.826.0.1.3680043.10.7100.4",
+  "totalBytes": 257116
+}

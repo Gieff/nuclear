@@ -22,6 +22,7 @@ import { WorkerContractError } from './errors.js';
 import { asBoolean, asNumber, asRecord, asString, matrix4x4 } from './narrowing.js';
 import { mapWorkerMetadata } from './protocol.js';
 import { requireSemanticEvidence } from './registration-evidence.js';
+import { sourceFingerprintParams } from './volume-descriptor.js';
 import type {
   WorkerRegistrationRequest,
   WorkerRegistrationResult,
@@ -165,10 +166,14 @@ export function registrationRequestParams(
       fixed: {
         locator: request.fixed.locator,
         seriesInstanceUID: request.fixed.seriesInstanceUID,
+        expectedFingerprint: sourceFingerprintParams(request.fixed.expectedFingerprint),
+        expectedFrameOfReferenceUID: request.fixed.expectedFrameOfReferenceUID,
       },
       moving: {
         locator: request.moving.locator,
         seriesInstanceUID: request.moving.seriesInstanceUID,
+        expectedFingerprint: sourceFingerprintParams(request.moving.expectedFingerprint),
+        expectedFrameOfReferenceUID: request.moving.expectedFrameOfReferenceUID,
       },
     };
   }
