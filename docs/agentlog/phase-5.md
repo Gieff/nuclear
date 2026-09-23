@@ -771,3 +771,129 @@ and keep `figure-engine` free of `@cornerstonejs/*`/WebGL ownership.
   run), `npm run build`, pytest 411, mypy 77, file-length (max 268), and 8/8
   runtime spot-checks against the fixture transforms. Confirmed no forbidden
   runtime imports. Image/pixel-tolerance gate **NOT YET APPLICABLE**.
+
+---
+
+# Slice Record — P5.5a (publication renderer port + live orchestration)
+
+## 1. What Was Implemented
+
+- **Renderer port contract** (`render-port.ts`): `PublicationPanelRenderRequest`
+  (resolved `MedicalViewState` + per-panel `TemporaryRenderTargetSpec` +
+  render-state hash), `PublicationPanelRaster` (neutral base64 RGBA + renderer
+  identity) and `PublicationRendererPort`. `figure-engine` defines only the
+  contract; the composition root implements it over the medical `RenderTarget`
+  capability (ADR-009), so `figure-engine` imports no `@cornerstonejs/*` or
+  `medical-engine` and owns no WebGL context/canvas.
+- **Live orchestration** (`render-orchestrator.ts`): `renderLivePublication`
+  derives each panel's temporary target from the panel content aperture ×
+  request DPI, renders sequentially through the port in request order, and
+  returns a frozen `{ sheetId, renderMode, renderStateHash, panels }`.
+- **Raster validation** (`render-raster.ts`, internal): fail-closed on a wrong
+  panel, wrong dimensions (no upscaling/downscaling), a wrong byte length or a
+  blank renderer identity (`FIGURE_PUBLICATION_RASTER_INVALID`).
+- **Fail-closed orchestration**: a non-live `renderMode`, a non-temporary
+  target, any non-`online` source (incl. `loading`), a non-`live-medical`
+  `renderSource`, a panel/prepared-view/sheet-binding mismatch, a port failure
+  (wrapped with `cause`) or a malformed raster is refused with a typed
+  `FigurePublicationError` (`FIGURE_PUBLICATION_RENDER_UNAVAILABLE`,
+  `FIGURE_PUBLICATION_RENDER_FAILED`, `FIGURE_PUBLICATION_RASTER_INVALID`).
+- **Explicit split**: the real-harness adapter evidence is **P5.5b**, not part
+  of this slice (see plan/runbook).
+
+## 2. Files Changed
+
+Created:
+- `packages/figure-engine/src/publication/render-port.ts`
+- `packages/figure-engine/src/publication/render-orchestrator.ts`
+- `packages/figure-engine/src/publication/render-raster.ts`
+- `tests/figure-engine/publication-render.test.ts`
+
+Modified:
+- `packages/figure-engine/src/publication/errors.ts` (three render/raster codes)
+- `packages/figure-engine/src/publication/index.ts` (barrel adds port + orchestrator; `render-raster` stays internal)
+- `docs/plans/PHASE_5_FIGURE_ENGINE_PLAN.md`,
+  `docs/plans/PHASE_5_OPENCODE_RUNBOOK.md` (P5.5a COMPLETE / P5.5b NOT YET IMPLEMENTED)
+- `docs/agentlog/phase-5.md` — this handover.
+
+Not modified: `shared-types`, `rendering-presets`, `medical-engine`,
+`view-engine`, `project-model`, `ui`, `apps/*`, `python/`, `AGENTS.md`,
+`CHANGELOG.md`.
+
+## 3. Architectural Assumptions Made (boundary adherence)
+
+- The port is the single rendering seam; `figure-engine` never renders medical
+  data itself and never resizes a live canvas (`liveCanvasPolicy:
+  'never-resize-live-canvas'` on every per-panel target).
+- The per-panel target is the physical aperture (`contentSizeMm`) at the request
+  DPI, consistent with ratified OD-3.
+- A raster whose dimensions differ from the physically required aperture is
+  refused, never upscaled; the `byteLength` is re-derived from the required
+  dimensions (stricter, fail-closed).
+- No encoder/offline-preview path was added (P5.6/P5.7 remain pending).
+
+## 4. Tests Added & Executed
+
+- `node --test "tests/figure-engine/*.test.ts"` → **67 tests / 12 suites, 67
+  pass / 0 fail** (60 + 7 P5.5a). Coverage: the per-panel target (945×945 at
+  300 DPI for the 80 mm fixture), request order across two panels, frozen
+  result, and refusal cases for non-live mode, non-temporary target, every
+  non-online availability, non-live `renderSource`, wrong panel/dimensions/byte
+  length/identity, port failure with preserved cause, and malformed
+  request/port/sheet-binding.
+- `npm run typecheck` → **PASS**; `npm run build` → **PASS**.
+- `npm test` → **625 tests / 113 suites, 625 pass / 0 fail** (Phase 5 adds the 7
+  P5.5a tests). The phase-owner `listen EPERM` caveat still applies; the
+  figure-engine suite is green in both environments.
+- `npm run test:python` → **411 passed**; `npm run typecheck:python` → **clean,
+  77 files**.
+- File-length: largest Phase-5 source `request-validation.ts` = **268**;
+  `render-orchestrator.ts` = 229 (≤ Rule 02's 250 threshold), `render-raster.ts`
+  = 92, `render-port.ts` = 52. `git diff --check` → clean.
+
+## 5. Documentation, AgentLog & ADR Status
+
+- Plan/runbook split P5.5 into **P5.5a (COMPLETE)** and **P5.5b (real-harness
+  adapter, NOT YET IMPLEMENTED)**; no real-harness evidence is claimed.
+- No new ADR was required (ADR-014 D1/D3 and ADR-009 already cover the boundary).
+- This is the P5.5a AgentLog entry. `AGENTS.md`/`CHANGELOG.md` untouched.
+
+## 6. Project Model Impact
+
+None. No `.ncp` schema change and no `shared-types` contract change.
+
+## 7. Known Limitations & Technical Debt
+
+- **P5.5b pending:** the real-harness adapter (port implementation over
+  `captureTemporaryRenderTarget` in the controlled browser harness) is not
+  implemented; all evidence here is fake-port contract evidence.
+- The orchestrator trusts the caller-supplied `MedicalViewState` (validated by
+  `view-engine` upstream); it validates only the publication-relevant fields.
+- P5.6/P5.7 remain NOT YET IMPLEMENTED. No publication raster exists → image/
+  pixel tolerance gate **NOT YET APPLICABLE**.
+
+## 8. Exact Next Recommended Task
+
+Implement **P5.5b**: add a `PublicationRendererPort` implementation backed by
+`captureTemporaryRenderTarget` to the controlled browser harness and assert a
+panel-aperture capture, no-upscale refusal and live-canvas invariance. If the
+renderer harness is unavailable, report P5.5b `BLOCKED`. (Alternatively P5.6 may
+start after its encoder ADR; P5.5a is its declared predecessor.)
+
+---
+
+## Independent Verdicts — P5.5a
+
+- **`nuclear-reviewer` — PASS.** Verified the port contract boundary (no
+  `@cornerstonejs`/`medical-engine` import, no canvas ownership), the
+  orchestration (per-panel aperture × DPI target, request order, frozen result),
+  the complete fail-closed matrix and the docs split. One concern (sheet-binding
+  refusal branches untested) was closed in-slice by adding cases for a missing
+  sheet panel, a composer-view-instance mismatch and a binding
+  `preparedViewId` mismatch; a clarifying `byteLength` note was added.
+- **`nuclear-qa` — PASS (all 11 applicable gates).** Scope isolation,
+  `git diff --check`, `npm run typecheck`, focused **67/12**, `npm test`
+  **625/113/0** (no flake), `npm run build`, pytest 411, mypy 77, file-length
+  (`render-orchestrator.ts` 229 ≤ 250), and runtime fake-port spot-checks
+  (945×945 target, `missing` → `RENDER_UNAVAILABLE`, 512×512 → `RASTER_INVALID`).
+  Real-harness evidence **NOT YET APPLICABLE** (P5.5b).
