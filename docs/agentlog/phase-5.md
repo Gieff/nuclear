@@ -1302,3 +1302,193 @@ text/vector rasterization) remain tracked.
   (180×120 plan, layer rect 20,20,80×80, compose pixel at (20,20), missing/
   resampled raster refused, zero `node:*`/Buffer/DOM under `figure-engine/src`).
   Image/pixel tolerance on real datasets **NOT YET APPLICABLE**.
+
+---
+
+# Slice Record — P5.7 (hybrid vector PDF)
+
+## 1. What Was Implemented
+
+- **Ratified dependencies installed (ADR-015 Track 1).** `pdf-lib@1.17.1` and
+  `@pdf-lib/fontkit@1.1.1` were added as exact-pinned root devDependencies (the
+  concrete encoder is composition-root-shaped test infrastructure per OD-6d; the
+  `figure-engine` barrel stays free of pdf-lib/DOM/`node:*`). The **Inter
+  Regular** TTF (SIL OFL 1.1) is vendored at
+  `tests/export/fixtures/fonts/Inter-Regular.ttf` with `OFL.txt` (OD-6e).
+- **Pure PDF physical units** (`pdf-units.ts`): `PT_PER_INCH = 72`,
+  `mmToPoints`/`pointsToMm` (`(mm / 25.4) * 72`), the explicit y-down→PDF
+  bottom-left flip `pdfPointsFromSheetY`, and `pdfRectFromSheetRect` anchored at
+  the rect's **lower-left**. Non-finite lengths / non-positive sheet heights or
+  sizes are typed `FIGURE_UNITS_INVALID` refusals, never clamped. The sheet
+  rectangle type is reused from `layout.ts` (single source of truth).
+- **Hybrid PDF document contract** (`pdf-document.ts`): the pure
+  `PublicationPdfRequest` (sheet mm + DPI + nominal pixel dimensions, raster
+  layers, native `PublicationVectorLayer`s — text/rect/line in sheet mm,
+  declared metadata) and `buildPublicationPdfRequest(plan, editorial)`, which
+  re-validates the plan and all layers, validates the vectors/metadata, omits
+  opacity-0 layers (OD-4) and returns a frozen request. No `pdf-lib`, no DOM.
+- **Shared plan/layer validation** (`composition-validation.ts`, added during
+  review): the single source of truth for plan + per-layer checks
+  (shape, RGBA8 length, no-resampling at the plan DPI, sheet containment). The
+  P5.6 compositor (`compose-sheet.ts`) and the P5.7 PDF builder both use it, so a
+  hand-built/mutated plan cannot smuggle a below-density raster into the PDF path.
+- **Encoder port extension** (`encode-port.ts`): `EncodedArtifact.format` gains
+  `'pdf'`; `EncoderPort.encodePdf(request: PublicationPdfRequest)` is added. For
+  a PDF, `pixelDimensions` is the nominal full-sheet raster at the plan DPI
+  (provenance only) and `colorProfile` is `'srgb'`.
+- **Reference `pdf-lib` adapter** (`tests/export/fixtures/pdf-writer.ts`,
+  composition-root shape): `updateMetadata: false`; explicit payload metadata and
+  `/Producer`; `CreationDate`/`ModDate` only when the payload supplies a
+  parseable date (pdf-lib serialises UTC `D:…Z`); the full-page opaque background
+  as a native rect; each panel raster as exactly one image XObject placed at its
+  exact physical PDF rect; text/rect/line as native operators using the embedded
+  Inter subset (`/FontFile2`); a deterministic `/ID` = the two halves of a
+  SHA-256 over a canonical request hash; `save({ useObjectStreams: false,
+  addDefaultPage: false })` for stable object order. No wall-clock, randomness,
+  locale or resampling.
+- **Test-only PDF inspector** (`tests/export/fixtures/pdf-inspector.ts`):
+  dependency-free parsing of the Flate content streams, image XObjects, trailer
+  `/ID` and Info dictionary, plus a `q`/`Q`/`cm`/`Do` matrix evaluator and `Tm`
+  text-origin reader for exact geometric assertions.
+
+## 2. Files Changed
+
+Created:
+- `packages/figure-engine/src/publication/pdf-units.ts` (94)
+- `packages/figure-engine/src/publication/pdf-document.ts` (135)
+- `packages/figure-engine/src/publication/pdf-document-validation.ts` (193)
+- `packages/figure-engine/src/publication/pdf-validation-primitives.ts` (135)
+- `packages/figure-engine/src/publication/composition-validation.ts` (233)
+- `tests/export/fixtures/pdf-writer.ts` (250)
+- `tests/export/fixtures/pdf-inspector.ts` (228)
+- `tests/export/fixtures/fonts/Inter-Regular.ttf`, `…/OFL.txt`
+- `tests/export/pdf-units.test.ts` (83)
+- `tests/export/pdf-document.test.ts` (245)
+- `tests/export/pdf-encoder.test.ts` (201)
+
+Modified:
+- `package.json`, `package-lock.json` — exact devDeps `pdf-lib`, `@pdf-lib/fontkit`.
+- `packages/figure-engine/src/publication/{errors,encode-port,index}.ts` —
+  `FIGURE_PDF_DOCUMENT_INVALID`, `encodePdf`/`format: 'pdf'`, barrel exports.
+- `packages/figure-engine/src/publication/compose-sheet.ts` — now delegates to
+  `composition-validation.ts`; `assertPublicationCompositionPlan` re-validates all
+  layers (P5.6 behaviour preserved, 118 lines).
+- `tests/export/fixtures/reference-encoder.ts` — `encodePdf` wired into the port.
+- `docs/decisions/ADR-015-…md` — Implementation Note (P5.7 port shape/determinism).
+- `docs/plans/PHASE_5_FIGURE_ENGINE_PLAN.md`,
+  `docs/plans/PHASE_5_OPENCODE_RUNBOOK.md` — P5.7 COMPLETE; follow-up (c) tracked.
+- `docs/agentlog/phase-5.md` — this handover.
+
+Not modified: `shared-types`, `rendering-presets`, `medical-engine`,
+`view-engine`, `project-model`, `ui`, `apps/*`, `python/`, `AGENTS.md`,
+`CHANGELOG.md`, the Fase-1 oracle.
+
+## 3. Architectural Assumptions Made (boundary adherence)
+
+- The concrete `pdf-lib` writer lives only in `tests/export/fixtures/` (the
+  composition-root shape; ADR-014 D5/ADR-015 OD-6d). `packages/figure-engine/src`
+  imports no `pdf-lib`/`@pdf-lib`, no `node:*`, no DOM, no Cornerstone and no
+  `medical-engine`; the package graph stays acyclic and its dependency list is
+  unchanged.
+- The PDF is genuinely hybrid: only the medical panel is a raster XObject;
+  supplied text/rect/line are native operators with the embedded font and are
+  never rasterized; the whole page is never flattened.
+- Physical mm is primary; the pt conversion and y-flip are explicit and exact
+  (`String(mmToPoints(...))` asserted). Panel rasters are placed at their exact
+  physical rectangle with unchanged pixel dimensions — no resampling/upscale.
+- Determinism (OD-6f): fixed metadata, payload-only dates, explicit `/Producer`,
+  content-hash `/ID`, fixed object order; two encodes are byte-identical.
+- No editorial/clinical behaviour was invented: only caller-supplied primitives
+  are emitted. Mapping `FigureSheet` typography/decorations/annotations into
+  vectors is follow-up (c), not implemented.
+
+## 4. Tests Added & Executed
+
+- `node --test "tests/export/*.test.ts"` → **30 tests / 6 suites, 30 pass / 0
+  fail** (16 new P5.7: 5 units + 6 document incl. the review regression + 6
+  encoder; 13 pre-existing P5.6 + 1). Coverage: exact mm↔pt and y-flip; frozen
+  request; opacity-0 omission; metadata/vector/colour/opacity/size/out-of-sheet/
+  non-object typed refusals (never `TypeError`); unparseable-date refusal;
+  hand-built-plan resample/overflow/wrong-length refusals; byte-determinism;
+  one image XObject at the exact pt rect; native `Tj` + `/FontFile2`, no
+  `DCTDecode`/`JPXDecode`; exact text origin; `/ID` = request-hash halves;
+  explicit metadata/Producer and no dates when omitted.
+- `node --test "tests/figure-engine/*.test.ts"` → **67/12, pass** (regression;
+  no P5.1–P5.6 behaviour changed by the shared-validation refactor).
+- `npm test` → **657 tests / 120 suites, 657 pass / 0 fail**.
+- `npm run typecheck` → **PASS**; `npm run build` → **PASS**.
+- `npm run test:python` → **411 passed**; `npm run typecheck:python` → **clean,
+  77 files**.
+- File-length: largest package source `request-validation.ts` = 268 (≤ 250–300);
+  new `composition-validation.ts` 233; `pdf-writer.ts` 250 (test infrastructure,
+  at the ≤ 250 threshold). `git diff --check` → clean.
+
+## 5. Documentation, AgentLog & ADR Status
+
+- ADR-015 gained the P5.7 Implementation Note (formalised `encodePdf` port,
+  determinism, font, tracked follow-up); no decision changed.
+- Plan/runbook mark P5.7 COMPLETE and track follow-up (c)
+  (FigureSheet→`PublicationVectorLayer` mapping) so the "Vector PDF" gate is
+  scoped to the emission **mechanism**, not FigureSheet content.
+- `AGENTS.md`/`CHANGELOG.md` intentionally untouched.
+
+## 6. Project Model Impact
+
+None. No `.ncp` schema change and no `shared-types` contract change.
+
+## 7. Known Limitations & Technical Debt
+
+- **Follow-up (c) open:** `FigureSheet` panel letters/captions, decoration
+  borders, scalebars, measurement ticks and annotation kinds are **not** mapped
+  to vectors (needs ratified editorial/geometry semantics; arrow heads, ROI
+  rotation and text-box alignment are unratified). P5.7 emits caller-supplied
+  primitives only.
+- **Follow-ups (a)/(b) remain:** aperture-inside-panel placement; PNG/TIFF
+  text/vector rasterization.
+- `/ID` is derived from the canonical request, not the final emitted bytes, and
+  does not cover `PdfWriterOptions`; the reference adapter always embeds the
+  vendored Inter, so the font is constant (documented in the writer).
+- `pdf-writer.ts` sits at the 250-line ceiling; a production `apps/desktop`
+  adapter should be a distinct module, not a growth of this fixture.
+- Colour is declared sRGB with no embedded ICC and font embedding is a subset of
+  one vendored family (v1 scope per OD-6c/OD-6e).
+- No real-dataset image/pixel-tolerance gate → **NOT YET APPLICABLE**.
+
+## 8. Exact Next Recommended Task
+
+Proceed to **P5.8** (independent phase review, configured gates and the final
+eight-point phase handover), explicitly carrying follow-ups (a)/(b)/(c) and
+scoping the "Vector PDF" completion gate to the delivered emission mechanism.
+
+---
+
+## Independent Verdicts — P5.7
+
+- **`nuclear-reviewer` — PASS after two MEDIUM findings resolved.** Initial
+  review confirmed coordinate-system discipline, vector preservation, OD-6f
+  determinism, boundary purity, fail-closed negatives, file sizes and docs
+  honesty, and raised: **M1** `assertPublicationCompositionPlan` only validated
+  the plan, not the per-layer no-resampling/containment rules, while its JSDoc
+  claimed otherwise (a hand-built plan could reach the PDF adapter and be
+  stretched); **M2** the FigureSheet content→vectors follow-up was not tracked,
+  so the phase "Vector PDF" gate would overclaim. Resolution in-slice: the
+  per-layer checks were extracted to a shared `composition-validation.ts` used by
+  both the compositor and the PDF builder, `assertPublicationCompositionPlan` now
+  re-validates every layer, and a regression test asserts a hand-built 40×40 px /
+  80×80 mm plan, an off-sheet layer and a wrong RGBA8 length are refused; the
+  follow-up (c) is now recorded in the plan, runbook and ADR-015, and the gate
+  row scopes itself to the mechanism. LOW items were reworded/documented/removed
+  (date-message honesty, `/ID` scope, raster freeze rationale, opacity-0 note,
+  shared `isRecord`). Bounded re-review: **PASS**, all checks verified against
+  the current tree (30/6, 657/120, purity, sizes, docs).
+- **`nuclear-qa` — PASS (all applicable gates), twice.** Independently ran scope
+  isolation, `git diff --check`, `npm run typecheck`, focused **30/6** and
+  **67/12**, `npm test` **657/120/0**, `npm run build`, pytest 411, mypy 77,
+  file-length, and an independent reproduction (own script): byte-identical PDF
+  encodes, one 80×80 image XObject placed at `x=(20/25.4)*72`,
+  `y=((120−100)/25.4)*72`, `w=h=(80/25.4)*72`, native `Tj` + `/FontFile2`, no
+  `DCTDecode`/`JPXDecode`, `/ID` = request-hash halves, explicit metadata with no
+  dates when omitted and `D:20260923000000Z` when supplied, and the three
+  hand-mutated-plan refusals as typed `FIGURE_COMPOSITION_INVALID` (never
+  `TypeError`). Zero flakes. Real-dataset image/pixel-tolerance gate **NOT YET
+  APPLICABLE**.

@@ -189,6 +189,21 @@ Every delegation brief must include:
   an opening smaller than their sheet rectangle (with pixel-exact `pHYs`/`XResolution` provenance).
 - Still a follow-up sub-slice: editorial **text/vector rasterization** into the
   flattened PNG/TIFF (needs a font/vector-rasterizer decision).
+- **P5.7 delivered (COMPLETE).** The hybrid PDF path is behind the same
+  `EncoderPort` (`encodePdf`) with a dedicated pure `PublicationPdfRequest`
+  (`pdf-units.ts`, `pdf-document.ts`, `pdf-document-validation.ts`) and a
+  reference `pdf-lib` + embedded Inter adapter in `tests/export/fixtures/`
+  (OD-6d). Panel rasters become image XObjects at their exact physical rect;
+  caller-supplied text/line/rect are native PDF primitives with the embedded
+  font, never rasterized; the mm↔pt and y-down→PDF bottom-left transforms are
+  explicit and exactly tested; metadata and the trailer `/ID` are deterministic
+  (OD-6f) with an explicit `/Producer`.
+- **Tracked follow-up (c):** mapping `FigureSheet` panel letters, captions,
+  decoration borders, scalebars, measurement ticks and annotation kinds into
+  `PublicationVectorLayer`s is **not** delivered by P5.7 (their editorial/geometry
+  semantics are not yet ratified). The P5.7 "Vector PDF" gate therefore covers
+  the native-vector **emission mechanism**, not yet FigureSheet content; do not
+  claim otherwise in the phase handover.
 
 ## Required Gate Commands
 

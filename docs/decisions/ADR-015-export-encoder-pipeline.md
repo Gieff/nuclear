@@ -163,6 +163,36 @@ The owner ratified **Track 1** and every proposed default:
 - **OD-6g — P5.7 scope: ratified.** Medical raster plus native vectors only;
   offline `CachedPreview` panels remain out of scope pending a separate policy.
 
+## Implementation Note — P5.7 (2026-09-23)
+
+P5.7 formalised the PDF half of the encoder port described above; no decision
+changed, this records the exact shape that shipped.
+
+- `EncoderPort` gains `encodePdf(request: PublicationPdfRequest)` and
+  `EncodedArtifact.format` gains `'pdf'`. For a PDF artifact,
+  `pixelDimensions` is the **nominal full-sheet raster at the plan DPI**
+  (provenance only — the PDF itself is hybrid vector + panel rasters) and
+  `colorProfile` is `'srgb'` (OD-6c). The flattened-raster request is not reused
+  because a hybrid PDF must keep the panel rasters unflattened.
+- `PublicationPdfRequest` (pure, in `figure-engine`) carries the physical sheet
+  in mm + DPI, the panel raster layers, caller-supplied native vector layers
+  (text/rect/line in sheet mm) and declared metadata. `pdf-units.ts` owns the
+  exact `mm↔pt` conversion (`72 pt/in`) and the explicit y-down→PDF bottom-left
+  flip.
+- Determinism (OD-6f): `updateMetadata: false`; `/Producer` and all Info fields
+  come only from the declared payload; `CreationDate`/`ModDate` are written only
+  when the payload supplies a parseable date, and pdf-lib serialises them in UTC
+  (`D:…Z`); the trailer `/ID` is the two halves of a SHA-256 over a canonical
+  request hash. No wall-clock, randomness or locale enters the bytes.
+- Fonts: the vendored **Inter Regular** TTF (SIL OFL 1.1) is embedded as a
+  subset. The concrete `pdf-lib` + `@pdf-lib/fontkit` adapter lives in test
+  infrastructure as the composition-root shape (OD-6d).
+- Scope: P5.7 delivers the native-vector **emission mechanism**. Mapping
+  `FigureSheet` panel letters/captions/decoration borders/scalebars/measurement
+  ticks/annotations into `PublicationVectorLayer`s is a **tracked follow-up**
+  (Phase 5 plan, follow-up (c)) until those editorial/geometry semantics are
+  ratified; no such behaviour is invented here.
+
 ## Open Decisions (resolved by the ratification above)
 
 - **OD-6a — Raster track.** → Track 1.
