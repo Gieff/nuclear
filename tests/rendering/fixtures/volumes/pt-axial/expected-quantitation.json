@@ -17,7 +17,7 @@
   "suvFactor": 0.00022864801061323923,
   "diagnostics": [],
   "workerMetadata": {
-    "workerVersion": "0.4.0",
+    "workerVersion": "0.5.0",
     "operation": "nuclear.quantitation.suvbw",
     "timestamp": "2026-09-21T00:00:00Z",
     "parameters": {
