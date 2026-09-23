@@ -7,7 +7,14 @@
  * - Internal @nuclear/* dependencies across workspaces
  * - Python scientific worker (pyproject.toml, dicom/__init__.py, worker/__init__.py)
  * - Ratified protocol handshake fixture (response.handshake.json)
+ * - Committed rendering-fixture worker evidence (expected-geometry.json and
+ *   expected-quantitation.json under tests/rendering/fixtures/volumes)
  * - Provisioned Python .venv editable metadata (if present)
+ *
+ * Every declared mirror is required: a mirror that is missing or no longer
+ * carries a version field aborts the bump (fail-closed) instead of silently
+ * drifting. tests/tooling/version-sync.test.ts independently re-checks the
+ * same mirrors.
  *
  * Usage:
  *   node scripts/bump-version.mjs <new-version> [--dry-run]
@@ -117,53 +124,77 @@ for (const { path: pkgPath, json: pkg } of workspacePackages) {
   console.log(`✔ Updated ${relPath} to ${newVersion}${depsChanged ? ' (synchronized internal dependencies)' : ''}`);
 }
 
-// 4. Update Python scientific worker files
-const pythonUpdates = [
-  {
-    relPath: 'python/pyproject.toml',
-    regex: /(^version\s*=\s*)"[^"]+"/m,
-    replacement: `$1"${newVersion}"`,
-  },
-  {
-    relPath: 'python/dicom/__init__.py',
-    regex: /(^__version__\s*=\s*)"[^"]+"/m,
-    replacement: `$1"${newVersion}"`,
-  },
-  {
-    relPath: 'python/worker/__init__.py',
-    regex: /(^__version__\s*=\s*)"[^"]+"/m,
-    replacement: `$1"${newVersion}"`,
-  },
-];
-
-for (const { relPath, regex, replacement } of pythonUpdates) {
+// 4. Update every declared version mirror through one fail-closed helper: a
+//    missing file, or a file with no version field, aborts the bump instead of
+//    letting a mirror silently drift out of sync.
+function updateVersionMirror(relPath, regex) {
   const absPath = path.join(rootDir, relPath);
-  if (fs.existsSync(absPath)) {
-    const original = fs.readFileSync(absPath, 'utf-8');
-    const updated = original.replace(regex, replacement);
-    if (!isDryRun && updated !== original) {
-      fs.writeFileSync(absPath, updated, 'utf-8');
-    }
-    console.log(`✔ Updated ${relPath} to ${newVersion}`);
+  if (!fs.existsSync(absPath)) {
+    console.error(`Error: expected version mirror "${relPath}" is missing.`);
+    process.exit(1);
   }
-}
-
-// 5. Update ratified handshake response fixture
-const handshakeFixturePath = path.join(rootDir, 'tests/fixtures/protocol/response.handshake.json');
-if (fs.existsSync(handshakeFixturePath)) {
-  const relPath = path.relative(rootDir, handshakeFixturePath);
-  const original = fs.readFileSync(handshakeFixturePath, 'utf-8');
-  const updated = original.replace(
-    /("workerVersion"\s*:\s*)"[^"]+"/g,
-    `$1"${newVersion}"`
+  const original = fs.readFileSync(absPath, 'utf-8');
+  const countRegex = new RegExp(
+    regex.source,
+    regex.flags.includes('g') ? regex.flags : `${regex.flags}g`
   );
-  if (!isDryRun && updated !== original) {
-    fs.writeFileSync(handshakeFixturePath, updated, 'utf-8');
+  const matches = original.match(countRegex);
+  if (!matches || matches.length === 0) {
+    console.error(
+      `Error: "${relPath}" declares no version to synchronize; ` +
+        'a mirror was renamed or removed. Update scripts/bump-version.mjs.'
+    );
+    process.exit(1);
   }
-  console.log(`✔ Updated ${relPath} to ${newVersion}`);
+  const updated = original.replace(regex, `$1"${newVersion}"`);
+  if (!isDryRun && updated !== original) {
+    fs.writeFileSync(absPath, updated, 'utf-8');
+  }
+  const count = matches.length;
+  console.log(
+    `✔ Updated ${relPath} to ${newVersion} (${count} occurrence${count === 1 ? '' : 's'})`
+  );
 }
 
-// 6. Update local Python virtual environment metadata if present
+// 4a. Python scientific worker mirrors
+updateVersionMirror('python/pyproject.toml', /(^version\s*=\s*)"[^"]+"/m);
+updateVersionMirror('python/dicom/__init__.py', /(^__version__\s*=\s*)"[^"]+"/m);
+updateVersionMirror('python/worker/__init__.py', /(^__version__\s*=\s*)"[^"]+"/m);
+
+// 4b. Ratified protocol handshake response fixture
+updateVersionMirror(
+  'tests/fixtures/protocol/response.handshake.json',
+  /("workerVersion"\s*:\s*)"[^"]+"/g
+);
+
+// 4c. Committed rendering-fixture worker evidence. `expected-geometry.json` and
+//     `expected-quantitation.json` embed workerMetadata.workerVersion; leaving
+//     them stale fails python/tests/test_rendering_volume_fixtures.py
+//     (byte-identical regeneration) and therefore the release gate.
+const renderingVolumesDir = path.join(rootDir, 'tests/rendering/fixtures/volumes');
+const renderingEvidenceNames = new Set(['expected-geometry.json', 'expected-quantitation.json']);
+const renderingEvidencePaths = fs.existsSync(renderingVolumesDir)
+  ? fs
+      .readdirSync(renderingVolumesDir, { recursive: true })
+      .filter((entry) => typeof entry === 'string' && renderingEvidenceNames.has(path.basename(entry)))
+      .map((entry) => path.join(renderingVolumesDir, entry))
+      .sort()
+  : [];
+if (renderingEvidencePaths.length === 0) {
+  console.error(
+    'Error: no rendering-fixture worker evidence found under ' +
+      'tests/rendering/fixtures/volumes. Update scripts/bump-version.mjs.'
+  );
+  process.exit(1);
+}
+for (const absPath of renderingEvidencePaths) {
+  updateVersionMirror(
+    path.relative(rootDir, absPath),
+    /("workerVersion"\s*:\s*)"[^"]+"/g
+  );
+}
+
+// 5. Update local Python virtual environment metadata if present
 const venvLibDir = path.join(rootDir, 'python/worker/.venv/lib');
 if (fs.existsSync(venvLibDir)) {
   const pyVersions = fs.readdirSync(venvLibDir, { withFileTypes: true });
@@ -196,7 +227,7 @@ if (fs.existsSync(venvLibDir)) {
   }
 }
 
-// 7. Synchronize the root package-lock.json so a bump never leaves the
+// 6. Synchronize the root package-lock.json so a bump never leaves the
 //    lockfile stale. npm is the authority for the lockfile format; letting it
 //    reconcile workspace versions and internal dependency ranges avoids
 //    hand-editing npm-managed state.
