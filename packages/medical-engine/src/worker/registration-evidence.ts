@@ -14,9 +14,10 @@
  * `det === +1` rotation block; `affine` requires only the finite homogeneous
  * last row, so a legitimate scale/shear is **not** rejected.
  *
- * `errorMarginMm` is validated **only when present**: the admission policy for
- * an absent residual (ADR-012 OD-6) is an open architect decision and is
- * deliberately not encoded here.
+ * `errorMarginMm` is validated **only when present**: ADR-012 OD-6 is ratified
+ * (2026-09-23 — an absent residual is refused at link admission by the
+ * view-engine admission gate), and that policy is deliberately not encoded in
+ * this evidence validator.
  */
 
 import type { Matrix4x4, SpatialTransform } from '@nuclear/shared-types';

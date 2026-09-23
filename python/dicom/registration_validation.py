@@ -17,11 +17,14 @@ against the declared ``transformType``: ``identity`` requires the 4x4 identity;
 ``rigid`` requires a proper orthonormal ``det = +1`` block; ``affine`` requires
 only a finite homogeneous last row, so a legitimate scale/shear is accepted.
 
-**[POLICY-NEUTRAL ``errorMarginMm``].** The admission policy for a transform
-that carries **no** ``errorMarginMm`` (ADR-012 OD-6) is owned by the architect
-and is still open. This validator therefore validates ``errorMarginMm`` **only
-when the key is present** (finite and ``>= 0``); an absent residual is neither
-accepted nor rejected here.
+**[POLICY-NEUTRAL ``errorMarginMm``].** ADR-012 OD-6 is **ratified**
+(2026-09-23): a transform with **no** ``errorMarginMm`` is refused at link
+admission (``LINK_TRANSFORM_ERROR_MARGIN_MISSING``); that policy lives at the
+link-admission gate, not in this validator. This validator therefore still
+validates ``errorMarginMm`` **only when the key is present** (finite and
+``>= 0``); an absent residual is neither accepted nor rejected here — valid
+evidence without a residual remains structurally valid but is never admissible
+to a link.
 
 **[NUMERICAL GUARD, NOT A CLINICAL TOLERANCE].** :data:`NUMERICAL_GUARD` is a
 floating-point guard around an exact proper rotation and a homogeneous last
@@ -183,8 +186,9 @@ def validate_spatial_transform_evidence(
     present ``errorMarginMm`` finite and ``>= 0``; and a ``matrix4x4`` coherent
     with ``transformType`` (``identity`` -> the identity; ``rigid`` -> proper
     orthonormal; ``affine`` -> finite with a homogeneous last row). An **absent**
-    ``errorMarginMm`` is accepted here: its admission policy is an open architect
-    decision (ADR-012 OD-6).
+    ``errorMarginMm`` is accepted here: its admission policy is ratified
+    (ADR-012 OD-6, 2026-09-23 — refused at link admission) and is deliberately
+    not encoded in this evidence validator.
 
     Args:
         transform: The ``SpatialTransform``-shaped mapping (the ``transform``
