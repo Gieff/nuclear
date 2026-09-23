@@ -96,19 +96,26 @@ Every delegation brief must include:
   explicit `allow-offline-preview`. `missing`/`mismatch` always refuse.
 - The result must be accepted by the Fase-1 `isPublicationRenderRequest` oracle.
 
-### P5.3 — Framing/Layout Transforms
+### P5.3 — Framing/Layout Transforms (BLOCKED on OD-1/OD-2/OD-3)
 
-- Do not implement until ADR-014’s open decisions on framing arithmetic,
-  rotation origin and `contentScale` are resolved. Any transform must be pure,
-  invertible where required and expressed in physical units.
+- Do not implement until ADR-014's open decisions on framing arithmetic
+  (OD-1), rotation origin (OD-2) and `contentScale` application (OD-3) are
+  ratified by an ADR-014 amendment. Any transform must be pure, invertible where
+  required and expressed in physical units.
+- A non-zero rotation stays a typed refusal until OD-2 is ratified.
 
-### P5.4 — Annotation Projection and Anchor Policy
+### P5.4 — Annotation Projection and Anchor Policy (BLOCKED on P5.3 + OD-4)
 
+- Blocked on P5.3 and on ADR-014 OD-4 (reprojection chain, plane tolerance,
+  fade band, offline-panel policy).
 - Patient-anchored annotations keep their LPS anchor and are reprojected through
   the declared coordinate chain; the out-of-plane behaviour follows the
   declared `planeToleranceMm` and `hide`/`fade` policy. Panel/sheet-anchored
   editorial objects never participate in the medical transform.
 - Screen pixels are never persisted as an anchor.
+- The only ADR-free alternative is an explicitly scoped
+  **editorial-annotations-only** slice (panel-/sheet-anchored), which must not
+  implement patient LPS reprojection.
 
 ### P5.5 — Publication Renderer Port
 
