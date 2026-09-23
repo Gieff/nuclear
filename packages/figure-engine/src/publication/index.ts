@@ -1,5 +1,5 @@
 /**
- * @nuclear/figure-engine — publication subsystem barrel (P5.1, P5.2).
+ * @nuclear/figure-engine — publication subsystem barrel (P5.1–P5.4).
  *
  * Re-exports the Node-safe publication core: typed fail-closed errors, the
  * physical mm <-> pixel units, panel/sheet raster dimensioning, figure-sheet
@@ -14,6 +14,7 @@ export * from './panel-raster.js';
 export * from './framing.js';
 export * from './layout.js';
 export * from './sheet-placement.js';
+export * from './annotation-policy.js';
 export * from './provenance.js';
 export * from './targets.js';
 export * from './request-types.js';

@@ -517,3 +517,131 @@ anchors unchanged.
   spot-checks of the ratified OD-1/OD-2 values (21/21 and 42/42 round-trips at
   ε = 1e-9). No unexpected deltas; image/pixel-tolerance gate **NOT YET
   APPLICABLE**.
+
+---
+
+# Slice Record — P5.4 (OD-4 annotation visibility policy; projection BLOCKED on OD-5)
+
+## 1. What Was Implemented
+
+- **`resolvePatientAnnotationVisibility`** (`annotation-policy.ts`): the
+  ratified ADR-014 OD-4 visibility/opacity policy, pure and Node-safe.
+  - `availability !== 'online'` (`loading`, `offline-cached`, `missing`,
+    `mismatch`) ⇒ hidden fail-closed.
+  - `planeToleranceMm === 0` ⇒ no fade band: visible only at `|d| === 0`.
+  - `planeToleranceMm > 0` with `outOfPlaneBehavior: 'fade'`: visible at opacity
+    1 while `|d| ≤ tol`, linear `1 → 0` over `(tol, 2·tol]`, hidden beyond.
+  - `outOfPlaneBehavior: 'hide'`: hard cutoff at the tolerance.
+  - Signed distances are folded to magnitude; distances in mm. Malformed input
+    (unknown availability/behaviour, non-finite distance, non-finite or
+    negative tolerance) refuses `FIGURE_ANNOTATION_INVALID`.
+- **Explicit interpretation recorded:** ADR-014 OD-4 gained an “Interpretation
+  note (subject to owner confirmation)” stating that the ratified fade band
+  describes `'fade'`, that `'hide'` is a hard cutoff at the tolerance, and that
+  `planeToleranceMm = 0` is a hard cutoff in both behaviours — so the reading of
+  the frozen `outOfPlaneBehavior` field is not left implicit in code.
+- **`FIGURE_ANNOTATION_INVALID`** error code and barrel export added.
+
+## 2. Files Changed
+
+Created:
+- `packages/figure-engine/src/publication/annotation-policy.ts`
+- `tests/figure-engine/annotation-policy.test.ts`
+
+Modified:
+- `packages/figure-engine/src/publication/errors.ts` (+`FIGURE_ANNOTATION_INVALID`)
+- `packages/figure-engine/src/publication/index.ts` (barrel; header P5.1–P5.4)
+- `docs/decisions/ADR-014-…md` (OD-4 interpretation note)
+- `docs/plans/PHASE_5_FIGURE_ENGINE_PLAN.md`,
+  `docs/plans/PHASE_5_OPENCODE_RUNBOOK.md` (P5.4 PARTIAL + OD-5a/b/c blocker;
+  opacity-0 compositor note)
+- `docs/agentlog/phase-5.md` — this handover.
+
+Not modified: `shared-types`, `rendering-presets`, `medical-engine`,
+`view-engine`, `project-model`, `ui`, `apps/*`, `python/`, `AGENTS.md`,
+`CHANGELOG.md`.
+
+## 3. Architectural Assumptions Made (boundary adherence) — and the OD-5 block
+
+- **No geometry was invented.** The `LPS → view plane → viewport` projection is
+  **NOT implemented** and no partial projection code exists. It is blocked
+  because the displayed-plane definition and the content semantics of
+  `CoordinateTransformSet.patientToViewPlane` / `viewPlaneToViewport` are
+  unratified: the matrices are placeholder transforms that are only carried
+  (`patientToViewPlane` identity, `viewPlaneToViewport` identity-plus-256-
+  translation in every existing artifact; `medical-engine` never composes or
+  re-derives them — ADR-008 step 4 / ADR-009), and `medical-engine` refuses
+  non-neutral slice positioning (`referenceLocation` non-zero /
+  `sliceOffsetMm !== 0`) per ADR-008.
+- The out-of-plane distance is therefore an **explicit input** supplied by the
+  medical-chain owner, not derived by `figure-engine`.
+- `figure-engine` imports remain type-only `@nuclear/shared-types` or local; no
+  React/DOM/Cornerstone/`medical-engine` runtime import.
+
+## 4. Tests Added & Executed
+
+- `node --test "tests/figure-engine/*.test.ts"` → **52 tests / 10 suites, 52
+  pass / 0 fail** (18 P5.1 + 16 P5.2 + 13 P5.3 + 5 P5.4). P5.4 coverage: every
+  availability state × both behaviours at on/off-plane distances; tolerance-0
+  exact-plane ±ε; the fade band endpoints (`tol`→1, `2·tol`→opacity 0,
+  `2·tol+ε`→hidden, midpoint 0.5); the `hide` cutoff including at `2·tol`;
+  signed distances; malformed-input refusals incl. NaN tolerance and ±∞
+  distance.
+- `npm run typecheck` → **PASS**; `npm run build` → **PASS**.
+- `npm test` → **610 tests / 111 suites, 610 pass / 0 fail** (re-baselined from
+  the recorded 599/109; the +11/+2 delta is the P5.4 tests plus rendering-suite
+  registration/anomaly in this environment — **not** a Phase 5 change). The
+  phase-owner `listen EPERM` caveat still applies; the figure-engine suite is
+  green in both environments.
+- `npm run test:python` → **411 passed**; `npm run typecheck:python` → **clean,
+  77 files**.
+- File-length: largest Phase-5 source `request-validation.ts` = **268**;
+  `annotation-policy.ts` = 108; all ≤ 300. `git diff --check` → clean.
+
+## 5. Documentation, AgentLog & ADR Status
+
+- ADR-014 OD-4 amended with the interpretation note (owner-confirmable).
+- Plan/runbook record P5.4 as PARTIAL, the projection blocked on OD-5a/b/c, and
+  the two unblocked paths (ratify OD-5, or proceed to P5.5).
+- This is the P5.4 AgentLog entry. `AGENTS.md`/`CHANGELOG.md` untouched.
+
+## 6. Project Model Impact
+
+None. No `.ncp` schema change and no `shared-types` contract change.
+
+## 7. Known Limitations & Technical Debt
+
+- **Patient projection blocked on OD-5.** Until ratified, the distance is
+  caller-supplied and no LPS reprojection happens.
+- `'hide'` semantics are an interpretation pending owner confirmation.
+- At exactly `2 × planeToleranceMm` the policy returns `opacity: 0`; the P5.6/P5.7
+  compositor must treat opacity 0 as “emit nothing”.
+- P5.5–P5.7 remain NOT YET IMPLEMENTED. No publication raster → image/pixel
+  tolerance gate **NOT YET APPLICABLE**.
+
+## 8. Exact Next Recommended Task
+
+Either ratify **OD-5a/b/c** (ADR-014 follow-up) to unblock the patient
+projection, or proceed to **P5.5** (publication renderer port + orchestration),
+which depends on P5.2 and is unblocked. If adopting the `'hide'`
+interpretation, confirm it (or supersede the interpretation note).
+
+---
+
+## Independent Verdicts — P5.4
+
+- **`nuclear-reviewer` — PASS** (one LOW concern C1, resolved in-slice). C1: the
+  `'hide'` reconciliation was honest and conservative but recorded only in code;
+  resolved by the ADR-014 OD-4 interpretation note. Nits addressed: opacity-0
+  compositor note (`annotation-policy.ts` header + runbook), `index.ts` header,
+  plan “identity placeholders” wording corrected, and extra negative tests
+  (NaN tolerance, ±∞ distance, `hide` at `2·tol`). Verified: OD-4 fidelity,
+  blocked-projection justification (repo-wide grep; zero partial projection
+  code), no-invented-behaviour, boundary and file sizes.
+- **`nuclear-qa` — PASS (all gates).** Independently ran scope isolation,
+  `git diff --check`, `npm run typecheck`, focused 52/10, `npm test`
+  **610/111/0** (one rendering-harness timeout flake on the first run, external
+  to Phase 5, green on rerun), `npm run build`, pytest 411, mypy 77,
+  file-length (max 268), and 35/35 runtime policy spot-checks. Confirmed no
+  LPS→viewport projection code in `figure-engine`. Image/pixel-tolerance gate
+  **NOT YET APPLICABLE**.
