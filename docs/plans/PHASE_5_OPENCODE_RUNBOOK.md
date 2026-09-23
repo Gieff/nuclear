@@ -204,6 +204,12 @@ Every delegation brief must include:
   semantics are not yet ratified). The P5.7 "Vector PDF" gate therefore covers
   the native-vector **emission mechanism**, not yet FigureSheet content; do not
   claim otherwise in the phase handover.
+- **Follow-up (c) is gated on `docs/decisions/ADR-016-editorial-vector-mapping.md`
+  (Proposed).** Its OD-7a…OD-7j record the exact under-specified semantics
+  (paint order, label/box anchors, stroke alignment, dash/arrowhead/tick
+  geometry, font-family/weight, ROI rotation, patient endpoint projection). Do
+  not implement any part of (c) before the phase owner fills the ADR-016
+  Ratification Record; an unsupported element stays a typed fail-closed refusal.
 
 ## Required Gate Commands
 

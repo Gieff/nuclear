@@ -1492,3 +1492,35 @@ scoping the "Vector PDF" completion gate to the delivered emission mechanism.
   hand-mutated-plan refusals as typed `FIGURE_COMPOSITION_INVALID` (never
   `TypeError`). Zero flakes. Real-dataset image/pixel-tolerance gate **NOT YET
   APPLICABLE**.
+
+---
+
+# Planning Entry — follow-up (c) audit and ADR-016 (editorial vector mapping) proposed
+
+Not an implementation slice. Follow-up **(c)** was audited against the frozen
+editorial contracts, `NUCLEAR_ARCHITECTURE_V3.md` §21–§26/§30 and the P5.x
+ratified transforms. The P5.7 emission mechanism is complete, but the
+`FigureSheet` → `PublicationVectorLayer` mapping is **semantically
+under-specified**, so implementing it now would violate Rule 01 (no invented
+geometry) and the plan's stop condition.
+
+- **Determined:** panel background (panel sheet rect + colour) — still needs a
+  paint-order decision; panel border path/width/colour — still needs a
+  stroke-alignment and dash-pattern decision; `line` endpoints — still needs
+  optional-stroke defaults and patient-endpoint projection; ROI geometry — needs
+  ellipse/polygon primitives the emitter does not yet have.
+- **Under-specified (no source resolves it):** label/caption and text-box
+  anchors, padding/alignment, `fontFamily` (only one embedded Inter face),
+  `weight: 'bold'`, dashed/dotted patterns, arrowhead geometry, scalebar/measurement
+  tick geometry, number formatting, and the editorial paint order. Architecture
+  §30 itself scopes native vectors to semantics that "lo consentono".
+- **`docs/decisions/ADR-016-editorial-vector-mapping.md` is Proposed** with
+  OD-7a…OD-7j (options + a recommended A-set) and an empty Ratification Record.
+  No code, dependency or contract change is added by the record.
+- Plan/runbook now gate follow-up (c) on ADR-016 ratification.
+- **Status: follow-up (c) BLOCKED pending owner ratification** (not NOT YET
+  APPLICABLE and not PASS). On ratification the slice is a bounded pure
+  `buildEditorialVectorLayers(figureSheet, context)` plus an `ellipse`/`polygon`
+  emitter extension, with per-kind fail-closed tests.
+- Exact next step: the phase owner ratifies or amends OD-7a…OD-7j; then implement
+  (c), then P5.8.

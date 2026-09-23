@@ -211,5 +211,6 @@ P5.6/P5.7 and must not be assumed:
     (arrow heads, ROI rotation, text-box alignment) need ratified editorial/geometry
     semantics; P5.7 delivers the native-vector *emission mechanism* only, and the
     "Vector PDF" completion gate is satisfied for that mechanism, not yet for
-    FigureSheet content.
+    FigureSheet content. **Gated on `ADR-016-editorial-vector-mapping.md` (Proposed,
+    OD-7a…OD-7j); do not implement before that record is ratified.**
 ```
