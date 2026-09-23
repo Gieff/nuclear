@@ -96,26 +96,27 @@ Every delegation brief must include:
   explicit `allow-offline-preview`. `missing`/`mismatch` always refuse.
 - The result must be accepted by the Fase-1 `isPublicationRenderRequest` oracle.
 
-### P5.3 — Framing/Layout Transforms (BLOCKED on OD-1/OD-2/OD-3)
+### P5.3 — Framing/Layout Transforms (READY — OD-1/OD-2/OD-3 ratified 2026-09-23)
 
-- Do not implement until ADR-014's open decisions on framing arithmetic
-  (OD-1), rotation origin (OD-2) and `contentScale` application (OD-3) are
-  ratified by an ADR-014 amendment. Any transform must be pure, invertible where
-  required and expressed in physical units.
-- A non-zero rotation stays a typed refusal until OD-2 is ratified.
+- Implement exactly the ratified ADR-014 amendment: OD-1 normalized crop with
+  validation, `scaledSize = contentSizeMm × contentScale`, the five `alignment`
+  offsets, `contentOffsetMm`, invertible; `overflow` is a clip policy, not part
+  of the affine map. OD-2 rotation about the panel center, clockwise in
+  `y-down`; **`rotationDeg !== 0` stays a typed refusal for medical panels**
+  (the contract cannot yet distinguish editorial vs medical rotation).
+- Any transform must be pure, invertible where required and expressed in
+  physical units.
 
-### P5.4 — Annotation Projection and Anchor Policy (BLOCKED on P5.3 + OD-4)
+### P5.4 — Annotation Projection and Anchor Policy (READY after P5.3 — OD-4 ratified 2026-09-23)
 
-- Blocked on P5.3 and on ADR-014 OD-4 (reprojection chain, plane tolerance,
-  fade band, offline-panel policy).
+- Depends on the P5.3 transform tests and the ratified OD-4 terms:
+  `planeToleranceMm = 0` ⇒ no fade band (exact plane only, else hidden);
+  `fadeBandMm = planeToleranceMm`, linear opacity `1 → 0` over
+  `(tol, 2·tol]`, hidden beyond; distances in mm; `loading` behaves like
+  `offline-cached`/`missing`/`mismatch` (patient annotation hidden fail-closed).
 - Patient-anchored annotations keep their LPS anchor and are reprojected through
-  the declared coordinate chain; the out-of-plane behaviour follows the
-  declared `planeToleranceMm` and `hide`/`fade` policy. Panel/sheet-anchored
-  editorial objects never participate in the medical transform.
-- Screen pixels are never persisted as an anchor.
-- The only ADR-free alternative is an explicitly scoped
-  **editorial-annotations-only** slice (panel-/sheet-anchored), which must not
-  implement patient LPS reprojection.
+  the declared coordinate chain; panel/sheet-anchored editorial objects never
+  participate in the medical transform. Screen pixels are never persisted.
 
 ### P5.5 — Publication Renderer Port
 

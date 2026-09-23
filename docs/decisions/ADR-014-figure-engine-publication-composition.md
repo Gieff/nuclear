@@ -2,9 +2,10 @@
 
 ## Status
 
-Accepted (boundary decisions D1–D5). Open Decisions OD-1–OD-4 remain
-**deferred** and must be resolved by a later ADR amendment before the slices
-that depend on them (see “Open Decisions”).
+Accepted (boundary decisions D1–D5). **Amendment 2026-09-23: OD-1–OD-4 are
+ratified** by the phase owner (OD-1 A refined, OD-2 A with medical rotation
+still fail-closed, OD-3 A, OD-4 A refined — see “Ratified Amendment”). The
+dependent slices (P5.3, P5.4) may proceed under those terms.
 
 ## Date
 
@@ -102,25 +103,88 @@ high-resolution raster; typography, panel letters, badges, scalebars and
 annotations must be emitted as native vector primitives in Figure Sheet mm. The
 whole page is never rasterized merely for convenience.
 
-## Open Decisions (deferred; refuse rather than invent)
+## Ratified Amendment — OD-1–OD-4 (2026-09-23)
 
-These semantics are **not** ratified here. Until a later ADR amendment resolves
-them, the dependent slice must fail closed or remain `NOT YET APPLICABLE`:
+Ratified by the phase owner. These supersede the previously deferred Open
+Decisions; the prior “refuse rather than invent” status is lifted for exactly
+the semantics below and for nothing else.
 
-- **OD-1 — `PanelFramingState` arithmetic.** The exact mapping from
-  `viewportCrop`/`contentScale`/`contentOffsetMm`/`alignment`/`overflow` to
-  Viewport ↔ Panel Content space is not specified. P5.1 uses only the aperture
-  physical size (`contentSizeMm`) and does not implement the framing transform.
-- **OD-2 — `PanelLayoutState` rotation origin.** `rotationDeg` is defined
-  without an origin or sign convention. Containment/overlap checks are therefore
-  restricted to `rotationDeg === 0`; a non-zero rotation is a typed refusal
-  until the origin is ratified.
-- **OD-3 — `contentScale` application.** Whether the aperture pixel requirement
-  is scaled, and how medical content maps into the aperture, is unspecified.
-  P5.1 dimensions the aperture from `contentSizeMm` only.
-- **OD-4 — Patient-anchored annotation reprojection.** The exact projection,
-  faint/hide threshold and fade arithmetic are unspecified; P5.4 is blocked on
-  this amendment.
+### OD-1 — `PanelFramingState` arithmetic (ratified: A refined)
+
+Normalized crop with explicit validation, `0 ≤ left < right ≤ 1` and
+`0 ≤ top < bottom ≤ 1`:
+
+```text
+u = (x - left) / (right - left)
+v = (y - top) / (bottom - top)
+```
+
+The scaled image is placed inside the content aperture and offset by alignment:
+
+```text
+scaledSize   = contentSizeMm × contentScale
+panelContent = alignmentOffset(aperture, scaledSize) + contentOffsetMm + (u, v) × scaledSize
+```
+
+`alignmentOffset` uses `aperture = contentSizeMm`:
+
+- `top-left`: `[0, 0]`
+- `top-right`: `[aperture.w - scaled.w, 0]`
+- `bottom-left`: `[0, aperture.h - scaled.h]`
+- `bottom-right`: `[aperture.w - scaled.w, aperture.h - scaled.h]`
+- `center`: half of the residual space, `[(aperture.w - scaled.w) / 2, (aperture.h - scaled.h) / 2]`
+
+Direction: normalized Viewport Space → Panel Content Space (mm). The mapping is
+invertible while `scaledSize` components are strictly positive. `overflow` is
+**not** part of the affine map: it is a clip policy applied by the compositor
+(`clip` limits to the content aperture, `visible` preserves external
+coordinates).
+
+### OD-2 — `PanelLayoutState` rotation (ratified: A; medical rotation still fail-closed)
+
+Rotation origin is the **panel center**; positive angle is **clockwise in
+figure-sheet `y-down` coordinates**:
+
+```text
+center = sizeMm / 2
+R(θ)   = [[cos θ, -sin θ], [sin θ, cos θ]]   (θ in radians)
+sheet  = positionMm + R(θ)·(panelContentPoint - center) + center
+```
+
+`rotationDeg !== 0` **continues to be refused** for panels containing medical
+content. The current contract (`PanelLayoutState` / `ComposerPanel`) does not
+distinguish an editorial container from a medical panel, so the medical
+placement and containment APIs remain fail-closed. A future contract extension
+must introduce that distinction explicitly before rotated medical panels are
+permitted; this ADR does not authorize it.
+
+### OD-3 — `contentScale` and the publication target (ratified: A)
+
+The publication target remains the **physical aperture**:
+
+```text
+targetPixels = contentSizeMm × DPI
+```
+
+`contentScale` modifies framing/camera and crop; it does **not** change the
+physical target density. Variant B (dimensioning the target from
+`contentSizeMm × contentScale`) is rejected: it conflates editorial zoom with
+export density and would turn the no-upscale guarantee into an improper change
+of the output size.
+
+### OD-4 — Patient-anchored annotation reprojection (ratified: A refined)
+
+Chain: `LPS → view plane → viewport → panel content → sheet mm`, evaluated from
+the resolved `ComposerViewInstance` state including applicable local overrides.
+
+- `planeToleranceMm = 0` ⇒ **no fade band**: draw only on the exact plane,
+  otherwise hide.
+- For `planeToleranceMm > 0`: `fadeBandMm = planeToleranceMm`; draw when
+  `|d| ≤ planeToleranceMm`, linear opacity `1 → 0` over
+  `planeToleranceMm < |d| ≤ 2 × planeToleranceMm`, hide beyond.
+- Distances are always in millimetres.
+- `loading` behaves exactly like `offline-cached`, `missing` and `mismatch`:
+  the patient annotation is hidden (fail-closed).
 
 ## Consequences
 
