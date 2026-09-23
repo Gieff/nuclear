@@ -20,6 +20,7 @@ export * from './render-port.js';
 export * from './render-orchestrator.js';
 export * from './encode-port.js';
 export * from './compose-sheet.js';
+export * from './plan-builder.js';
 export * from './provenance.js';
 export * from './targets.js';
 export * from './request-types.js';

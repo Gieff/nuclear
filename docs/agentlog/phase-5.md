@@ -1184,3 +1184,121 @@ the no-resampling/no-upscale refusals as gates.
   round-trips, resampling refusal, zero `node:zlib` imports under
   `figure-engine/src`). Image/pixel tolerance on real datasets **NOT YET
   APPLICABLE**.
+
+---
+
+# Slice Record — P5.6 plan builder (`buildPublicationCompositionPlan`)
+
+## 1. What Was Implemented
+
+- **Pure composition plan builder** (`plan-builder.ts`): maps a `FigureSheet`
+  (panels with `PanelFramingState`/`PanelLayoutState` in mm) plus the P5.5
+  `PublicationPanelRaster[]` into a `PublicationCompositionPlan` — the semantic →
+  physical bridge (mm/layout → sheet pixels) that closes the export control flow.
+  Each layer's pixel dimensions are the panel content aperture at the plan DPI,
+  its `rectMm` is the panel's sheet rectangle, and layers follow ascending
+  z-order so the compositor paints lowest-z first.
+- **Structural validation extracted** (`plan-builder-validation.ts`, internal):
+  sheet/panel/raster shapes are validated with typed `FIGURE_COMPOSITION_INVALID`
+  refusals, so a malformed panel or raster never surfaces as a bare `TypeError`
+  (the P5.6 compositor-review failure class is closed here too). Includes a pure
+  RFC 4648 base64 decoder (no `Buffer`, no DOM) and duplicate-panel/raster
+  detection.
+- **Fail-closed where unratified**: the builder requires
+  `framing.contentSizeMm === layout.sizeMm` (aperture-inside-panel placement is
+  not yet ratified) and refuses non-zero rotation (ADR-014 OD-2); resampling,
+  extra/missing/duplicate rasters, containment violations and malformed input are
+  all typed refusals.
+
+## 2. Files Changed
+
+Created:
+- `packages/figure-engine/src/publication/plan-builder.ts`
+- `packages/figure-engine/src/publication/plan-builder-validation.ts`
+- `tests/export/plan-builder.test.ts`
+
+Modified:
+- `packages/figure-engine/src/publication/index.ts` (barrel adds plan builder)
+- `docs/plans/PHASE_5_FIGURE_ENGINE_PLAN.md`,
+  `docs/plans/PHASE_5_OPENCODE_RUNBOOK.md` (plan builder delivered; aperture
+  decision tracked; P5.6 COMPLETE with the two named follow-ups)
+- `docs/agentlog/phase-5.md` — this handover.
+
+Not modified: `shared-types`, `rendering-presets`, `medical-engine`,
+`view-engine`, `project-model`, `ui`, `apps/*`, `python/`, `AGENTS.md`,
+`CHANGELOG.md`.
+
+## 3. Architectural Assumptions Made (boundary adherence)
+
+- `figure-engine` remains pure/browser-safe: no `node:zlib`, `Buffer`, DOM or
+  third-party encoder (the base64 decoder is a pure lookup-table implementation).
+- The builder output is accepted by `composeSheetRgba` by construction: the
+  aperture/panel equality requirement is exactly what makes the compositor's
+  rect-vs-pixels no-resampling check pass.
+- The aperture-inside-panel constraint is recorded as an **open decision**
+  (plan/runbook), not a permanent contract.
+
+## 4. Tests Added & Executed
+
+- `node --test "tests/export/*.test.ts"` → **13 tests / 3 suites, pass** (5 new
+  plan-builder tests): mapping values, end-to-end `build → composeSheetRgba`,
+  z-order, and refusals for missing/extra/duplicate rasters, resampling,
+  byteLength mismatch, invalid dpi/background, null/malformed sheet, malformed
+  panel/raster (asserted not a bare `TypeError`), non-zero rotation,
+  aperture/panel mismatch and panel-outside-sheet.
+- `node --test "tests/figure-engine/*.test.ts"` → **67/12, pass** (regression).
+- `npm test` → **640 tests / 117 suites, 640 pass / 0 fail**.
+- `npm run typecheck` → **PASS**; `npm run build` → **PASS**.
+- `npm run test:python` → **411 passed**; `npm run typecheck:python` → **clean,
+  77 files**.
+- File-length: `plan-builder.ts` **133**, `plan-builder-validation.ts` **187**
+  (both ≤ 250); all touched files ≤ 300. `git diff --check` → clean.
+
+## 5. Documentation, AgentLog & ADR Status
+
+- Plan/runbook mark the plan builder delivered and P5.6 COMPLETE, with the two
+  explicit follow-ups (aperture placement decision; text/vector rasterization).
+- No new ADR required. This is the plan-builder AgentLog entry.
+  `AGENTS.md`/`CHANGELOG.md` untouched.
+
+## 6. Project Model Impact
+
+None. No `.ncp` schema change and no `shared-types` contract change.
+
+## 7. Known Limitations & Technical Debt
+
+- **Aperture-inside-panel placement** is unratified; the builder requires the
+  aperture to equal the panel rectangle and refuses otherwise.
+- **Text/vector rasterization** into the flattened PNG/TIFF is not implemented.
+- The builder ignores `raster.colorProfile`/`renderer` (the plan contract has no
+  provenance field; sRGB is declared at the encoder port per OD-6c).
+- mm-inclusive containment and px-exact composition can disagree at fractional-mm
+  sheet edges; the compositor refuses fail-closed, but a doc note is warranted.
+- No image/pixel tolerance on real datasets → **NOT YET APPLICABLE**.
+
+## 8. Exact Next Recommended Task
+
+Implement **P5.7** (hybrid vector PDF behind the `EncoderPort`, `pdf-lib`,
+embedded permissive open-source font subset per OD-6e), consuming the now-stable
+`PublicationCompositionPlan`. Keep byte-determinism, no-resampling and
+vector-preservation as gates. The two P5.6 follow-ups (aperture placement;
+text/vector rasterization) remain tracked.
+
+---
+
+## Independent Verdicts — P5.6 plan builder
+
+- **`nuclear-reviewer` — PASS after CONCERNS resolved.** Confirmed mapping
+  fidelity, compositor compatibility, purity/boundary and the honest
+  aperture-equals-panel fail-closed choice. MAJOR-1 (malformed panel/raster
+  surfaced as a bare `TypeError`) was fixed by extracting
+  `plan-builder-validation.ts` with typed refusals; MINOR-1 (missing refusal
+  tests: duplicate raster, byteLength mismatch, containment through the builder,
+  malformed shapes) was closed; MINOR-2 (aperture decision under-tracked) is now
+  recorded in plan/runbook.
+- **`nuclear-qa` — PASS (all 11 gates).** Scope isolation, `git diff --check`,
+  `npm run typecheck`, focused **13/3** and **67/12**, `npm test` **640/117/0**,
+  `npm run build`, pytest 411, mypy 77, file-length, and runtime spot-checks
+  (180×120 plan, layer rect 20,20,80×80, compose pixel at (20,20), missing/
+  resampled raster refused, zero `node:*`/Buffer/DOM under `figure-engine/src`).
+  Image/pixel tolerance on real datasets **NOT YET APPLICABLE**.
