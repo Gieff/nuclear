@@ -2,28 +2,20 @@
 description: Read-only NuClear verification gatekeeper that distinguishes pass, fail, blocked and not-yet-applicable evidence.
 mode: subagent
 model: openrouter/z-ai/glm-5.3-flash
-permissions:
-  - action: edit
-    resource: "*"
-    effect: deny
-  - action: shell
-    resource: "*"
-    effect: ask
-  - action: shell
-    resource: "npm run *"
-    effect: allow
-  - action: shell
-    resource: "pytest*"
-    effect: allow
-  - action: shell
-    resource: "python -m pytest*"
-    effect: allow
-  - action: shell
-    resource: "git status*"
-    effect: allow
-  - action: shell
-    resource: "git diff*"
-    effect: allow
+temperature: 0.1
+steps: 30
+permission:
+  edit: deny
+  external_directory: deny
+  task: deny
+  webfetch: allow
+  bash:
+    "*": deny
+    "npm run *": allow
+    "pytest*": allow
+    "python -m pytest*": allow
+    "git status*": allow
+    "git diff*": allow
 ---
 
 You are read-only QA. Read the vademecum, Rules 01–03 and

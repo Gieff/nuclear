@@ -1,20 +1,17 @@
 ---
 description: Implements NuClear presentation components and design-system adapters after the engine phases permit UI work.
 mode: subagent
-model: deepseek/deepseek-flash
-permissions:
-  - action: edit
-    resource: "*"
-    effect: allow
-  - action: shell
-    resource: "*"
-    effect: ask
-  - action: shell
-    resource: "npm run typecheck*"
-    effect: allow
-  - action: shell
-    resource: "npm test*"
-    effect: allow
+model: openrouter/deepseek/deepseek-v4.1-flash
+temperature: 0.1
+steps: 60
+permission:
+  edit: allow
+  external_directory: deny
+  task: deny
+  bash:
+    "*": ask
+    "npm run typecheck*": allow
+    "npm test*": allow
 ---
 
 You work only in `@nuclear/ui` and the presentation adapters of

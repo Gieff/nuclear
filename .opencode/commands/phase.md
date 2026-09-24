@@ -40,6 +40,13 @@ never import MedCanvas APIs, UI, controller state or legacy abstractions.
 Do not apply P3.3–P3.5 recovery decisions while executing P3.0–P3.2 unless
 the active slice explicitly requires a contract correction.
 
+Before delegating, ensure a plan for this objective exists under
+`docs/plans/` and has been approved via Plannotator (`submit_plan`).
+Work one slice per session and respect the context budget in
+`docs/plans/WORKFLOW_OPERATING_MODEL.md`: close the slice and hand off
+on disk before 180k tokens, never past 272k. Run
+`npm run verify:harness` so the harness itself is verified.
+
 Implement only work within the requested phase. For non-trivial edits,
 obtain `nuclear-reviewer` and `nuclear-qa` reports, inspect the real
 diff, and persist the complete 8-point Handover Report in

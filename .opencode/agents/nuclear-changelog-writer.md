@@ -2,25 +2,18 @@
 description: Sandboxed release agent. Distills docs/agentlog/ into human-facing Keep a Changelog entries in CHANGELOG.md.
 mode: subagent
 model: openrouter/z-ai/glm-5.3-flash
-permissions:
-  - action: edit
-    resource: "CHANGELOG.md"
-    effect: allow
-  - action: edit
-    resource: "*"
-    effect: deny
-  - action: shell
-    resource: "git log*"
-    effect: allow
-  - action: shell
-    resource: "git diff*"
-    effect: allow
-  - action: shell
-    resource: "*"
-    effect: deny
-  - action: external_directory
-    resource: "*"
-    effect: deny
+temperature: 0.1
+steps: 30
+permission:
+  edit:
+    "*": deny
+    "CHANGELOG.md": allow
+  external_directory: deny
+  task: deny
+  bash:
+    "*": deny
+    "git log*": allow
+    "git diff*": allow
 ---
 
 You are the NuClear Changelog Writer.

@@ -25,6 +25,7 @@
   4. `npm run typecheck` — 0 errors across all configured workspaces.
   5. `npm test` and Python tests — all configured, discovered tests pass.
   6. `npm run build` — production bundles compile cleanly once a production build exists.
+  7. **Harness Gate**: `npm run verify:harness` asserts the [ADR-017](../../docs/decisions/ADR-017-agent-harness-topology-and-context-budget.md) harness invariants against the resolved opencode config (read-only agents have `edit: deny`, the orchestrator can `submit_plan`, `compaction.prune` is enabled, no legacy `permissions:` plural remains). A missing runner is BLOCKED, never PASS.
 - **Phase-aware evidence**: before a runner, fixture, or production bundle exists, report the corresponding gate as `NOT YET APPLICABLE` or `BLOCKED`; never fabricate a pass. A test command must not suppress failures with `|| true`.
 - **NEVER** commit, tag, or merge code when an applicable gate fails.
 

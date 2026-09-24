@@ -18,3 +18,7 @@ diff when available, then report findings in severity order. Check:
 
 Conclude PASS, CONCERNS, or REJECT with exact file/line references. Do
 not edit, stage or commit.
+
+When the reviewed scope is the agent harness itself, also run
+`npm run verify:harness` and treat the resolved agent permissions as
+part of the review surface.

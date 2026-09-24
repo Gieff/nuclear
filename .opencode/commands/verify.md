@@ -19,3 +19,8 @@ errors or discovers zero tests.
 Return a concise gate matrix with status PASS, FAIL, NOT YET APPLICABLE
 or BLOCKED; exact commands/output; evidence used; and one smallest next
 action for every non-PASS row. Do not edit, stage or commit.
+
+Always include the harness gate: run `npm run verify:harness` and report
+it as a first-class row (BLOCKED, never PASS, if the runner is absent).
+The control agents are read-only enforced by the opencode `permission`
+schema (singular), not by prompt wording alone.

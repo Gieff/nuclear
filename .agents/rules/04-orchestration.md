@@ -8,11 +8,13 @@ The Main Agent is the lead architect and pair programmer:
 - Owns all git staging and atomic commits (Rule 03). Subagents never commit.
 
 ## 2. Harness Topology (opencode)
-- The working model is `deepseek/deepseek-flash` for the orchestrator and every subagent (see `opencode.json`).
-- Built-in subagents available through the `task` tool: `explore` (fast read-only search) and `general` (multi-step work).
+- The role→model topology is normative in [`ADR-017`](../../docs/decisions/ADR-017-agent-harness-topology-and-context-budget.md) and [`WORKFLOW_OPERATING_MODEL.md`](../../docs/plans/WORKFLOW_OPERATING_MODEL.md). Summarised: orchestrator on `openrouter/openai/gpt-6-luna`; write-bound implementers on `openrouter/deepseek/deepseek-v4.1-flash`; read-bound `nuclear-scientific-engineer` on `deepseek/deepseek-flash`; enforced read-only controls `nuclear-reviewer`, `nuclear-qa`, `nuclear-changelog-writer` on `openrouter/z-ai/glm-5.3-flash` (`nuclear-ux-auditor` on `deepseek/deepseek-flash`); one-shot planner external GPT-6 Sol with `nuclear-architect` as the quota fallback.
+- Agent permissions MUST use the opencode `permission:` schema (singular). The legacy `permissions:` list is invalid and silently ignored; never reintroduce it. `npm run verify:harness` enforces this.
+- Built-in subagents available through the `task` tool: `explore` (fast read-only search) and `general` (multi-step work). The orchestrator's `task` permission allowlists `nuclear-*` and `explore`.
 - Implementer subagents: `nuclear-scientific-engineer` (`python/`, IPC), `nuclear-engine-engineer` (`@nuclear/medical-engine`, `@nuclear/view-engine`, `@nuclear/figure-engine`), `nuclear-ui-engineer` (`@nuclear/ui`).
-- Control subagents (read-only): `nuclear-reviewer`, `nuclear-qa`, `nuclear-ux-auditor`.
-- Project commands: `/phase <N>` drives one milestone phase; `/verify` runs the full verification pipeline.
+- Control subagents (read-only, enforced): `nuclear-reviewer`, `nuclear-qa`, `nuclear-ux-auditor`.
+- Project commands: `/phase <N>` drives one milestone phase; `/verify` runs the full verification pipeline; `/intake <file>` opens Plannotator on an external plan.
+- Context budget: one slice = one session = one agentlog entry; token zones green < 100k, yellow 100–180k, red 180–272k, black > 272k (never reached). Close the slice before yellow ends and hand off on disk.
 - Procedural runbooks live in `.agents/skills/` and are loaded on demand with the `skill` tool (`nuclear-dicom`, `nuclear-rendering`, `nuclear-testing`).
 
 ## 3. Delegation Boundaries & Contract Protection
@@ -44,5 +46,6 @@ Your comparative advantage is decomposition, judgment, verification, and integra
 - **IF** concluding any milestone phase, feature, or contract set:
 - **THEN** delegate acceptance to `nuclear-qa` (or run `nuclear-testing` directly) and confirm all clinical parameters against NuClear-owned curated fixtures and declared tolerances.
 - **NEVER** declare a task done based on assumptions or mocks without terminal verification.
+- **Context budget**: run one slice per session and hand off on disk before the session reaches 180k tokens; never cross 272k (GPT-6 pricing doubles above it). `docs/plans/WORKFLOW_OPERATING_MODEL.md` is the normative runbook.
 - Persist the complete 8-point Handover Report in `docs/agentlog/phase-<N>.md` (Gate 1: Agentlog Gate).
 - When promoting or tagging a release, delegate `CHANGELOG.md` compilation to `nuclear-changelog-writer` (or invoke `/promote-changelog`), verify the distilled diff, and stage the commit. Never dump raw handover notes into `CHANGELOG.md`.

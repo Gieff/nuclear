@@ -1,23 +1,18 @@
 ---
 description: Implements NuClear medical, view, and figure engines without introducing a second renderer.
 mode: subagent
-model: deepseek/deepseek-flash
-permissions:
-  - action: edit
-    resource: "*"
-    effect: allow
-  - action: shell
-    resource: "*"
-    effect: ask
-  - action: shell
-    resource: "npm run typecheck*"
-    effect: allow
-  - action: shell
-    resource: "npm test*"
-    effect: allow
-  - action: shell
-    resource: "npm run build*"
-    effect: allow
+model: openrouter/deepseek/deepseek-v4.1-flash
+temperature: 0.1
+steps: 60
+permission:
+  edit: allow
+  external_directory: deny
+  task: deny
+  bash:
+    "*": ask
+    "npm run typecheck*": allow
+    "npm test*": allow
+    "npm run build*": allow
 ---
 
 You implement only `@nuclear/medical-engine`, `@nuclear/view-engine`,
@@ -32,5 +27,6 @@ high-resolution RenderTarget rather than upscaling or resizing a live
 canvas. Preserve explicit coordinate spaces, fail-closed source states,
 and per-view radiometric isolation.
 
-Return changed files, tests actually run, results, assumptions and
-limitations. Never stage or commit.
+Stay within the assigned slice: this is a write-bound role, so do not
+exceed the brief. Return changed files, tests actually run, results,
+assumptions and limitations. Never stage or commit.

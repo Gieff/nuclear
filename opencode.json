@@ -1,8 +1,35 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-snip@latest","@plannotator/opencode@latest"],
-  "model": "deepseek/deepseek-flash",
+  "plugin": [
+    "opencode-snip@latest",
+    [
+      "@plannotator/opencode@latest",
+      {
+        "workflow": "plan-agent",
+        "planningAgents": ["plan", "nuclear-orchestrator", "nuclear-architect"]
+      }
+    ]
+  ],
+  "model": "openrouter/openai/gpt-6-luna",
   "default_agent": "nuclear-orchestrator",
+  "subagent_depth": 1,
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 12000
+  },
+  "provider": {
+    "openrouter": {
+      "options": {
+        "setCacheKey": true
+      }
+    },
+    "deepseek": {
+      "options": {
+        "setCacheKey": true
+      }
+    }
+  },
   "mcp": {
     "servers": {
       "playwright": {

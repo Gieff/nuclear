@@ -22,11 +22,15 @@ NuClear is a clinical-grade, publication-ready multimodal medical imaging workst
   - **Fase 7**: Production UI, mouse interaction layer, and desktop shell (not started).
 
 ## Harness (opencode)
-- Model: `deepseek/deepseek-flash` (set in [`opencode.json`](opencode.json)).
+- Topology, models and context budget are ratified by [`ADR-017`](docs/decisions/ADR-017-agent-harness-topology-and-context-budget.md); the operative runbook is [`docs/plans/WORKFLOW_OPERATING_MODEL.md`](docs/plans/WORKFLOW_OPERATING_MODEL.md).
+- Roles and models: orchestrator `nuclear-orchestrator` → `openrouter/openai/gpt-6-luna`; write-bound implementers `nuclear-engine-engineer` / `nuclear-ui-engineer` → `openrouter/deepseek/deepseek-v4.1-flash`; read-bound `nuclear-scientific-engineer` → `deepseek/deepseek-flash`; controls `nuclear-reviewer`, `nuclear-qa`, `nuclear-changelog-writer` → `openrouter/z-ai/glm-5.3-flash`; `nuclear-ux-auditor` → `deepseek/deepseek-flash`. `model` in [`opencode.json`](opencode.json) is the fallback for agents without an override.
+- One-shot planner: external ChatGPT GPT-6 Sol, or the `nuclear-architect` fallback (`openrouter/openai/gpt-6-sol`, `reasoningEffort: high`). Planning is never performed inside the interactive loop.
+- Context discipline: one slice = one session = one agentlog entry; token zones 100k / 180k / 272k. `compaction.prune` is enabled.
 - Always-active entry point: this `AGENTS.md`. OpenCode V2 does not resolve the former `instructions` array, so every agent must read the applicable files in [`.agents/rules/`](.agents/rules/) before editing.
-- Subagents: [`.opencode/agents/`](.opencode/agents/) — implementers `nuclear-scientific-engineer`, `nuclear-engine-engineer`, `nuclear-ui-engineer`; controls `nuclear-reviewer`, `nuclear-qa`, `nuclear-ux-auditor`; release `nuclear-changelog-writer`.
-- Commands: [`.opencode/commands/`](.opencode/commands/) — `/phase <0–7> [goal]` drives one milestone; `/verify [scope]` reports the real verification state; `/review [scope]` runs the independent audit; `/promote-changelog [phase]` synthesizes distilled release notes.
+- Subagents: [`.opencode/agents/`](.opencode/agents/) — planner `nuclear-architect`; implementers `nuclear-scientific-engineer`, `nuclear-engine-engineer`, `nuclear-ui-engineer`; controls `nuclear-reviewer`, `nuclear-qa`, `nuclear-ux-auditor`; release `nuclear-changelog-writer`. Permissions use the opencode `permission:` schema (singular); the legacy `permissions:` list is invalid and must never be reintroduced.
+- Commands: [`.opencode/commands/`](.opencode/commands/) — `/phase <0–7> [goal]` drives one milestone; `/verify [scope]` reports the real verification state; `/review [scope]` runs the independent audit; `/intake <file>` opens Plannotator on an external plan; `/promote-changelog [phase]` synthesizes distilled release notes.
 - Skills: [`.agents/skills/`](.agents/skills/) — loaded on demand via the `skill` tool.
+- Harness gate: `npm run verify:harness` asserts these invariants against the resolved opencode config (BLOCKED, never PASS, if the runner is absent).
 
 ### Rules (`.agents/rules/`) — Always Active
 - [`01-project-core.md`](.agents/rules/01-project-core.md): Mission, principles P1–P8, non-simplification law, no-invented-behavior rule.

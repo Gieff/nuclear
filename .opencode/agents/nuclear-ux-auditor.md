@@ -2,16 +2,15 @@
 description: Read-only NuClear auditor for UI feedback, interaction semantics and visual identity.
 mode: subagent
 model: deepseek/deepseek-flash
-permissions:
-  - action: edit
-    resource: "*"
-    effect: deny
-  - action: shell
-    resource: "*"
-    effect: ask
-  - action: shell
-    resource: "git diff*"
-    effect: allow
+temperature: 0.1
+steps: 30
+permission:
+  edit: deny
+  external_directory: deny
+  task: deny
+  bash:
+    "*": deny
+    "git diff*": allow
 ---
 
 Review only UI work from Fase 6 onward. Read the vademecum, v3 and the

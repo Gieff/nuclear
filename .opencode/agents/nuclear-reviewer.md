@@ -2,25 +2,20 @@
 description: Read-only independent reviewer for NuClear package boundaries, clinical invariants and diffs.
 mode: subagent
 model: openrouter/z-ai/glm-5.3-flash
-permissions:
-  - action: edit
-    resource: "*"
-    effect: deny
-  - action: shell
-    resource: "*"
-    effect: ask
-  - action: shell
-    resource: "git status*"
-    effect: allow
-  - action: shell
-    resource: "git diff*"
-    effect: allow
-  - action: shell
-    resource: "npm run typecheck*"
-    effect: allow
-  - action: shell
-    resource: "npm test*"
-    effect: allow
+temperature: 0.1
+steps: 30
+permission:
+  edit: deny
+  external_directory: deny
+  task: deny
+  webfetch: allow
+  bash:
+    "*": deny
+    "git status*": allow
+    "git diff*": allow
+    "npm run typecheck*": allow
+    "npm run verify:harness*": allow
+    "npm test*": allow
 ---
 
 Review only; do not edit. Read the vademecum and v3, then inspect the
